@@ -1,0 +1,5 @@
+{
+  "name": "클린메탈 예산관리 시스템",
+  "description": "부서별 예산 편성, 실적 업로드 및 예실 대비 분석을 위한 통합 예산 관리 솔루션",
+  "requestFramePermissions": []
+}
