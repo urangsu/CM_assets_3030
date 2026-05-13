@@ -8,6 +8,7 @@ import autoTable from 'jspdf-autotable';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
+import { ChartCard } from '../components/charts/ChartCard';
 
 export default function VarianceComparison() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -972,8 +973,10 @@ export default function VarianceComparison() {
       </div>
 
       {/* Chart */}
-      <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm overflow-hidden">
-        <h3 className="text-lg font-bold text-eco-black mb-6 tracking-tight">계정별 예산 비교</h3>
+      <ChartCard
+        title="계정별 예산 비교"
+        isEmpty={chartData.length === 0}
+      >
         <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
@@ -994,7 +997,7 @@ export default function VarianceComparison() {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </ChartCard>
 
       {/* Data Table */}
       <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden mb-10">

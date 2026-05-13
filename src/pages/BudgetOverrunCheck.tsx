@@ -1,9 +1,23 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Download, Search } from 'lucide-react';
+import { AlertTriangle, Download, Search, AlertCircle } from 'lucide-react';
 import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth } from '../lib/budgetAggregation';
 import { canViewSalaryAccounts, getViewableDeptCodes } from '../lib/permissions';
+
+// Components
+import { PageHeader } from '../components/ui/PageHeader';
+import { FilterBar, FilterItem } from '../components/budget/FilterBar';
+import { AppSelect } from '../components/ui/AppSelect';
+import { AppCard } from '../components/ui/AppCard';
+import { AppButton } from '../components/ui/AppButton';
+import { MetricCard } from '../components/budget/MetricCard';
+import { AppTable, AppTableHeader, AppTableRow, AppTableHead, AppTableBody, AppTableCell } from '../components/ui/AppTable';
+import { BudgetAmount } from '../components/budget/BudgetAmount';
+import { BudgetRate } from '../components/budget/BudgetRate';
+import { OverrunBadge } from '../components/budget/OverrunBadge';
+import { ExportButtonGroup } from '../components/budget/ExportButtonGroup';
+import { EmptyState } from '../components/ui/EmptyState';
 
 const QUARTERS: Record<string, number[]> = {
   '1Q': [0, 1, 2],
@@ -11,6 +25,7 @@ const QUARTERS: Record<string, number[]> = {
   '3Q': [6, 7, 8],
   '4Q': [9, 10, 11],
 };
+
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i);
 
@@ -164,148 +179,161 @@ export default function BudgetOverrunCheck() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2 text-eco-black"><AlertTriangle className="text-cobalt-500"/> 예산 초과 점검</h1>
+      <PageHeader 
+        title={<><AlertTriangle className="inline-block w-6 h-6 text-cobalt-500 mr-2 -mt-1"/>예산 초과 점검</>}
+        description="조직별/계정별 예산 집행 현황을 검토하고 초과 내역을 확인합니다."
+      />
       
-      <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm mb-6">
-        <div className="grid grid-cols-6 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-bold mb-1 text-text-secondary">연도</label>
-            <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
-              <option value="2024">2024년</option>
-              <option value="2025">2025년</option>
-              <option value="2026">2026년</option>
-              <option value="2027">2027년</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-text-secondary">계획구분</label>
-            <select value={planType} onChange={(e) => setPlanType(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
-              <option value="경영계획">경영계획</option>
-              <option value="수정경영계획">수정경영계획</option>
-              <option value="1차RP">1차RP</option>
-              <option value="2차RP">2차RP</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-text-secondary">분기</label>
-            <select value={quarter} onChange={(e) => setQuarter(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
-              <option value="1Q">1Q</option>
-              <option value="2Q">2Q</option>
-              <option value="3Q">3Q</option>
-              <option value="4Q">4Q</option>
-              <option value="전체">전체</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-text-secondary">부서</label>
-            <select value={selectedDeptCode} onChange={(e) => setSelectedDeptCode(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
-              <option value="전체">전체 조회 부서</option>
-              {depts.filter(d => viewableDeptCodes.includes(d.code)).map(d => (
-                <option key={d.code} value={d.code}>{d.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-text-secondary">계정구분</label>
-            <select value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
-              <option value="전체">전체</option>
-              <option value="제조">제조</option>
-              <option value="판관">판관</option>
-              <option value="인건비 제외">인건비 제외</option>
-              {salaryAccess && <option value="인건비만 보기">인건비만 보기</option>}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-text-secondary">초과 여부</label>
-            <select value={overrunFilter} onChange={(e) => setOverrunFilter(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
-              <option value="초과 항목만">초과 항목만</option>
-              <option value="전체 보기">전체 보기</option>
-            </select>
-          </div>
-        </div>
-        <div className="flex justify-between items-center text-sm text-text-secondary">
-          <span>* 조회 권한이 있는 부서의 데이터만 표시됩니다.<br/>* 급여성 계정은 권한이 있는 사용자에게만 표시됩니다.</span>
-          <div className="flex gap-2">
-            <button onClick={exportToExcel} className="flex items-center px-4 py-2 border border-lithium-200 rounded-xl bg-white hover:bg-lithium-50 transition-colors"><Download className="w-4 h-4 mr-2" /> 엑셀 다운로드</button>
-            <button onClick={handleSearch} className="flex items-center bg-nickel-600 text-white px-6 py-2 rounded-xl hover:bg-nickel-700 shadow-sm transition-all"><Search className="w-4 h-4 mr-2" />조회</button>
-          </div>
-        </div>
+      <FilterBar 
+        actions={
+          <ExportButtonGroup>
+            <AppButton variant="secondary" onClick={exportToExcel} leftIcon={<Download className="w-4 h-4" />}>
+              엑셀 다운로드
+            </AppButton>
+            <AppButton variant="primary" onClick={handleSearch} leftIcon={<Search className="w-4 h-4" />}>
+              조회
+            </AppButton>
+          </ExportButtonGroup>
+        }
+      >
+        <FilterItem label="연도">
+          <AppSelect value={year} onChange={(e) => setYear(e.target.value)}>
+            <option value="2024">2024년</option>
+            <option value="2025">2025년</option>
+            <option value="2026">2026년</option>
+            <option value="2027">2027년</option>
+          </AppSelect>
+        </FilterItem>
+        <FilterItem label="계획구분">
+          <AppSelect value={planType} onChange={(e) => setPlanType(e.target.value)}>
+            <option value="경영계획">경영계획</option>
+            <option value="수정경영계획">수정경영계획</option>
+            <option value="1차RP">1차RP</option>
+            <option value="2차RP">2차RP</option>
+          </AppSelect>
+        </FilterItem>
+        <FilterItem label="분기">
+          <AppSelect value={quarter} onChange={(e) => setQuarter(e.target.value)}>
+            <option value="1Q">1Q</option>
+            <option value="2Q">2Q</option>
+            <option value="3Q">3Q</option>
+            <option value="4Q">4Q</option>
+            <option value="전체">전체</option>
+          </AppSelect>
+        </FilterItem>
+        <FilterItem label="부서">
+          <AppSelect value={selectedDeptCode} onChange={(e) => setSelectedDeptCode(e.target.value)}>
+            <option value="전체">전체 조회 부서</option>
+            {depts.filter(d => viewableDeptCodes.includes(d.code)).map(d => (
+              <option key={d.code} value={d.code}>{d.name}</option>
+            ))}
+          </AppSelect>
+        </FilterItem>
+        <FilterItem label="계정구분">
+          <AppSelect value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)}>
+            <option value="전체">전체</option>
+            <option value="제조">제조</option>
+            <option value="판관">판관</option>
+            <option value="인건비 제외">인건비 제외</option>
+            {salaryAccess && <option value="인건비만 보기">인건비만 보기</option>}
+          </AppSelect>
+        </FilterItem>
+        <FilterItem label="초과 여부">
+          <AppSelect value={overrunFilter} onChange={(e) => setOverrunFilter(e.target.value)}>
+            <option value="초과 항목만">초과 항목만</option>
+            <option value="전체 보기">전체 보기</option>
+          </AppSelect>
+        </FilterItem>
+      </FilterBar>
+
+      <div className="flex justify-between items-center text-sm text-lithium-500 mb-6 px-2">
+        <span>* 조회 권한이 있는 부서의 데이터만 표시됩니다.<br/>* 급여성 계정은 권한이 있는 사용자에게만 표시됩니다.</span>
       </div>
 
       {!searched && (
-        <div className="p-20 text-center text-text-tertiary font-medium bg-white rounded-2xl border border-lithium-200 shadow-sm">조건을 선택한 후 조회 버튼을 눌러 주세요.</div>
+        <EmptyState 
+          icon={AlertCircle} 
+          title="조회 대기 중" 
+          description="필터 조건을 선택한 후 조회 버튼을 눌러 예산 초과 현황을 확인하세요."
+        />
       )}
 
       {searched && results.length === 0 && (
-        <div className="p-20 text-center text-text-tertiary font-medium bg-white rounded-2xl border border-lithium-200 shadow-sm">선택한 조건에 해당하는 예산 초과 항목이 없습니다.</div>
+        <EmptyState 
+          icon={Search} 
+          title="결과 없음" 
+          description="해당 조건의 예산 내역이 존재하지 않습니다."
+        />
       )}
       
       {searched && results.length > 0 && (
         <>
-          <div className="grid grid-cols-4 gap-4 mb-6">
-             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
-               <div className="text-sm text-text-secondary mb-1">초과 계정 수</div>
-               <div className="text-2xl font-black text-cobalt-600">{results.filter(r => r.status === '초과').length}건</div>
-             </div>
-             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
-               <div className="text-sm text-text-secondary mb-1">초과 금액 합계</div>
-               <div className="text-2xl font-black text-cobalt-600">{results.reduce((sum, r) => sum + r.overrunAmount, 0).toLocaleString()}원</div>
-             </div>
-             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
-               <div className="text-sm text-text-secondary mb-1">무예산 집행 건수</div>
-               <div className="text-2xl font-black text-cobalt-500">{results.filter(r => r.status === '무예산 집행').length}건</div>
-             </div>
-             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
-               <div className="text-sm text-text-secondary mb-1">조회 대상 부서 수</div>
-               <div className="text-2xl font-black text-eco-black">{new Set(results.map(r => r.deptCode)).size}개 부서</div>
-             </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <MetricCard 
+              title="초과 계정 수" 
+              value={`${results.filter(r => r.status === '초과').length}건`}
+              variant="warning"
+            />
+             <MetricCard 
+              title="초과 금액 합계" 
+              value={<BudgetAmount value={results.reduce((sum, r) => sum + r.overrunAmount, 0)} />}
+              variant="warning"
+            />
+            <MetricCard 
+              title="무예산 집행 건수" 
+              value={`${results.filter(r => r.status === '무예산 집행').length}건`}
+              variant="warning"
+            />
+            <MetricCard 
+              title="조회 대상 부서 수" 
+              value={`${new Set(results.map(r => r.deptCode)).size}개 부서`}
+            />
           </div>
-          <div className="overflow-x-auto bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden">
-            <table className="min-w-full divide-y divide-lithium-200 text-sm">
-               <thead className="bg-lithium-50">
+          
+          <AppCard className="overflow-hidden">
+            <AppTable>
+               <AppTableHeader>
                  <tr>
-                   <th className="px-4 py-4 text-left text-text-secondary font-bold">부서코드</th>
-                   <th className="px-4 py-4 text-left text-text-secondary font-bold">부서</th>
-                   <th className="px-4 py-4 text-left text-text-secondary font-bold">계정과목코드</th>
-                   <th className="px-4 py-4 text-left text-text-secondary font-bold">계정과목</th>
-                   <th className="px-4 py-4 text-right text-text-secondary font-bold">분기예산</th>
-                   <th className="px-4 py-4 text-right text-text-secondary font-bold">분기실적</th>
-                   <th className="px-4 py-4 text-right text-text-secondary font-bold">초과금액</th>
-                   <th className="px-4 py-4 text-right text-text-secondary font-bold">잔액</th>
-                   <th className="px-4 py-4 text-right text-text-secondary font-bold">초과율</th>
-                   <th className="px-4 py-4 text-right text-text-secondary font-bold">연도예산</th>
-                   <th className="px-4 py-4 text-right text-text-secondary font-bold">연도실적</th>
-                   <th className="px-4 py-4 text-center text-text-secondary font-bold">상태</th>
+                   <AppTableHead>부서코드</AppTableHead>
+                   <AppTableHead>부서</AppTableHead>
+                   <AppTableHead>계정과목코드</AppTableHead>
+                   <AppTableHead>계정과목</AppTableHead>
+                   <AppTableHead className="text-right">분기예산</AppTableHead>
+                   <AppTableHead className="text-right">분기실적</AppTableHead>
+                   <AppTableHead className="text-right">초과금액</AppTableHead>
+                   <AppTableHead className="text-right">잔액</AppTableHead>
+                   <AppTableHead className="text-right">초과율</AppTableHead>
+                   <AppTableHead className="text-right">연도예산</AppTableHead>
+                   <AppTableHead className="text-right">연도실적</AppTableHead>
+                   <AppTableHead className="text-center">상태</AppTableHead>
                  </tr>
-               </thead>
-               <tbody className="divide-y divide-lithium-100">
+               </AppTableHeader>
+               <AppTableBody>
                  {results.map((r, i) => (
-                   <tr key={i} className="hover:bg-lithium-50/50 transition-colors">
-                     <td className="px-4 py-3 text-text-secondary">{r.deptCode}</td>
-                     <td className="px-4 py-3 font-medium text-eco-black">{depts.find(d => d.code === r.deptCode)?.name}</td>
-                     <td className="px-4 py-3 text-text-tertiary">{r.accountCode}</td>
-                     <td className="px-4 py-3 font-medium text-eco-black">{r.accountName}</td>
-                     <td className="px-4 py-3 text-right font-medium">{r.qBudget.toLocaleString()}</td>
-                     <td className="px-4 py-3 text-right">{r.qActual.toLocaleString()}</td>
-                     <td className={`px-4 py-3 text-right font-bold ${r.overrunAmount > 0 ? 'text-cobalt-600' : 'text-eco-black'}`}>{r.overrunAmount.toLocaleString()}</td>
-                     <td className="px-4 py-3 text-right text-text-secondary">{r.balance.toLocaleString()}</td>
-                     <td className="px-4 py-3 text-right text-text-tertiary">{r.overrunRate ? r.overrunRate.toFixed(1) + '%' : '예산 없음'}</td>
-                     <td className="px-4 py-3 text-right text-text-tertiary">{r.yBudget.toLocaleString()}</td>
-                     <td className="px-4 py-3 text-right text-text-tertiary">{r.yActual.toLocaleString()}</td>
-                     <td className="px-4 py-3 text-center">
-                       <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
-                         r.status === '초과' ? 'bg-cobalt-100 text-cobalt-700' : 
-                         r.status === '무예산 집행' ? 'bg-cobalt-50 text-cobalt-600' : 
-                         'bg-nickel-50 text-nickel-700'
-                       }`}>
-                         {r.status}
-                       </span>
-                     </td>
-                   </tr>
+                   <AppTableRow key={i}>
+                     <AppTableCell className="text-lithium-600">{r.deptCode}</AppTableCell>
+                     <AppTableCell>{depts.find(d => d.code === r.deptCode)?.name}</AppTableCell>
+                     <AppTableCell className="text-lithium-500">{r.accountCode}</AppTableCell>
+                     <AppTableCell>{r.accountName}</AppTableCell>
+                     <AppTableCell className="text-right"><BudgetAmount value={r.qBudget} /></AppTableCell>
+                     <AppTableCell className="text-right"><BudgetAmount value={r.qActual} /></AppTableCell>
+                     <AppTableCell className="text-right">
+                       <BudgetAmount value={r.overrunAmount} tone={r.overrunAmount > 0 ? "warning" : "default"} />
+                     </AppTableCell>
+                     <AppTableCell className="text-right text-lithium-600"><BudgetAmount value={r.balance} /></AppTableCell>
+                     <AppTableCell className="text-right">
+                       <BudgetRate value={r.overrunRate} />
+                     </AppTableCell>
+                     <AppTableCell className="text-right text-lithium-500"><BudgetAmount value={r.yBudget} /></AppTableCell>
+                     <AppTableCell className="text-right text-lithium-500"><BudgetAmount value={r.yActual} /></AppTableCell>
+                     <AppTableCell className="text-center">
+                       <OverrunBadge status={r.status} />
+                     </AppTableCell>
+                   </AppTableRow>
                  ))}
-               </tbody>
-            </table>
-          </div>
+               </AppTableBody>
+            </AppTable>
+          </AppCard>
         </>
       )}
     </div>

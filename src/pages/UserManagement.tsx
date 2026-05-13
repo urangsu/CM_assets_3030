@@ -5,6 +5,15 @@ import { getSubmissionStatusKey } from '../lib/storageKeys';
 import { hashPassword } from '../lib/auth';
 import { motion, AnimatePresence } from 'motion/react';
 
+// Components
+import { PageHeader } from '../components/ui/PageHeader';
+import { MetricCard } from '../components/budget/MetricCard';
+import { AppCard } from '../components/ui/AppCard';
+import { AppButton } from '../components/ui/AppButton';
+import { AppBadge } from '../components/ui/AppBadge';
+import { BudgetStatusBadge } from '../components/budget/BudgetStatusBadge';
+import { AppSelect } from '../components/ui/AppSelect';
+
 export default function UserManagement() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
@@ -497,75 +506,67 @@ export default function UserManagement() {
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {isAdmin && (
-          <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm md:col-span-1">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-[#4e5968]">총 등록 사용자</p>
-                <div className="flex items-end gap-3 mt-2">
-                  <p className="text-3xl font-bold text-[#191f28]">{users.length}<span className="text-lg font-normal text-[#8b95a1] ml-1">명</span></p>
-                </div>
-              </div>
-              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-500" />
-              </div>
-            </div>
-          </div>
+          <MetricCard
+            title="총 등록 사용자"
+            value={<>{users.length}<span className="text-lg font-normal text-lithium-500 ml-1">명</span></>}
+            icon={Users}
+            className="md:col-span-1"
+          />
         )}
         
-        <div 
-          className={`bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm transition-all ${isAdmin ? 'md:col-span-2' : 'md:col-span-3'}`}
-        >
+        <AppCard className={`p-6 transition-all ${isAdmin ? 'md:col-span-2' : 'md:col-span-3'}`}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex gap-2">
-              <select 
+              <AppSelect 
                 value={submissionYear}
                 onChange={(e) => setSubmissionYear(e.target.value)}
-                className="text-xs bg-[#f2f4f6] border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-brand-500 outline-none"
+                className="h-8 py-1 rounded-lg text-xs"
               >
                 <option value="2024">2024년</option>
                 <option value="2025">2025년</option>
                 <option value="2026">2026년</option>
-              </select>
-              <select 
+              </AppSelect>
+              <AppSelect 
                 value={submissionPlanType}
                 onChange={(e) => setSubmissionPlanType(e.target.value)}
-                className="text-xs bg-[#f2f4f6] border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-brand-500 outline-none"
+                className="h-8 py-1 rounded-lg text-xs"
               >
                 <option value="경영계획">경영계획</option>
                 <option value="수정경영계획">수정경영계획</option>
                 <option value="1차RP">1차RP</option>
                 <option value="2차RP">2차RP</option>
                 <option value="추정실적">추정실적</option>
-              </select>
+              </AppSelect>
             </div>
-            <button 
+            <AppButton 
+              size="icon"
               onClick={() => setIsSubmissionModalOpen(true)}
-              className="w-10 h-10 bg-brand-500 rounded-xl flex items-center justify-center hover:bg-brand-600 transition-colors group shadow-lg shadow-brand-200"
               title="상세 현황 확인"
             >
-              <FileUp className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
-            </button>
+              <FileUp className="w-5 h-5" />
+            </AppButton>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#4e5968]">예산 제출 완료 부서</p>
-              <p className="text-3xl font-bold text-[#191f28] mt-2">{submissionCount}<span className="text-lg font-normal text-[#8b95a1] ml-1">/ {totalDepts}</span></p>
+              <p className="text-sm font-medium text-lithium-600">예산 제출 완료 부서</p>
+              <p className="text-3xl font-black text-eco-black tabular-nums mt-2">{submissionCount}<span className="text-lg font-normal text-lithium-500 ml-1">/ {totalDepts}</span></p>
             </div>
           </div>
-          <div className="mt-4 w-full bg-[#f2f4f6] rounded-full h-2">
-            <div className="bg-brand-500 h-2 rounded-full transition-all duration-500" style={{ width: `${submissionRate}%` }}></div>
+          <div className="mt-4 w-full bg-lithium-100 rounded-full h-2">
+            <div className="bg-nickel-600 h-2 rounded-full transition-all duration-500" style={{ width: `${submissionRate}%` }}></div>
           </div>
-          <p className="text-[10px] text-[#8b95a1] mt-2 text-right">아이콘 버튼을 클릭하여 상세 현황 확인</p>
-        </div>
+          <p className="text-[10px] text-lithium-500 mt-2 text-right">아이콘 버튼을 클릭하여 상세 현황 확인</p>
+        </AppCard>
 
-        <div 
+        <AppCard 
+          variant="interactive"
           onClick={handleOpenProfile}
-          className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm flex flex-col justify-center items-center cursor-pointer hover:bg-[#f9fafb] transition-colors md:col-span-1"
+          className="p-6 flex flex-col justify-center items-center md:col-span-1"
         >
-          <Users className="w-8 h-8 text-brand-500 mb-2" />
-          <p className="text-sm font-medium text-[#191f28]">내 정보 관리</p>
-          <p className="text-xs text-[#8b95a1] mt-1">아이디 및 비밀번호 변경</p>
-        </div>
+          <Users className="w-8 h-8 text-nickel-600 mb-2" />
+          <p className="text-sm font-bold text-eco-black">내 정보 관리</p>
+          <p className="text-xs text-lithium-500 mt-1">아이디 및 비밀번호 변경</p>
+        </AppCard>
       </div>
 
       {/* User Management */}
@@ -628,18 +629,14 @@ export default function UserManagement() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4e5968]">{user.department} <span className="text-[#8b95a1]">({user.code})</span></td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          user.role === '시스템 관리자' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
-                        }`}>
+                        <AppBadge variant={user.role === '시스템 관리자' ? 'primary' : 'default'}>
                           {user.role}
-                        </span>
+                        </AppBadge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          user.status === '활성' ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-700'
-                        }`}>
+                        <AppBadge variant={user.status === '활성' ? 'primary' : 'locked'}>
                           {user.status}
-                        </span>
+                        </AppBadge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button 
@@ -963,11 +960,7 @@ export default function UserManagement() {
                       </div>
                       <div className="flex items-center gap-6">
                         <div className="flex flex-col items-end">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            isSubmitted ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {isSubmitted ? '제출 완료' : '미제출'}
-                          </span>
+                          <BudgetStatusBadge status={isSubmitted ? 'SUBMITTED' : 'DRAFT'} />
                           {isSubmitted && (
                             <p className="text-[10px] text-[#8b95a1] mt-1">
                               {status.time}

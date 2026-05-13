@@ -14,8 +14,39 @@
   --color-lithium-50: var(--lithium-50);
   --color-lithium-100: var(--lithium-100);
   --color-lithium-200: var(--lithium-200);
+  --color-lithium-300: var(--lithium-300);
+  --color-lithium-500: var(--lithium-500);
+  --color-lithium-600: var(--lithium-600);
   --color-eco-black: var(--eco-black);
   --color-eco-white: var(--eco-white);
+
+  --color-surface-base: var(--surface-base);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-border-subtle: var(--border-subtle);
+
+  --color-text-strong: var(--text-strong);
+  --color-text-base: var(--text-base);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+
+  --color-status-normal-bg: var(--status-normal-bg);
+  --color-status-normal-text: var(--status-normal-text);
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-status-warning-text: var(--status-warning-text);
+  --color-status-danger-bg: var(--status-danger-bg);
+  --color-status-danger-text: var(--status-danger-text);
+  --color-status-locked-bg: var(--status-locked-bg);
+  --color-status-locked-text: var(--status-locked-text);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-popover: var(--shadow-popover);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
 
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
@@ -43,9 +74,44 @@
   --lithium-50: #F7F9F7;
   --lithium-100: #EEF2EC;
   --lithium-200: #DDE5DE;
+  --lithium-300: #C4CFC5;
+  --lithium-500: #8CA38D;
+  --lithium-600: #718872;
 
   --eco-black: #111111;
   --eco-white: #FFFFFF;
+  
+  /* Semantic Tokens for Budget Management */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+
+  --shadow-card: 0 1px 2px rgba(17, 17, 17, 0.04), 0 8px 24px rgba(17, 17, 17, 0.04);
+  --shadow-popover: 0 12px 32px rgba(17, 17, 17, 0.12);
+
+  --surface-base: var(--eco-white);
+  --surface-muted: var(--lithium-50);
+  --surface-subtle: var(--lithium-100);
+  --border-subtle: var(--lithium-200);
+
+  --text-strong: var(--eco-black);
+  --text-base: #30383f;
+  --text-muted: #647067;
+  --text-subtle: #8b95a1;
+
+  --status-normal-bg: var(--nickel-50);
+  --status-normal-text: var(--nickel-700);
+
+  --status-warning-bg: var(--cobalt-50);
+  --status-warning-text: var(--cobalt-700);
+
+  --status-danger-bg: #fff1f1;
+  --status-danger-text: #d92d20;
+
+  --status-locked-bg: #f2f4f6;
+  --status-locked-text: #4e5968;
 
   /* Aliases for backwards compatibility or logic */
   --brand-50: var(--nickel-50);
