@@ -61,6 +61,11 @@ export default function BudgetOverrunCheck() {
     }).join(' / ');
   };
 
+  const formatOverrunMonths = (months: number[]) => {
+    if (!months || months.length === 0) return '-';
+    return months.map(m => `${m}월`).join(', ');
+  };
+
   const handleSearch = () => {
     const deptCodes = selectedDeptCode === '전체' 
       ? viewableDeptCodes 
@@ -117,7 +122,7 @@ export default function BudgetOverrunCheck() {
         '부서명': depts.find(d => d.code === r.deptCode)?.name || '',
         '계정과목코드': r.accountCode,
         '계정과목': r.accountName,
-        '초과월': r.overrunMonths.length > 0 ? r.overrunMonths.join(', ') + '월' : '-',
+        '초과월': formatOverrunMonths(r.overrunMonths),
         '초과월수': r.overrunMonths.length > 0 ? r.overrunMonths.length + '개월' : '-',
         '분기예산': r.qBudget,
         '분기실적': r.qActual,
@@ -310,7 +315,7 @@ export default function BudgetOverrunCheck() {
                      <AppTableCell>{depts.find(d => d.code === r.deptCode)?.name}</AppTableCell>
                      <AppTableCell className="text-lithium-500">{r.accountCode}</AppTableCell>
                      <AppTableCell>{r.accountName}</AppTableCell>
-                     <AppTableCell className="text-cobalt-600 font-bold">{r.overrunMonths.length > 0 ? r.overrunMonths.join(', ') + '월' : '-'}</AppTableCell>
+                     <AppTableCell className="text-cobalt-600 font-bold">{formatOverrunMonths(r.overrunMonths)}</AppTableCell>
                      <AppTableCell>{r.overrunMonths.length > 0 ? r.overrunMonths.length + '개월' : '-'}</AppTableCell>
                      <AppTableCell className="text-right"><BudgetAmount value={r.qBudget} /></AppTableCell>
                      <AppTableCell className="text-right"><BudgetAmount value={r.qActual} /></AppTableCell>

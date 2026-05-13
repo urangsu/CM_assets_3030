@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Upload, Clipboard, Trash2, Save, Calendar, Search, X, Edit3 } from 'lucide-react';
+import { Upload, Clipboard, Trash2, Save, Calendar, Search, X, Edit3, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
+import { getBudgetDataKey, getActualDataKey, isBudgetLocked } from '../lib/storageKeys';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 
@@ -24,6 +24,17 @@ interface ActualData {
   completed: number;
   balance: number;
   remarks: string;
+}
+
+interface ValidationIssue {
+  rowNum: number;
+  message: string;
+}
+
+interface ActualUploadValidationResult {
+  validRows: ActualData[];
+  warningRows: ValidationIssue[];
+  errorRows: ValidationIssue[];
 }
 
 // Resizable Header Component
@@ -104,6 +115,7 @@ export default function PlanActualUpload() {
   
   const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string} | null>(null);
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, message: string, onConfirm: () => void} | null>(null);
+  const [validationResult, setValidationResult] = useState<ActualUploadValidationResult | null>(null);
 
   // Requirement 2: Multi-select state
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -276,44 +288,75 @@ export default function PlanActualUpload() {
   };
 
   const processImportedData = (rows: any[][]) => {
-    let hasInvalidData = false;
-    const invalidPeriodRows: { rowNum: number, periodStr: string }[] = [];
+    const validRows: ActualData[] = [];
+    const warningRows: ValidationIssue[] = [];
+    const errorRows: ValidationIssue[] = [];
 
-    const newData: ActualData[] = rows
-      .map((row, index) => {
-        const parseNum = (val: any) => {
-          if (typeof val === 'number') return val;
-          if (!val) return 0;
-          return Number(String(val).replace(/[^0-9.-]/g, '')) || 0;
-        };
+    rows.forEach((row, index) => {
+      const rowNum = index + 2;
+      const parseNum = (val: any) => {
+        if (typeof val === 'number') return val;
+        if (!val) return 0;
+        return Number(String(val).replace(/[^0-9.-]/g, '')) || 0;
+      };
 
-        const yearVal = String(row[1] || year);
-        const usageCodeVal = String(row[6] || '');
-        const periodStr = String(row[2] || '');
+      const yearVal = String(row[1] || year);
+      const usageCodeVal = String(row[6] || '');
+      const periodStr = String(row[2] || '');
+      const accountCode = String(row[3] || '');
 
-        if (isNaN(Number(yearVal)) || isNaN(Number(usageCodeVal))) {
-          hasInvalidData = true;
-        }
+      let hasError = false;
 
-        if (periodStr && parsePeriodMonth(periodStr) === null) {
-           invalidPeriodRows.push({ rowNum: index + 2, periodStr });
-        }
+      // 1. Year/Dept code validation
+      if (isNaN(Number(yearVal)) || isNaN(Number(usageCodeVal))) {
+        errorRows.push({ rowNum, message: '예산년도 또는 사용처코드가 숫자가 아닙니다.' });
+        hasError = true;
+      }
+      if (yearVal.length !== 4) {
+        warningRows.push({ rowNum, message: '예산년도가 4자리가 아닙니다.' });
+      }
 
-        const amount = parseNum(row[8]);
-        const additional = parseNum(row[9]);
-        const transferred = parseNum(row[10]);
-        const carriedOver = parseNum(row[11]);
-        const planned = parseNum(row[12]);
-        const completed = parseNum(row[13]);
-        
-        const calculatedBalance = (amount + additional + transferred + carriedOver) - (planned + completed);
-        const balance = row[14] !== undefined && row[14] !== '' ? parseNum(row[14]) : calculatedBalance;
+      // 2. Period validation
+      const monthIndex = parsePeriodMonth(periodStr);
+      if (monthIndex === null) {
+        errorRows.push({ rowNum, message: `기간 형식이 잘못되었습니다 ('${periodStr}').` });
+        hasError = true;
+      }
 
-        return {
-          id: data.length + index + 1,
+      // 3. Account code
+      if (!accountCode) {
+        errorRows.push({ rowNum, message: '계정코드가 비어 있습니다.' });
+        hasError = true;
+      }
+
+      // 4. Permissions
+      if (currentUser?.code !== '99999' && !viewableDeptCodes.includes(usageCodeVal)) {
+        errorRows.push({ rowNum, message: '조회 권한이 없는 부서의 데이터입니다.' });
+        hasError = true;
+      }
+
+      const amount = parseNum(row[8]);
+      const additional = parseNum(row[9]);
+      const transferred = parseNum(row[10]);
+      const carriedOver = parseNum(row[11]);
+      const planned = parseNum(row[12]);
+      const completed = parseNum(row[13]);
+      
+      const calculatedBalance = (amount + additional + transferred + carriedOver) - (planned + completed);
+      const rowBalanceStr = row[14] !== undefined ? String(row[14]) : '';
+      const balance = rowBalanceStr !== '' ? parseNum(rowBalanceStr) : calculatedBalance;
+
+      // 5. Balance check
+      if (rowBalanceStr !== '' && balance !== calculatedBalance) {
+        warningRows.push({ rowNum, message: '잔액 계산값이 수식과 불일치합니다.' });
+      }
+
+      if (!hasError) {
+        const item: ActualData = {
+          id: data.length + validRows.length + 1,
           year: yearVal,
           period: periodStr,
-          accountCode: String(row[3] || ''),
+          accountCode,
           accountName: String(row[4] || ''),
           controlType: String(row[5] || ''),
           usageCode: usageCodeVal,
@@ -327,31 +370,29 @@ export default function PlanActualUpload() {
           balance,
           remarks: String(row[15] || ''),
         };
-      })
-      .filter(item => item.accountCode && item.period && parsePeriodMonth(item.period) !== null)
-      .filter(item => planType === '실적' ? (item.amount !== 1 || item.completed !== 0) : item.amount !== 1)
-      .filter(item => currentUser?.code === '99999' || viewableDeptCodes.includes(item.usageCode));
+        // Skip unused rows based on planType
+        const isSkip = planType === '실적' ? (item.amount === 1 && item.completed === 0) : item.amount === 1;
+        if (!isSkip) {
+          validRows.push(item);
+        }
+      }
+    });
 
-    if (hasInvalidData) {
-      setAlertModal({ isOpen: true, message: '예산년도와 예산사용처코드는 숫자만 입력 가능합니다. 데이터를 확인 후 다시 입력해 주세요.' });
-      return;
-    }
-
-    if (invalidPeriodRows.length > 0) {
-       const examples = invalidPeriodRows.slice(0, 3).map(r => `엑셀 ${r.rowNum}행 ('${r.periodStr}')`).join(', ');
-       const etc = invalidPeriodRows.length > 3 ? ` 등 ${invalidPeriodRows.length}건` : '';
-       setAlertModal({ isOpen: true, message: `기간 형식이 잘못된 데이터가 있습니다: ${examples}${etc}. 올바른 월 형식(예: 1, 01, 1월, 2026.01 등)으로 수정한 뒤 다시 업로드 해주세요.` });
-       return;
-    }
-
-    if (newData.length === 0) {
+    if (validRows.length === 0 && errorRows.length === 0 && warningRows.length === 0) {
       setAlertModal({ isOpen: true, message: '유효한 데이터를 찾을 수 없습니다. 형식을 확인해 주세요.' });
       return;
     }
 
-    const updatedData = [...data, ...newData];
-    setData(updatedData);
-    setAlertModal({ isOpen: true, message: `${newData.length}개의 데이터가 추가되었습니다. 저장하기를 눌러 반영해 주세요.` });
+    setValidationResult({ validRows, warningRows, errorRows });
+  };
+
+  const confirmImport = () => {
+    if (validationResult) {
+       const updatedData = [...data, ...validationResult.validRows];
+       setData(updatedData);
+       setAlertModal({ isOpen: true, message: `${validationResult.validRows.length}개의 데이터가 추가되었습니다. 저장하기를 눌러 반영해 주세요.` });
+       setValidationResult(null);
+    }
   };
 
   const handleSave = () => {
@@ -370,6 +411,12 @@ export default function PlanActualUpload() {
 
       const deptsToUpdate = currentUser?.code === '99999' ? getAllDepartments() : viewableDepts;
 
+      const lockedDepts = deptsToUpdate.filter(dept => isBudgetLocked(dept.code, year, planType) && groupedByDept.has(dept.code));
+      if (lockedDepts.length > 0) {
+        setAlertModal({ isOpen: true, message: `제출 또는 승인 완료된 예산은 수정할 수 없습니다 (예: ${lockedDepts[0].name}).` });
+        return;
+      }
+
       deptsToUpdate.forEach(dept => {
         const deptCode = dept.code;
         const key = getBudgetDataKey(deptCode, year, planType);
@@ -378,16 +425,8 @@ export default function PlanActualUpload() {
         const newBudgetRows: any[] = [];
         
         deptData.forEach(uploadRow => {
-          let monthIndex = -1;
-          const periodStr = String(uploadRow.period).trim();
-          const match = periodStr.match(/(\d{1,2})월?$/) || periodStr.match(/[-./](\d{1,2})$/);
-          if (match) {
-            monthIndex = parseInt(match[1], 10) - 1;
-          } else if (!isNaN(parseInt(periodStr, 10))) {
-            monthIndex = parseInt(periodStr, 10) - 1;
-          }
-
-          if (monthIndex >= 0 && monthIndex < 12) {
+          const monthIndex = parsePeriodMonth(uploadRow.period);
+          if (monthIndex !== null) {
             let budgetRow = newBudgetRows.find((r: any) => r.code === uploadRow.accountCode);
             if (budgetRow) {
               budgetRow.values[monthIndex] = uploadRow.amount;
@@ -779,6 +818,62 @@ export default function PlanActualUpload() {
           </div>
         </div>
       )}
+      {/* Validation Result Modal */}
+      {validationResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl flex flex-col max-h-[90vh]">
+            <h3 className="text-xl font-bold text-[#191f28] mb-4">데이터 유효성 검사 결과</h3>
+            <div className="space-y-4 mb-6 text-sm flex-1 overflow-y-auto pr-2">
+              <p className="text-[#4e5968]">총 {validationResult.validRows.length + validationResult.warningRows.length + validationResult.errorRows.length}건 중 
+              정상 <span className="font-bold text-green-600 px-1">{validationResult.validRows.length}</span>건, 
+              경고 <span className="font-bold text-yellow-600 px-1">{validationResult.warningRows.length}</span>건, 
+              오류 <span className="font-bold text-red-600 px-1">{validationResult.errorRows.length}</span>건</p>
+              
+              {validationResult.errorRows.length > 0 && (
+                <div className="bg-red-50 p-4 rounded-xl border border-red-100 max-h-40 overflow-y-auto">
+                  <h4 className="font-bold text-red-700 mb-2 flex items-center"><X className="w-4 h-4 mr-1" />오류 내용 (저장 제외)</h4>
+                  <ul className="list-disc pl-5 text-red-600 space-y-1 text-xs">
+                    {validationResult.errorRows.map((e, i) => (
+                      <li key={i}>{e.rowNum}행: {e.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {validationResult.warningRows.length > 0 && (
+                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 max-h-40 overflow-y-auto">
+                  <h4 className="font-bold text-yellow-700 mb-2 flex items-center"><AlertCircle className="w-4 h-4 mr-1" />경고 내용</h4>
+                  <ul className="list-disc pl-5 text-yellow-600 space-y-1 text-xs">
+                    {validationResult.warningRows.map((w, i) => (
+                      <li key={i}>{w.rowNum}행: {w.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              <p className="text-[#4e5968] font-medium pt-2 border-t border-[#f2f4f6]">
+                오류가 있는 행은 저장 대상에서 제외됩니다.<br/>계속하시겠습니까?
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <button
+                className="px-5 py-2.5 bg-[#f2f4f6] text-[#4e5968] rounded-xl text-sm font-semibold hover:bg-[#e5e8eb] transition-colors"
+                onClick={() => setValidationResult(null)}
+              >
+                취소
+              </button>
+              <button
+                className="px-5 py-2.5 bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 transition-colors shadow-m disabled:opacity-50"
+                onClick={confirmImport}
+                disabled={validationResult.validRows.length === 0}
+              >
+                저장 후 계속
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       {alertModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">

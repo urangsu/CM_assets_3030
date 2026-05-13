@@ -9,6 +9,7 @@ import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } 
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { ChartCard } from '../components/charts/ChartCard';
+import { parsePeriodMonth } from '../lib/budgetAggregation';
 
 export default function VarianceComparison() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -576,16 +577,10 @@ export default function VarianceComparison() {
             }
 
             // Period filter
-            let itemMonth = -1;
-            const periodStr = String(item.period || '').trim();
-            const matchMonth = periodStr.match(/(\d{1,2})월?$/) || periodStr.match(/[-./](\d{1,2})$/);
-            if (matchMonth) {
-              itemMonth = parseInt(matchMonth[1], 10);
-            } else if (!isNaN(parseInt(periodStr, 10))) {
-              itemMonth = parseInt(periodStr, 10);
-            }
-
-            if (itemMonth === -1) return;
+            const periodStr = String(item.period || '');
+            const monthIndex = parsePeriodMonth(periodStr);
+            if (monthIndex === null) return;
+            const itemMonth = monthIndex + 1;
 
             let match = false;
             if (period === 'all') match = true;

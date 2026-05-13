@@ -3,11 +3,14 @@ import { SALARY_CATEGORIES } from '../constants';
 import { INITIAL_CATEGORIES } from '../pages/AccountSelection';
 
 export interface BudgetRow {
+  id?: number | string;
   code: string;
+  name?: string;
   accountName?: string;
   attributedDeptCode: string;
   values: number[];
-  // ... other fields
+  sourceType?: string;
+  sourceFormulaId?: string;
 }
 
 export interface ActualData {
@@ -197,7 +200,7 @@ export function aggregateByDeptAccount(params: {
     results.push({
       deptCode,
       accountCode,
-      accountName: budgetRow?.accountName || actualRow?.accountName || accountCode,
+      accountName: budgetRow?.accountName || budgetRow?.name || actualRow?.accountName || accountCode,
       qBudget,
       yBudget,
       qActual,
@@ -216,33 +219,106 @@ export function aggregateByDeptAccount(params: {
   return results;
 }
 
+export interface MonthlySummary {
+  month: number;
+  budget: number;
+  actual: number;
+  overrunAmount: number;
+  balance: number;
+  status: '정상' | '초과' | '무예산 집행';
+}
+
+export interface AccountSummary {
+  accountCode: string;
+  accountName: string;
+  qBudget: number;
+  qActual: number;
+  yBudget: number;
+  yActual: number;
+  balance: number;
+  overrunAmount: number;
+  overrunRate: number | null;
+  usedDeptCount: number;
+  overrunDeptCount: number;
+  noBudgetDeptCount: number;
+  monthlyDetails: MonthlySummary[];
+}
+
+export interface DeptSummary {
+  deptCode: string;
+  deptName?: string;
+  qBudget: number;
+  qActual: number;
+  yBudget: number;
+  yActual: number;
+  balance: number;
+  overrunAmount: number;
+  overrunRate: number | null;
+  overrunAccountCount: number;
+  noBudgetAccountCount: number;
+  monthlyDetails: MonthlySummary[];
+}
+
 export function aggregateByAccount(params: {
   budgetRows: BudgetRow[];
   actualRows: ActualData[];
   months: number[];
   allowedDeptCodes: string[];
   canViewSalary: boolean;
-}) {
+}): AccountSummary[] {
   const result = aggregateByDeptAccount(params);
-  // Group by accountCode
-  const accountMap = new Map<string, any>();
+  const accountMap = new Map<string, AccountSummary>();
   result.forEach(r => {
     if (!accountMap.has(r.accountCode)) {
-      accountMap.set(r.accountCode, { ...r, deptCode: 'ALL' });
+      accountMap.set(r.accountCode, {
+        accountCode: r.accountCode,
+        accountName: r.accountName,
+        qBudget: r.qBudget,
+        qActual: r.qActual,
+        yBudget: r.yBudget,
+        yActual: r.yActual,
+        balance: r.balance,
+        overrunAmount: r.overrunAmount,
+        overrunRate: r.overrunRate,
+        usedDeptCount: 1,
+        overrunDeptCount: r.status === '초과' ? 1 : 0,
+        noBudgetDeptCount: r.status === '무예산 집행' ? 1 : 0,
+        monthlyDetails: r.monthlyDetails.map(m => ({...m}))
+      });
     } else {
-      const existing = accountMap.get(r.accountCode);
+      const existing = accountMap.get(r.accountCode)!;
       existing.qBudget += r.qBudget;
       existing.yBudget += r.yBudget;
       existing.qActual += r.qActual;
       existing.yActual += r.yActual;
-      existing.overrunAmount = Math.max(existing.qActual - existing.qBudget, 0);
-      existing.balance = existing.qBudget - existing.qActual;
-      existing.overrunRate = existing.qBudget > 0 ? (existing.qActual / existing.qBudget) * 100 : null;
-      if (existing.qBudget === 0 && existing.qActual > 0) existing.status = '무예산 집행';
-      else if (existing.qActual > existing.qBudget) existing.status = '초과';
-      else existing.status = '정상';
+      existing.usedDeptCount += 1;
+      if (r.status === '초과') existing.overrunDeptCount += 1;
+      if (r.status === '무예산 집행') existing.noBudgetDeptCount += 1;
+
+      r.monthlyDetails.forEach((m, idx) => {
+        if (!existing.monthlyDetails[idx]) {
+          existing.monthlyDetails[idx] = {...m};
+        } else {
+          existing.monthlyDetails[idx].budget += m.budget;
+          existing.monthlyDetails[idx].actual += m.actual;
+        }
+      });
     }
   });
+
+  Array.from(accountMap.values()).forEach(acc => {
+    acc.overrunAmount = Math.max(acc.qActual - acc.qBudget, 0);
+    acc.balance = acc.qBudget - acc.qActual;
+    acc.overrunRate = acc.qBudget > 0 ? (acc.qActual / acc.qBudget) * 100 : null;
+    acc.monthlyDetails.forEach(m => {
+      m.overrunAmount = Math.max(m.actual - m.budget, 0);
+      m.balance = m.budget - m.actual;
+      if (m.budget === 0 && m.actual > 0) m.status = '무예산 집행';
+      else if (m.actual > m.budget) m.status = '초과';
+      else m.status = '정상';
+    });
+  });
+
   return Array.from(accountMap.values());
 }
 
@@ -252,26 +328,56 @@ export function aggregateByDept(params: {
   months: number[];
   allowedDeptCodes: string[];
   canViewSalary: boolean;
-}) {
+}): DeptSummary[] {
   const result = aggregateByDeptAccount(params);
-  // Group by deptCode
-  const deptMap = new Map<string, any>();
+  const deptMap = new Map<string, DeptSummary>();
   result.forEach(r => {
     if (!deptMap.has(r.deptCode)) {
-      deptMap.set(r.deptCode, { ...r, accountCode: 'ALL', accountName: '전체' });
+      deptMap.set(r.deptCode, {
+        deptCode: r.deptCode,
+        qBudget: r.qBudget,
+        qActual: r.qActual,
+        yBudget: r.yBudget,
+        yActual: r.yActual,
+        balance: r.balance,
+        overrunAmount: r.overrunAmount,
+        overrunRate: r.overrunRate,
+        overrunAccountCount: r.status === '초과' ? 1 : 0,
+        noBudgetAccountCount: r.status === '무예산 집행' ? 1 : 0,
+        monthlyDetails: r.monthlyDetails.map(m => ({...m}))
+      });
     } else {
-      const existing = deptMap.get(r.deptCode);
+      const existing = deptMap.get(r.deptCode)!;
       existing.qBudget += r.qBudget;
       existing.yBudget += r.yBudget;
       existing.qActual += r.qActual;
       existing.yActual += r.yActual;
-      existing.overrunAmount = Math.max(existing.qActual - existing.qBudget, 0);
-      existing.balance = existing.qBudget - existing.qActual;
-      existing.overrunRate = existing.qBudget > 0 ? (existing.qActual / existing.qBudget) * 100 : null;
-      if (existing.qBudget === 0 && existing.qActual > 0) existing.status = '무예산 집행';
-      else if (existing.qActual > existing.qBudget) existing.status = '초과';
-      else existing.status = '정상';
+      if (r.status === '초과') existing.overrunAccountCount += 1;
+      if (r.status === '무예산 집행') existing.noBudgetAccountCount += 1;
+
+      r.monthlyDetails.forEach((m, idx) => {
+        if (!existing.monthlyDetails[idx]) {
+          existing.monthlyDetails[idx] = {...m};
+        } else {
+          existing.monthlyDetails[idx].budget += m.budget;
+          existing.monthlyDetails[idx].actual += m.actual;
+        }
+      });
     }
   });
+
+  Array.from(deptMap.values()).forEach(d => {
+    d.overrunAmount = Math.max(d.qActual - d.qBudget, 0);
+    d.balance = d.qBudget - d.qActual;
+    d.overrunRate = d.qBudget > 0 ? (d.qActual / d.qBudget) * 100 : null;
+    d.monthlyDetails.forEach(m => {
+      m.overrunAmount = Math.max(m.actual - m.budget, 0);
+      m.balance = m.budget - m.actual;
+      if (m.budget === 0 && m.actual > 0) m.status = '무예산 집행';
+      else if (m.actual > m.budget) m.status = '초과';
+      else m.status = '정상';
+    });
+  });
+
   return Array.from(deptMap.values());
 }

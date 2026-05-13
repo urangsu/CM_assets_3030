@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Download, Save, Send, Trash2, Plus, Building2, FileDown, Divide, Copy } from 'lucide-react';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
-import { getBudgetDataKey } from '../lib/storageKeys';
+import { getBudgetDataKey, isBudgetLocked } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { Navigate, useNavigate } from 'react-router-dom';
 
@@ -84,6 +84,7 @@ export default function BusinessActivityBudget() {
     부서별그룹활동지원비: 10000
   });
   const [headcounts, setHeadcounts] = useState<Record<string, { category: '제조' | '판관', data: number[] }>>({});
+  const [previewApplyConfig, setPreviewApplyConfig] = useState<{isOpen: boolean, summary: any} | null>(null);
   const [deptModal, setDeptModal] = useState(false);
   const [selectedDeptsToAdd, setSelectedDeptsToAdd] = useState<string[]>([]);
   const [deptNameWidth, setDeptNameWidth] = useState(200);
@@ -254,16 +255,72 @@ export default function BusinessActivityBudget() {
   };
 
   const applyToBudget = () => {
+    // Check if any dept is locked
+    const lockedDepts = Object.keys(headcounts).filter(deptCode => isBudgetLocked(deptCode, year, planType));
+    if (lockedDepts.length > 0) {
+      showAlert(`제출 및 승인된 예산은 수정할 수 없습니다 (예: ${allDepts.find(d => d.code === lockedDepts[0])?.name}).`);
+      return;
+    }
+
     const targetAccountCodes = ['A60624102', 'B52224102', 'A60601123', 'B52201123', 'A60601155', 'B52201155'];
     
-    // 1. First, remove these accounts from ALL departments to clean up any orphaned data
+    let stats = {
+      deptCount: Object.keys(headcounts).length,
+      accountCount: targetAccountCodes.length,
+      updatedAutoRows: 0,
+      preservedManualRows: 0,
+      totalAmount: 0
+    };
+
+    allDepts.forEach(dept => {
+      const storageKey = getBudgetDataKey(dept.code, year, planType);
+      const existingDataStr = localStorage.getItem(storageKey);
+      if (existingDataStr) {
+        let budgetData: any[] = JSON.parse(existingDataStr);
+        budgetData.forEach(row => {
+          if (targetAccountCodes.includes(row.code)) {
+            if (row.sourceType === 'BUSINESS_ACTIVITY_AUTO') {
+              stats.updatedAutoRows += 1;
+            } else {
+              stats.preservedManualRows += 1;
+            }
+          }
+        });
+      }
+    });
+
+    Object.keys(headcounts).forEach(deptCode => {
+      const deptHeadcounts = headcounts[deptCode];
+      const category = deptHeadcounts.category;
+      const accountMappings = {
+        '회의비': category === '제조' ? 'A60624102' : 'B52224102',
+        '간담회비': category === '제조' ? 'A60601123' : 'B52201123',
+        '부서별그룹활동지원비': category === '제조' ? 'A60601155' : 'B52201155',
+      };
+      Object.entries(accountMappings).forEach(([expenseName, accountCode]) => {
+        const expenseAmount = expenses[expenseName as keyof typeof expenses];
+        const budgetValues = deptHeadcounts.data.map(h => h * expenseAmount);
+        stats.totalAmount += budgetValues.reduce((a, b) => a + b, 0);
+      });
+    });
+
+    setPreviewApplyConfig({
+      isOpen: true,
+      summary: stats
+    });
+  };
+
+  const confirmApplyToBudget = () => {
+    const targetAccountCodes = ['A60624102', 'B52224102', 'A60601123', 'B52201123', 'A60601155', 'B52201155'];
+    
+    // 1. First, remove AUTO accounts from ALL departments
     allDepts.forEach(dept => {
       const storageKey = getBudgetDataKey(dept.code, year, planType);
       const existingDataStr = localStorage.getItem(storageKey);
       if (existingDataStr) {
         let budgetData: any[] = JSON.parse(existingDataStr);
         const originalLength = budgetData.length;
-        budgetData = budgetData.filter(row => !targetAccountCodes.includes(row.code));
+        budgetData = budgetData.filter(row => !(targetAccountCodes.includes(row.code) && row.sourceType === 'BUSINESS_ACTIVITY_AUTO'));
         if (budgetData.length !== originalLength) {
           localStorage.setItem(storageKey, JSON.stringify(budgetData));
         }
@@ -287,10 +344,10 @@ export default function BusinessActivityBudget() {
         const expenseAmount = expenses[expenseName as keyof typeof expenses];
         const budgetValues = deptHeadcounts.data.map(h => h * expenseAmount);
 
-        const existingRowIndex = budgetData.findIndex(row => row.code === accountCode);
-        if (existingRowIndex !== -1) {
-          budgetData[existingRowIndex].values = budgetValues;
-        } else {
+        // Check if there's a manual row
+        const manualRowFound = budgetData.some(row => row.code === accountCode && row.sourceType !== 'BUSINESS_ACTIVITY_AUTO');
+        
+        if (!manualRowFound && budgetValues.some(v => v > 0)) {
           // Find account name
           let accountName = '';
           INITIAL_CATEGORIES.forEach(cat => {
@@ -306,12 +363,15 @@ export default function BusinessActivityBudget() {
             calculation: '인원수 * 단가',
             values: budgetValues,
             attributedDeptCode: deptCode,
+            sourceType: 'BUSINESS_ACTIVITY_AUTO',
+            sourceFormulaId: `BUSINESS_ACTIVITY_${year}_${planType}`
           });
         }
       });
 
       localStorage.setItem(storageKey, JSON.stringify(budgetData));
     });
+    setPreviewApplyConfig(null);
     showAlert('예산작성에 반영되었습니다.');
   };
 
@@ -544,6 +604,38 @@ export default function BusinessActivityBudget() {
           </table>
         </div>
       </div>
+
+      {previewApplyConfig?.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <h3 className="text-xl font-bold text-[#191f28] mb-4">업무활동경비 자동산출 예산을 반영하시겠습니까?</h3>
+            <p className="text-sm text-[#4e5968] mb-4">수기 입력된 동일 계정 row는 삭제되지 않습니다.</p>
+            <div className="space-y-2 mb-6 text-sm text-[#191f28]">
+              <div className="flex justify-between"><span>반영 대상 부서 수:</span> <b>{previewApplyConfig.summary.deptCount}개</b></div>
+              <div className="flex justify-between"><span>반영 계정 수:</span> <b>{previewApplyConfig.summary.accountCount}개</b></div>
+              <div className="flex justify-between"><span>생성/갱신될 자동산출 row 수:</span> <b>{previewApplyConfig.summary.updatedAutoRows}개</b></div>
+              <div className="flex justify-between"><span>보존되는 수기 row 수:</span> <b>{previewApplyConfig.summary.preservedManualRows}개</b></div>
+              <div className="flex justify-between border-t border-[#e5e8eb] pt-2 mt-2">
+                <span>총 반영 금액:</span> <b className="text-brand-600">{previewApplyConfig.summary.totalAmount.toLocaleString()}원</b>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 border rounded hover:bg-[#f2f4f6]"
+                onClick={() => setPreviewApplyConfig(null)}
+              >
+                취소
+              </button>
+              <button
+                className="px-4 py-2 bg-brand-500 text-white rounded hover:bg-brand-600 shadow-sm"
+                onClick={confirmApplyToBudget}
+              >
+                반영
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {modalConfig.isOpen && (

@@ -22,3 +22,25 @@ export interface SubmissionStatus {
 export function getSubmissionStatusMapKey(deptCode: string, year: string, planType: string) {
   return `${deptCode}_${year}_${planType}`;
 }
+
+export function getSubmissionStatus(deptCode: string, year: string, planType: string): SubmissionStatus {
+  try {
+    const rawData = localStorage.getItem(STORAGE_KEYS.SUBMISSION_STATUS);
+    if (rawData) {
+      const allStatuses = JSON.parse(rawData);
+      const key = getSubmissionStatusMapKey(deptCode, year, planType);
+      const statusData = allStatuses[key];
+      if (statusData) {
+        return statusData as SubmissionStatus;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to parse SUBMISSION_STATUS", e);
+  }
+  return { status: 'DRAFT' };
+}
+
+export function isBudgetLocked(deptCode: string, year: string, planType: string): boolean {
+  const status = getSubmissionStatus(deptCode, year, planType).status;
+  return status === 'SUBMITTED' || status === 'REVIEWING' || status === 'APPROVED' || status === 'LOCKED';
+}

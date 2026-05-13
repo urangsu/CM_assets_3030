@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect, MouseEvent } from 'react';
 import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus } from '../lib/storageKeys';
+import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
+import { parsePeriodMonth } from '../lib/budgetAggregation';
 
 // Resizable Header Component
 const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, width: number, minWidth: number, onResize: (newWidth: number) => void }) => {
@@ -271,16 +272,7 @@ export default function BudgetCreation() {
           return;
         }
 
-        let monthIndex = -1;
-        const periodStr = String(actual.period).trim();
-        const match1 = periodStr.match(/[-./](\d{1,2})$/);
-        const match2 = periodStr.match(/^(\d{1,2})월?$/);
-        
-        if (match1) {
-          monthIndex = parseInt(match1[1], 10) - 1;
-        } else if (match2) {
-          monthIndex = parseInt(match2[1], 10) - 1;
-        }
+        const monthIndex = parsePeriodMonth(String(actual.period)) ?? -1;
 
         if (monthIndex >= 0 && monthIndex < 12) {
           const key = `${attributedDeptCode}_${sourceDeptCode}_${accountCode}`;
@@ -858,16 +850,7 @@ export default function BudgetCreation() {
       const tempActualsMap = new Map<string, number[]>();
       
       deptActuals.forEach((actual: any) => {
-        let monthIndex = -1;
-        const periodStr = String(actual.period).trim();
-        const match1 = periodStr.match(/[-./](\d{1,2})$/);
-        const match2 = periodStr.match(/^(\d{1,2})월?$/);
-        
-        if (match1) {
-          monthIndex = parseInt(match1[1], 10) - 1;
-        } else if (match2) {
-          monthIndex = parseInt(match2[1], 10) - 1;
-        }
+        const monthIndex = parsePeriodMonth(String(actual.period)) ?? -1;
 
         if (monthIndex >= 0 && monthIndex < 12) {
           if (!tempActualsMap.has(actual.accountCode)) {
@@ -1105,6 +1088,10 @@ export default function BudgetCreation() {
       showAlert('전체 보기 모드에서는 저장이 불가능합니다. 개별 부서를 선택해주세요.');
       return;
     }
+    if (isBudgetLocked(selectedDeptCode, year, planType)) {
+      showAlert('이미 상신 및 승인된 예산은 수정할 수 없습니다.');
+      return;
+    }
     const key = getBudgetDataKey(selectedDeptCode, year, planType);
     localStorage.setItem(key, JSON.stringify(data));
     showAlert('예산 데이터가 임시 저장되었습니다.');
@@ -1113,6 +1100,10 @@ export default function BudgetCreation() {
   const handleReset = () => {
     if (selectedDeptCode === 'all') {
       showAlert('전체 보기 모드에서는 초기화가 불가능합니다.');
+      return;
+    }
+    if (isBudgetLocked(selectedDeptCode, year, planType)) {
+      showAlert('이미 상신 및 승인된 예산은 수정할 수 없습니다.');
       return;
     }
     showConfirm('정말 초기화하시겠습니까?', () => {
