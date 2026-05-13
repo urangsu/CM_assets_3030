@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, Download, Search, AlertCircle } from 'lucide-react';
 import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
-import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth } from '../lib/budgetAggregation';
+import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth, aggregateByDeptAccount } from '../lib/budgetAggregation';
 import { canViewSalaryAccounts, getViewableDeptCodes } from '../lib/permissions';
 
 // Components
@@ -52,84 +52,27 @@ export default function BudgetOverrunCheck() {
 
     const budgetRows = getBudgetRowsByDeptYearPlan(deptCodes, year, planType);
     const actualRows = getActualRowsByYear(year);
-
     const qMonths = quarter === '전체' ? MONTHS : QUARTERS[quarter];
-    const unionKeys = new Set<string>();
-    
-    // Group Budgets
-    const budgetMap = new Map<string, any>();
-    budgetRows.forEach(row => {
-      const key = `${row.attributedDeptCode}_${row.code}`;
-      unionKeys.add(key);
-      budgetMap.set(key, { ...row });
+
+    const rawData = aggregateByDeptAccount({
+      budgetRows,
+      actualRows,
+      months: qMonths,
+      allowedDeptCodes: deptCodes,
+      canViewSalary: salaryAccess
     });
 
-    // Group Actuals
-    const actualMap = new Map<string, { qActual: number, yActual: number, accountName: string }>();
-    actualRows.forEach(a => {
-      const monthIndex = parsePeriodMonth(a.period);
-      const isQuarter = qMonths.includes(monthIndex);
-      const isYear = true; // All are current year
-      if (isYear) {
-         const key = `${a.usageCode}_${a.accountCode}`;
-         if (deptCodes.includes(a.usageCode)) unionKeys.add(key);
-         
-         const existing = actualMap.get(key) || { qActual: 0, yActual: 0, accountName: a.accountName || a.accountCode };
-         
-         // Use the `completed` value for actuals
-         if (isQuarter) existing.qActual += a.completed || 0;
-         existing.yActual += a.completed || 0;
-         actualMap.set(key, existing);
-      }
-    });
+    const overrunData = rawData.filter(row => {
+      // 1. Filter by category
+      if (accountCategory === '제조' && !row.accountCode.startsWith('A')) return false;
+      if (accountCategory === '판관' && !row.accountCode.startsWith('B')) return false;
+      if (accountCategory === '인건비 제외' && isSalaryAccountCode(row.accountCode)) return false;
+      if (accountCategory === '인건비만 보기' && !isSalaryAccountCode(row.accountCode)) return false;
 
-    const overrunData: any[] = [];
+      // 2. Filter by overrun status
+      if (overrunFilter === '초과 항목만' && row.status === '정상') return false;
 
-    Array.from(unionKeys).forEach(key => {
-      const [deptCode, accountCode] = key.split('_');
-      
-      // 1. Permission Check
-      if (!viewableDeptCodes.includes(deptCode)) return;
-      if (isSalaryAccountCode(accountCode) && !salaryAccess) return;
-      
-      // Filter by category
-      if (accountCategory === '제조' && !accountCode.startsWith('A')) return;
-      if (accountCategory === '판관' && !accountCode.startsWith('B')) return;
-
-      const budgetRow = budgetMap.get(key);
-      const actualRow = actualMap.get(key);
-
-      const qBudget = budgetRow ? qMonths.reduce((sum: number, m: number) => sum + (budgetRow.values[m] || 0), 0) : 0;
-      const yBudget = budgetRow ? budgetRow.values.reduce((sum: number, v: number) => sum + (v || 0), 0) : 0;
-      
-      const qActual = actualRow ? actualRow.qActual : 0;
-      const yActual = actualRow ? actualRow.yActual : 0;
-
-      const overrunAmount = Math.max(qActual - qBudget, 0);
-      const balance = qBudget - qActual;
-      const overrunRate = qBudget > 0 ? (qActual / qBudget) * 100 : 0;
-      
-      let status = '정상';
-      if (qBudget === 0 && qActual > 0) status = '무예산 집행';
-      else if (qActual > qBudget) status = '초과';
-
-      if (overrunFilter === '초과 항목만' && status === '정상') return;
-
-      const accountName = budgetRow?.name || budgetRow?.accountName || actualRow?.accountName || accountCode;
-
-      overrunData.push({ 
-        deptCode,
-        accountCode,
-        accountName,
-        qBudget, 
-        qActual, 
-        overrunAmount, 
-        balance, 
-        overrunRate, 
-        yBudget,
-        yActual,
-        status 
-      });
+      return true;
     });
 
     overrunData.sort((a, b) => {
@@ -141,7 +84,7 @@ export default function BudgetOverrunCheck() {
         return b.overrunAmount - a.overrunAmount;
       }
       if (a.overrunRate !== b.overrunRate) {
-        return b.overrunRate - a.overrunRate;
+        return (b.overrunRate || 0) - (a.overrunRate || 0);
       }
       return a.deptCode.localeCompare(b.deptCode);
     });

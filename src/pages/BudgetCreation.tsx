@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, MouseEvent } from 'react';
 import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, getSubmissionStatusKey } from '../lib/storageKeys';
+import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 
 // Resizable Header Component
@@ -204,7 +204,8 @@ export default function BudgetCreation() {
   useEffect(() => {
     const statusKey = STORAGE_KEYS.SUBMISSION_STATUS;
     const statuses = JSON.parse(localStorage.getItem(statusKey) || '{}');
-    const currentStatus = statuses[`${selectedDeptCode}_${year}_${planType}`];
+    const mapKey = getSubmissionStatusMapKey(selectedDeptCode, year, planType);
+    const currentStatus = statuses[mapKey];
     
     // Migrate old format { submitted: true/false } to new format
     if (currentStatus) {
@@ -234,11 +235,6 @@ export default function BudgetCreation() {
         console.error('Failed to parse global accounts', e);
       }
     }
-    
-    // Check submission status
-    const statusKey = STORAGE_KEYS.SUBMISSION_STATUS;
-    const statuses = JSON.parse(localStorage.getItem(statusKey) || '{}');
-    const isSubmitted = statuses[`${selectedDeptCode}_${year}_${planType}`]?.submitted || false;
 
     // Load saved actuals to get the overridden attributedDeptCode
     const savedActualsMap = new Map<string, string>();
@@ -402,10 +398,9 @@ export default function BudgetCreation() {
       });
 
       if (selectedDeptCode === 'all') {
-        // 1. Change all 0s to 1s
+        // No longer convert 0s to 1s. We preserve the original values.
         finalData = finalData.map(row => ({
-          ...row,
-          values: row.values.map((v: number) => v === 0 ? 1 : v)
+          ...row
         }));
       }
 
@@ -1148,7 +1143,7 @@ export default function BudgetCreation() {
         deptName: currentDept.name
       };
       
-      statuses[`${selectedDeptCode}_${year}_${planType}`] = newStatus;
+      statuses[getSubmissionStatusMapKey(selectedDeptCode, year, planType)] = newStatus;
       localStorage.setItem(statusKey, JSON.stringify(statuses));
       setSubmissionStatus(newStatus);
 
@@ -1200,7 +1195,7 @@ export default function BudgetCreation() {
         deptName: currentDept.name
       };
       
-      statuses[`${selectedDeptCode}_${year}_${planType}`] = newStatus;
+      statuses[getSubmissionStatusMapKey(selectedDeptCode, year, planType)] = newStatus;
       localStorage.setItem(statusKey, JSON.stringify(statuses));
       setSubmissionStatus(newStatus);
 
@@ -1255,7 +1250,7 @@ export default function BudgetCreation() {
         reason: newStatusType === 'REJECTED' ? rejectReason : undefined
       };
       
-      statuses[`${selectedDeptCode}_${year}_${planType}`] = newStatus;
+      statuses[getSubmissionStatusMapKey(selectedDeptCode, year, planType)] = newStatus;
       localStorage.setItem(statusKey, JSON.stringify(statuses));
       setSubmissionStatus(newStatus);
 

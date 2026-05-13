@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Users, Upload, FileUp, Plus, MoreVertical, X, Calendar, FileText, CheckCircle2, Clock, ArrowUp, ArrowDown, Bell, Trash2 } from 'lucide-react';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
-import { getSubmissionStatusKey } from '../lib/storageKeys';
+import { getSubmissionStatusMapKey } from '../lib/storageKeys';
 import { hashPassword } from '../lib/auth';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -90,8 +90,8 @@ export default function UserManagement() {
   });
 
   const submittedDepts = targetDepts.filter(dept => {
-    const status = submissionStatuses[getSubmissionStatusKey(dept.code, submissionYear, submissionPlanType)];
-    return status && status.submitted;
+    const status = submissionStatuses[getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType)];
+    return status && (status.submitted === true || status.status === 'SUBMITTED' || status.status === 'APPROVED');
   });
 
   const submissionCount = submittedDepts.length;
@@ -153,17 +153,19 @@ export default function UserManagement() {
   };
 
   const handleToggleSubmission = (dept: any) => {
-    const key = getSubmissionStatusKey(dept.code, submissionYear, submissionPlanType);
-    const currentStatus = submissionStatuses[key] || { submitted: false };
-    const newSubmitted = !currentStatus.submitted;
+    const key = getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType);
+    const currentStatus = submissionStatuses[key] || { status: 'DRAFT' };
+    const isCurrentlySubmitted = currentStatus.submitted === true || currentStatus.status === 'SUBMITTED' || currentStatus.status === 'APPROVED';
+    const newSubmitted = !isCurrentlySubmitted;
     const now = new Date().toLocaleString();
 
     const newStatuses = {
       ...submissionStatuses,
       [key]: {
-        submitted: newSubmitted,
+        status: newSubmitted ? 'SUBMITTED' : 'DRAFT',
         time: newSubmitted ? now : currentStatus.time,
-        user: currentUser?.name || '관리자'
+        user: currentUser?.name || '관리자',
+        deptName: dept.name
       }
     };
 
@@ -940,8 +942,8 @@ export default function UserManagement() {
             <div className="p-6 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 gap-4">
                 {targetDepts.map(dept => {
-                  const status = submissionStatuses[getSubmissionStatusKey(dept.code, submissionYear, submissionPlanType)];
-                  const isSubmitted = status && status.submitted;
+                  const status = submissionStatuses[getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType)];
+                  const isSubmitted = status && (status.submitted === true || status.status === 'SUBMITTED' || status.status === 'APPROVED');
                   
                   return (
                     <div key={dept.code} className={`flex items-center justify-between p-4 rounded-xl border ${
