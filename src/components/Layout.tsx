@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Settings, FileSpreadsheet, Calculator, BarChart3, LogOut, Upload, Briefcase, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, Settings, FileSpreadsheet, Calculator, BarChart3, LogOut, Upload, Briefcase, Users, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DEPARTMENTS, getViewableDepts } from '../constants';
 import Footer from './Footer';
@@ -36,6 +36,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { name: '예산 계정 선택', href: '/account-selection', icon: Settings },
     { name: '예산 작성', href: '/budget-creation', icon: FileSpreadsheet },
     { name: '비교 분석', href: '/variance-comparison', icon: BarChart3 },
+    { name: '예산 초과 점검', href: '/overrun-check', icon: AlertTriangle },
     { name: '업무활동경비예산', href: '/business-activity-budget', icon: Briefcase },
     { name: '계획/실적 업로드', href: '/actual-upload', icon: Upload },
   ];

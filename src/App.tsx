@@ -7,6 +7,7 @@ import AccountSelection from './pages/AccountSelection';
 import BudgetCreation from './pages/BudgetCreation';
 import VarianceComparison from './pages/VarianceComparison';
 import BusinessActivityBudget from './pages/BusinessActivityBudget';
+import BudgetOverrunCheck from './pages/BudgetOverrunCheck';
 import PlanActualUpload from './pages/PlanActualUpload';
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/business-activity-budget" element={<Layout><BusinessActivityBudget /></Layout>} />
         <Route path="/actual-upload" element={<Layout><PlanActualUpload /></Layout>} />
         <Route path="/variance-comparison" element={<Layout><VarianceComparison /></Layout>} />
+        <Route path="/overrun-check" element={<Layout><BudgetOverrunCheck /></Layout>} />
         
         {/* Fallback */}
         <Route path="/dashboard" element={<Navigate to="/user-management" replace />} />
