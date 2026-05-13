@@ -295,83 +295,63 @@ export default function BudgetCreation() {
       });
       setActualsMap(tempActualsMap);
 
-      if (planType === '실적') {
-        const actualRows: any[] = [];
-        
-        tempActualsMap.forEach((values, key) => {
-          const total = values.reduce((sum, val) => sum + val, 0);
-          if (total === 0) return;
-
-          const parts = key.split('_');
-          const attributedDeptCode = parts[0];
-          const sourceDeptCode = parts[1];
-          const accountCode = parts[2];
-
-          const acc = Array.from(allAccountsMap.values()).find((a: any) => a.code === accountCode) as any;
-          if (acc) {
-            const isAttributed = sourceDeptCode !== attributedDeptCode;
-            const isHandedOver = selectedDeptCode !== 'all' && selectedDeptCode !== 'viewable' && sourceDeptCode === selectedDeptCode && attributedDeptCode !== selectedDeptCode;
-            const sourceDeptName = allDepts.find(d => d.code === sourceDeptCode)?.name || sourceDeptCode;
-            const attributedDeptName = allDepts.find(d => d.code === attributedDeptCode)?.name || attributedDeptCode;
-            
-            actualRows.push({
-              id: `${attributedDeptCode}_${sourceDeptCode}_${acc.id}`,
-              code: acc.code,
-              name: acc.name,
-              detail: isHandedOver 
-                ? `실적 데이터 (귀속 넘김 -> ${attributedDeptName})` 
-                : (isAttributed ? `실적 데이터 귀속데이터(${sourceDeptName})` : '실적 데이터'),
-              calculation: '자동 집계',
-              values: [...values],
-              sourceDeptCode: sourceDeptCode,
-              attributedDeptCode: attributedDeptCode,
-              isHandedOver,
-              isReadOnly: true
-            });
-          }
-        });
-
-        // Filter salary accounts if no permission
-        const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-        const settings = savedSettings ? JSON.parse(savedSettings) : {};
-        const userSetting = currentUser ? settings[currentUser.code] : null;
-        const hasSalaryAccess = (currentUser?.code === '99999' || currentUser?.code === '32100') || (userSetting?.hasSalaryAccess ?? false);
-
-        if (!hasSalaryAccess) {
-          const salaryAccountCodes = new Set<string>();
-          globalAccounts.forEach((cat: any) => {
-            if (SALARY_CATEGORIES.includes(cat.name)) {
-              cat.accounts.forEach((acc: any) => salaryAccountCodes.add(acc.code));
-            }
-          });
-          setData(actualRows.filter(row => !salaryAccountCodes.has(row.code)));
-        } else {
-          setData(actualRows);
-        }
-        return;
-      }
-
-      // 2. Load Budget Data
-      let combinedData: any[] = [];
+      // 1. Prepare Actuals Map (already exists)
+      
+      // 2. Load Budget Data (ALWAYS load)
+      let budgetRows: any[] = [];
       const deptsToLoad = (selectedDeptCode === 'all' || selectedDeptCode === 'viewable') 
         ? viewableDepts 
         : [allDepts.find(d => d.code === selectedDeptCode)].filter(Boolean) as any[];
 
       deptsToLoad.forEach(dept => {
-        const key = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}_${year}_${planType}`;
+        const key = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}_${year}_${planType === '실적' ? '경영계획' : planType}`;
         const savedData = localStorage.getItem(key);
         if (savedData) {
-          combinedData = [...combinedData, ...JSON.parse(savedData)];
+          budgetRows = [...budgetRows, ...JSON.parse(savedData)];
         }
       });
 
+      // 3. Merging logic if 실적
+      if (planType === '실적') {
+        const actualRows: any[] = [];
+        
+        tempActualsMap.forEach((values, key) => {
+          const parts = key.split('_');
+          const attributedDeptCode = parts[0];
+          const sourceDeptCode = parts[1];
+          const accountCode = parts[2];
+
+          // Try to find matching budget row
+          const matchingBudgetRow = budgetRows.find(row => 
+            row.code === accountCode && 
+            row.attributedDeptCode === attributedDeptCode
+          );
+
+          const acc = Array.from(allAccountsMap.values()).find((a: any) => a.code === accountCode) as any;
+          if (acc) {
+            actualRows.push({
+              ...matchingBudgetRow, // Keep budget info if exists
+              id: `${attributedDeptCode}_${sourceDeptCode}_${acc.id}`,
+              code: acc.code,
+              name: acc.name,
+              values: [...values], // This is now 'actuals'
+              budgetValues: matchingBudgetRow ? [...matchingBudgetRow.values] : Array(12).fill(0), // Budget
+              isReadOnly: true
+            });
+          }
+        });
+        setData(actualRows);
+        return;
+      }
+      
+      // If NOT 실적, use budgetRows as the base
+      let mergedData = [...budgetRows];
+      
       // 3. Load Selections & Merge
       const allSelections = savedSelectionsStr ? JSON.parse(savedSelectionsStr) : {};
       const deptCodesForSelections = (selectedDeptCode === 'all' || selectedDeptCode === 'viewable')
         ? viewableDepts.map(d => d.code)
         : [selectedDeptCode];
-
-      let mergedData = [...combinedData];
       
       deptCodesForSelections.forEach(dCode => {
         const selectedIds = allSelections[dCode] || [];
@@ -1787,6 +1767,13 @@ export default function BudgetCreation() {
                                 className={`w-full h-full min-h-[44px] px-4 py-3 text-right text-sm outline-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:z-20 relative bg-transparent text-[#191f28] ${(row.isReadOnly || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
                                 placeholder="0"
                               />
+                              {planType === '실적' && row.budgetValues && row.budgetValues[colIndex] !== 0 && (
+                                <div className="absolute top-0.5 right-1 pointer-events-none">
+                                  <span className="text-[9px] text-gray-400 font-bold bg-gray-50 px-1 rounded leading-none">
+                                    계획: {formatNumber(row.budgetValues[colIndex])}
+                                  </span>
+                                </div>
+                              )}
                               {actualVal !== undefined && actualVal !== 0 && planType !== '실적' && (
                                 <div className="absolute bottom-0.5 right-1 pointer-events-none">
                                   <span className="text-[9px] text-brand-500 font-bold bg-brand-50 px-1 rounded leading-none">

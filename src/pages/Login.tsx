@@ -72,7 +72,7 @@ export default function Login() {
     }
 
     // Admin check
-    if (id === 'admin@cleanmetal.com') {
+    if (id === 'admin@cleanmetal.com' || id === '99999') {
       targetUserCode = '99999';
       targetUserName = '운영자';
     }
@@ -88,7 +88,7 @@ export default function Login() {
     let authenticatedUser = null;
     
     if (targetUserCode === '99999') {
-      if (password === 'password123') { // Admin은 일단 평문 유지 (또는 나중에 해싱)
+      if (password === '99999') { // Admin 비밀번호 수정
         authenticatedUser = { code: '99999', name: '운영자' };
       }
     } else if (targetUserCode) {
