@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, Download, Search } from 'lucide-react';
 import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
-import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccount } from '../lib/budgetAggregation';
+import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth } from '../lib/budgetAggregation';
 import { canViewSalaryAccounts, getViewableDeptCodes } from '../lib/permissions';
 
 const QUARTERS: Record<string, number[]> = {
@@ -38,22 +38,57 @@ export default function BudgetOverrunCheck() {
     const budgetRows = getBudgetRowsByDeptYearPlan(deptCodes, year, planType);
     const actualRows = getActualRowsByYear(year);
 
-    const overrunData: any[] = [];
     const qMonths = quarter === '전체' ? MONTHS : QUARTERS[quarter];
-
+    const unionKeys = new Set<string>();
+    
+    // Group Budgets
+    const budgetMap = new Map<string, any>();
     budgetRows.forEach(row => {
+      const key = `${row.attributedDeptCode}_${row.code}`;
+      unionKeys.add(key);
+      budgetMap.set(key, { ...row });
+    });
+
+    // Group Actuals
+    const actualMap = new Map<string, { qActual: number, yActual: number, accountName: string }>();
+    actualRows.forEach(a => {
+      const monthIndex = parsePeriodMonth(a.period);
+      const isQuarter = qMonths.includes(monthIndex);
+      const isYear = true; // All are current year
+      if (isYear) {
+         const key = `${a.usageCode}_${a.accountCode}`;
+         if (deptCodes.includes(a.usageCode)) unionKeys.add(key);
+         
+         const existing = actualMap.get(key) || { qActual: 0, yActual: 0, accountName: a.accountName || a.accountCode };
+         
+         // Use the `completed` value for actuals
+         if (isQuarter) existing.qActual += a.completed || 0;
+         existing.yActual += a.completed || 0;
+         actualMap.set(key, existing);
+      }
+    });
+
+    const overrunData: any[] = [];
+
+    Array.from(unionKeys).forEach(key => {
+      const [deptCode, accountCode] = key.split('_');
+      
       // 1. Permission Check
-      if (!viewableDeptCodes.includes(row.attributedDeptCode)) return;
-      if (isSalaryAccount(row.accountName) && !salaryAccess) return;
+      if (!viewableDeptCodes.includes(deptCode)) return;
+      if (isSalaryAccountCode(accountCode) && !salaryAccess) return;
       
       // Filter by category
-      if (accountCategory === '제조' && !row.accountCode.startsWith('A')) return;
-      if (accountCategory === '판관' && !row.accountCode.startsWith('B')) return;
+      if (accountCategory === '제조' && !accountCode.startsWith('A')) return;
+      if (accountCategory === '판관' && !accountCode.startsWith('B')) return;
 
-      const qBudget = qMonths.reduce((sum, m) => sum + (row.values[m] || 0), 0);
-      const qActual = actualRows
-        .filter(a => a.usageCode === row.attributedDeptCode && a.accountCode === row.accountCode && qMonths.includes(Number(a.period) - 1))
-        .reduce((sum, a) => sum + a.amount, 0);
+      const budgetRow = budgetMap.get(key);
+      const actualRow = actualMap.get(key);
+
+      const qBudget = budgetRow ? qMonths.reduce((sum: number, m: number) => sum + (budgetRow.values[m] || 0), 0) : 0;
+      const yBudget = budgetRow ? budgetRow.values.reduce((sum: number, v: number) => sum + (v || 0), 0) : 0;
+      
+      const qActual = actualRow ? actualRow.qActual : 0;
+      const yActual = actualRow ? actualRow.yActual : 0;
 
       const overrunAmount = Math.max(qActual - qBudget, 0);
       const balance = qBudget - qActual;
@@ -65,52 +100,209 @@ export default function BudgetOverrunCheck() {
 
       if (overrunFilter === '초과 항목만' && status === '정상') return;
 
-      overrunData.push({ ...row, qBudget, qActual, overrunAmount, balance, overrunRate, status });
+      const accountName = budgetRow?.name || budgetRow?.accountName || actualRow?.accountName || accountCode;
+
+      overrunData.push({ 
+        deptCode,
+        accountCode,
+        accountName,
+        qBudget, 
+        qActual, 
+        overrunAmount, 
+        balance, 
+        overrunRate, 
+        yBudget,
+        yActual,
+        status 
+      });
+    });
+
+    overrunData.sort((a, b) => {
+      const statusOrder: Record<string, number> = { '초과': 1, '무예산 집행': 2, '정상': 3 };
+      if (statusOrder[a.status] !== statusOrder[b.status]) {
+        return statusOrder[a.status] - statusOrder[b.status];
+      }
+      if (a.overrunAmount !== b.overrunAmount) {
+        return b.overrunAmount - a.overrunAmount;
+      }
+      if (a.overrunRate !== b.overrunRate) {
+        return b.overrunRate - a.overrunRate;
+      }
+      return a.deptCode.localeCompare(b.deptCode);
     });
 
     setResults(overrunData);
     setSearched(true);
   };
 
+  const exportToExcel = () => {
+    // 엑셀 다운로드 (권한 필터는 이미 results에 반영되어 있음)
+    import('xlsx').then(XLSX => {
+      const data = results.map(r => ({
+        '부서코드': r.deptCode,
+        '부서명': depts.find(d => d.code === r.deptCode)?.name || '',
+        '계정과목코드': r.accountCode,
+        '계정과목': r.accountName,
+        '분기예산': r.qBudget,
+        '분기실적': r.qActual,
+        '초과금액': r.overrunAmount,
+        '잔액': r.balance,
+        '초과율(%)': r.overrunRate ? r.overrunRate.toFixed(2) + '%' : '예산 없음',
+        '연도예산': r.yBudget,
+        '연도실적': r.yActual,
+        '상태': r.status
+      }));
+      
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '예산초과점검');
+      
+      const deptName = selectedDeptCode === '전체' ? '전체부서' : (depts.find(d => d.code === selectedDeptCode)?.name || selectedDeptCode);
+      XLSX.writeFile(wb, `예산초과점검_${year}_${planType}_${quarter}_${deptName}.xlsx`);
+    });
+  };
+
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">예산 초과 점검</h1>
+      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2"><AlertTriangle className="text-red-500"/> 예산 초과 점검</h1>
       
-      <div className="grid grid-cols-6 gap-4 mb-6">
-        <button onClick={handleSearch} className="bg-blue-600 text-white px-4 py-2 rounded">조회</button>
+      <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm mb-6">
+        <div className="grid grid-cols-6 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-bold mb-1">연도</label>
+            <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full p-2 border rounded-xl">
+              <option value="2024">2024년</option>
+              <option value="2025">2025년</option>
+              <option value="2026">2026년</option>
+              <option value="2027">2027년</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">계획구분</label>
+            <select value={planType} onChange={(e) => setPlanType(e.target.value)} className="w-full p-2 border rounded-xl">
+              <option value="경영계획">경영계획</option>
+              <option value="수정경영계획">수정경영계획</option>
+              <option value="1차RP">1차RP</option>
+              <option value="2차RP">2차RP</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">분기</label>
+            <select value={quarter} onChange={(e) => setQuarter(e.target.value)} className="w-full p-2 border rounded-xl">
+              <option value="1Q">1Q</option>
+              <option value="2Q">2Q</option>
+              <option value="3Q">3Q</option>
+              <option value="4Q">4Q</option>
+              <option value="전체">전체</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">부서</label>
+            <select value={selectedDeptCode} onChange={(e) => setSelectedDeptCode(e.target.value)} className="w-full p-2 border rounded-xl">
+              <option value="전체">전체 조회 부서</option>
+              {depts.filter(d => viewableDeptCodes.includes(d.code)).map(d => (
+                <option key={d.code} value={d.code}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">계정구분</label>
+            <select value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)} className="w-full p-2 border rounded-xl">
+              <option value="전체">전체</option>
+              <option value="제조">제조</option>
+              <option value="판관">판관</option>
+              <option value="인건비 제외">인건비 제외</option>
+              {salaryAccess && <option value="인건비만 보기">인건비만 보기</option>}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold mb-1">초과 여부</label>
+            <select value={overrunFilter} onChange={(e) => setOverrunFilter(e.target.value)} className="w-full p-2 border rounded-xl">
+              <option value="초과 항목만">초과 항목만</option>
+              <option value="전체 보기">전체 보기</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex justify-between items-center text-sm text-gray-500">
+          <span>* 조회 권한이 있는 부서의 데이터만 표시됩니다.<br/>* 급여성 계정은 권한이 있는 사용자에게만 표시됩니다.</span>
+          <div className="flex gap-2">
+            <button onClick={exportToExcel} className="flex items-center px-4 py-2 border rounded-xl bg-white"><Download className="w-4 h-4 mr-2" /> 엑셀 다운로드</button>
+            <button onClick={handleSearch} className="flex items-center bg-blue-600 text-white px-6 py-2 rounded-xl"><Search className="w-4 h-4 mr-2" />조회</button>
+          </div>
+        </div>
       </div>
+
+      {!searched && (
+        <div className="p-10 text-center text-gray-500">조건을 선택한 후 조회 버튼을 눌러 주세요.</div>
+      )}
 
       {searched && results.length === 0 && (
         <div className="p-10 text-center text-gray-500">선택한 조건에 해당하는 예산 초과 항목이 없습니다.</div>
       )}
       
-      {results.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-             <thead>
-               <tr>
-                 <th>부서</th>
-                 <th>계정과목</th>
-                 <th>분기예산</th>
-                 <th>분기실적</th>
-                 <th>초과금액</th>
-                 <th>상태</th>
-               </tr>
-             </thead>
-             <tbody>
-               {results.map((r, i) => (
-                 <tr key={i}>
-                   <td>{depts.find(d => d.code === r.attributedDeptCode)?.name}</td>
-                   <td>{r.accountName}</td>
-                   <td>{r.qBudget.toLocaleString()}</td>
-                   <td>{r.qActual.toLocaleString()}</td>
-                   <td>{r.overrunAmount.toLocaleString()}</td>
-                   <td>{r.status}</td>
+      {searched && results.length > 0 && (
+        <>
+          <div className="grid grid-cols-4 gap-4 mb-6">
+             <div className="bg-white p-4 rounded-xl border">
+               <div className="text-sm text-gray-500 mb-1">초과 계정 수</div>
+               <div className="text-xl font-bold text-red-600">{results.filter(r => r.status === '초과').length}건</div>
+             </div>
+             <div className="bg-white p-4 rounded-xl border">
+               <div className="text-sm text-gray-500 mb-1">초과 금액 합계</div>
+               <div className="text-xl font-bold text-red-600">{results.reduce((sum, r) => sum + r.overrunAmount, 0).toLocaleString()}원</div>
+             </div>
+             <div className="bg-white p-4 rounded-xl border">
+               <div className="text-sm text-gray-500 mb-1">무예산 집행 건수</div>
+               <div className="text-xl font-bold text-orange-500">{results.filter(r => r.status === '무예산 집행').length}건</div>
+             </div>
+             <div className="bg-white p-4 rounded-xl border">
+               <div className="text-sm text-gray-500 mb-1">조회 대상 부서 수</div>
+               <div className="text-xl font-bold">{new Set(results.map(r => r.deptCode)).size}개 부서</div>
+             </div>
+          </div>
+          <div className="overflow-x-auto bg-white rounded-xl border">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+               <thead className="bg-[#f9fafb]">
+                 <tr>
+                   <th className="px-4 py-3 text-left">부서코드</th>
+                   <th className="px-4 py-3 text-left">부서</th>
+                   <th className="px-4 py-3 text-left">계정과목코드</th>
+                   <th className="px-4 py-3 text-left">계정과목</th>
+                   <th className="px-4 py-3 text-right">분기예산</th>
+                   <th className="px-4 py-3 text-right">분기실적</th>
+                   <th className="px-4 py-3 text-right">초과금액</th>
+                   <th className="px-4 py-3 text-right">잔액</th>
+                   <th className="px-4 py-3 text-right">초과율</th>
+                   <th className="px-4 py-3 text-right">연도예산</th>
+                   <th className="px-4 py-3 text-right">연도실적</th>
+                   <th className="px-4 py-3 text-center">상태</th>
                  </tr>
-               ))}
-             </tbody>
-          </table>
-        </div>
+               </thead>
+               <tbody className="divide-y divide-gray-200">
+                 {results.map((r, i) => (
+                   <tr key={i} className="hover:bg-gray-50">
+                     <td className="px-4 py-2">{r.deptCode}</td>
+                     <td className="px-4 py-2">{depts.find(d => d.code === r.deptCode)?.name}</td>
+                     <td className="px-4 py-2">{r.accountCode}</td>
+                     <td className="px-4 py-2">{r.accountName}</td>
+                     <td className="px-4 py-2 text-right font-medium">{r.qBudget.toLocaleString()}</td>
+                     <td className="px-4 py-2 text-right">{r.qActual.toLocaleString()}</td>
+                     <td className={`px-4 py-2 text-right font-bold ${r.overrunAmount > 0 ? 'text-red-500' : ''}`}>{r.overrunAmount.toLocaleString()}</td>
+                     <td className="px-4 py-2 text-right">{r.balance.toLocaleString()}</td>
+                     <td className="px-4 py-2 text-right text-gray-500">{r.overrunRate ? r.overrunRate.toFixed(1) + '%' : '예산 없음'}</td>
+                     <td className="px-4 py-2 text-right text-gray-400">{r.yBudget.toLocaleString()}</td>
+                     <td className="px-4 py-2 text-right text-gray-400">{r.yActual.toLocaleString()}</td>
+                     <td className="px-4 py-2 text-center">
+                       <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${r.status === '초과' ? 'bg-red-100 text-red-700' : r.status === '무예산 집행' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'}`}>
+                         {r.status}
+                       </span>
+                     </td>
+                   </tr>
+                 ))}
+               </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

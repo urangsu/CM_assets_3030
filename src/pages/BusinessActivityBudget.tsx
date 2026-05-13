@@ -152,14 +152,41 @@ export default function BusinessActivityBudget() {
     }
   };
 
-  const handleImportData = () => {
-    // In a real app, this would fetch data based on importModal.sourceYear and importModal.sourcePlanType
-    // For now, we'll simulate it by setting some mock data
-    const newHeadcounts = { ...headcounts };
-    DEPT_ORDER.forEach(deptCode => {
-      newHeadcounts[deptCode] = Array(12).fill(Math.floor(Math.random() * 10) + 1);
+  const normalizeHeadcounts = (raw: any): Record<string, { category: '제조' | '판관'; data: number[] }> => {
+    const result: Record<string, { category: '제조' | '판관'; data: number[] }> = {};
+    if (!raw || typeof raw !== 'object') return result;
+
+    Object.entries(raw).forEach(([deptCode, value]: [string, any]) => {
+      if (Array.isArray(value)) {
+        result[deptCode] = {
+          category: '판관',
+          data: value.slice(0, 12).map(v => Number(v) || 0).concat(Array(Math.max(0, 12 - value.length)).fill(0)),
+        };
+        return;
+      }
+
+      if (value && Array.isArray(value.data)) {
+        result[deptCode] = {
+          category: value.category === '제조' ? '제조' : '판관',
+          data: value.data.slice(0, 12).map((v: any) => Number(v) || 0).concat(Array(Math.max(0, 12 - value.data.length)).fill(0)),
+        };
+      }
     });
-    setHeadcounts(newHeadcounts);
+
+    return result;
+  };
+
+  const handleImportData = () => {
+    const sourceKey = `budget_headcounts_${importModal.sourceYear}_${importModal.sourcePlanType}`;
+    const savedData = localStorage.getItem(sourceKey);
+    
+    if (!savedData) {
+      showAlert('가져올 데이터가 없습니다. 먼저 기준 연도/계획구분 데이터를 저장해 주세요.');
+      return;
+    }
+
+    const parsed = JSON.parse(savedData);
+    setHeadcounts(normalizeHeadcounts(parsed));
     setImportModal({ ...importModal, isOpen: false });
     showAlert(`${importModal.sourceYear}년 ${importModal.sourcePlanType} 데이터를 가져왔습니다.`);
   };
@@ -210,12 +237,19 @@ export default function BusinessActivityBudget() {
   };
 
   useEffect(() => {
-    const savedHeadcounts = localStorage.getItem('budget_headcounts');
-    if (savedHeadcounts) setHeadcounts(JSON.parse(savedHeadcounts));
-  }, []);
+    const savedHeadcounts = localStorage.getItem(`budget_headcounts_${year}_${planType}`);
+    // Fallback to old budget_headcounts for migration
+    const legacyHeadcounts = localStorage.getItem('budget_headcounts');
+    const dataToLoad = savedHeadcounts || legacyHeadcounts;
+    if (dataToLoad) {
+      setHeadcounts(normalizeHeadcounts(JSON.parse(dataToLoad)));
+    } else {
+      setHeadcounts({});
+    }
+  }, [year, planType]);
 
   const save = () => {
-    localStorage.setItem('budget_headcounts', JSON.stringify(headcounts));
+    localStorage.setItem(`budget_headcounts_${year}_${planType}`, JSON.stringify(headcounts));
     showAlert('저장되었습니다.');
   };
 
@@ -284,7 +318,7 @@ export default function BusinessActivityBudget() {
   const reset = () => {
     showConfirm('정말 초기화하시겠습니까?', () => {
       setHeadcounts({});
-      localStorage.removeItem('budget_headcounts');
+      localStorage.removeItem(`budget_headcounts_${year}_${planType}`);
       
       const targetAccountCodes = ['A60624102', 'B52224102', 'A60601123', 'B52201123', 'A60601155', 'B52201155'];
       allDepts.forEach(dept => {
