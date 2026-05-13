@@ -1768,8 +1768,8 @@ export default function BudgetCreation() {
                                 placeholder="0"
                               />
                               {planType === '실적' && row.budgetValues && row.budgetValues[colIndex] !== 0 && (
-                                <div className="absolute top-0.5 right-1 pointer-events-none">
-                                  <span className="text-[9px] text-gray-400 font-bold bg-gray-50 px-1 rounded leading-none">
+                                <div className="absolute bottom-0.5 left-1 pointer-events-none">
+                                  <span className="text-[9px] text-gray-400 font-medium bg-gray-50 px-1 rounded leading-none">
                                     계획: {formatNumber(row.budgetValues[colIndex])}
                                   </span>
                                 </div>
