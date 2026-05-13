@@ -343,35 +343,28 @@ export default function AdminDashboard() {
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {isAdmin && (
-          <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm md:col-span-1 flex flex-col justify-between">
+          <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm md:col-span-1 flex flex-col justify-between hover:shadow-md transition-all">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold text-[#4e5968]">총등록 사용자 :</p>
-                  <select 
-                    value={submissionYear}
-                    onChange={(e) => setSubmissionYear(e.target.value)}
-                    className="text-xs bg-[#f2f4f6] border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-brand-500 outline-none font-medium"
-                  >
-                    <option value="2024">2024년</option>
-                    <option value="2025">2025년</option>
-                    <option value="2026">2026년</option>
-                  </select>
+                  <p className="text-sm font-bold text-text-secondary uppercase tracking-tight">총등록 사용자</p>
                 </div>
-                <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center">
-                  <Users className="w-4 h-4 text-blue-500" />
+                <div className="w-8 h-8 bg-nickel-50 rounded-xl flex items-center justify-center">
+                  <Users className="w-4 h-4 text-nickel-600" />
                 </div>
               </div>
-              <p className="text-3xl font-bold text-[#191f28] mt-1">
-                {(isAdmin ? allDepts.filter(d => d.code !== '99999') : currentUserViewableDepts).length}
-                <span className="text-lg font-normal text-[#8b95a1] ml-1">명</span>
-              </p>
+              <div className="flex items-end gap-2 mt-2">
+                <p className="text-4xl font-black text-eco-black leading-none">
+                  {(isAdmin ? allDepts.filter(d => d.code !== '99999') : currentUserViewableDepts).length}
+                </p>
+                <span className="text-sm font-bold text-text-tertiary mb-1">명</span>
+              </div>
             </div>
           </div>
         )}
         
         <div 
-          className={`bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm transition-all ${isAdmin ? 'md:col-span-2' : 'md:col-span-3'}`}
+          className={`bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm transition-all hover:shadow-md ${isAdmin ? 'md:col-span-2' : 'md:col-span-3'}`}
         >
           <div className="flex items-center justify-between mb-4">
             <div className="flex gap-2">
@@ -380,7 +373,7 @@ export default function AdminDashboard() {
                 onChange={(e) => {
                   setSubmissionYear(e.target.value);
                 }}
-                className="text-xs bg-[#f2f4f6] border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-brand-500 outline-none"
+                className="text-xs bg-lithium-50 border-none rounded-lg py-1.5 px-3 focus:ring-2 focus:ring-nickel-500 outline-none font-bold text-eco-black appearance-none"
               >
                 <option value="2024">2024년</option>
                 <option value="2025">2025년</option>
@@ -391,7 +384,7 @@ export default function AdminDashboard() {
                 onChange={(e) => {
                   setSubmissionPlanType(e.target.value);
                 }}
-                className="text-xs bg-[#f2f4f6] border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-brand-500 outline-none"
+                className="text-xs bg-lithium-50 border-none rounded-lg py-1.5 px-3 focus:ring-2 focus:ring-nickel-500 outline-none font-bold text-eco-black appearance-none"
               >
                 <option value="경영계획">경영계획</option>
                 <option value="수정경영계획">수정경영계획</option>
@@ -402,7 +395,7 @@ export default function AdminDashboard() {
             </div>
             <button 
               onClick={() => setIsSubmissionModalOpen(true)}
-              className="w-10 h-10 bg-brand-500 rounded-xl flex items-center justify-center hover:bg-brand-600 transition-colors group shadow-lg shadow-brand-200"
+              className="w-10 h-10 bg-nickel-600 rounded-xl flex items-center justify-center hover:bg-nickel-700 transition-all group shadow-lg shadow-nickel-100 active:scale-95"
               title="상세 현황 확인"
             >
               <FileUp className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
@@ -410,58 +403,71 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-[#4e5968]">예산 제출 완료 부서</p>
-              <p className="text-3xl font-bold text-[#191f28] mt-2">{submissionCount}<span className="text-lg font-normal text-[#8b95a1] ml-1">/ {totalDepts}</span></p>
+              <p className="text-sm font-bold text-text-secondary uppercase tracking-tight">예산 제출 완료 부서</p>
+              <div className="flex items-baseline gap-2 mt-2">
+                <p className="text-4xl font-black text-eco-black leading-none">{submissionCount}</p>
+                <p className="text-sm font-bold text-text-tertiary">/ {totalDepts} 부서</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-black text-nickel-600">{submissionRate.toFixed(0)}%</p>
             </div>
           </div>
-          <div className="mt-4 w-full bg-[#f2f4f6] rounded-full h-2">
-            <div className="bg-brand-500 h-2 rounded-full transition-all duration-500" style={{ width: `${submissionRate}%` }}></div>
+          <div className="mt-5 w-full bg-lithium-100 rounded-full h-2.5 overflow-hidden">
+            <div 
+              className="bg-nickel-600 h-full rounded-full transition-all duration-700 ease-out shadow-sm" 
+              style={{ width: `${submissionRate}%` }}
+            ></div>
           </div>
-          <p className="text-[10px] text-[#8b95a1] mt-2 text-right">아이콘 버튼을 클릭하여 상세 현황 확인</p>
         </div>
 
         <div 
           onClick={handleOpenProfile}
-          className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm flex flex-col justify-center items-center cursor-pointer hover:bg-[#f9fafb] transition-colors md:col-span-1"
+          className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm flex flex-col justify-center items-center cursor-pointer hover:bg-lithium-50 hover:border-nickel-200 transition-all md:col-span-1 group active:scale-95"
         >
-          <Users className="w-8 h-8 text-brand-500 mb-2" />
-          <p className="text-sm font-medium text-[#191f28]">내 정보 관리</p>
-          <p className="text-xs text-[#8b95a1] mt-1">아이디 및 비밀번호 변경</p>
+          <div className="w-12 h-12 bg-nickel-50 rounded-2xl flex items-center justify-center mb-3 group-hover:bg-nickel-100 transition-colors">
+            <Users className="w-6 h-6 text-nickel-600" />
+          </div>
+          <p className="text-sm font-bold text-eco-black">내 정보 관리</p>
+          <p className="text-xs text-text-tertiary mt-1">ID / 비밀번호 변경</p>
         </div>
       </div>
 
       {/* User Management */}
       {isAdmin && (
-        <div className="bg-white rounded-2xl border border-[#e5e8eb] shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden">
           <div 
-            className="px-6 py-5 border-b border-[#e5e8eb] flex justify-between items-center bg-white cursor-pointer hover:bg-[#f9fafb] transition-colors"
+            className="px-6 py-5 border-b border-lithium-200 flex justify-between items-center bg-lithium-50/50 cursor-pointer hover:bg-lithium-50 transition-colors"
             onClick={() => setIsUserListExpanded(!isUserListExpanded)}
           >
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-[#191f28]">사용자 및 부서 관리</h2>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white rounded-xl border border-lithium-200 flex items-center justify-center shadow-sm">
+                <Users className="w-5 h-5 text-nickel-600" />
+              </div>
+              <h2 className="text-lg font-bold text-eco-black tracking-tight">사용자 및 부서 관리</h2>
               {isUserListExpanded ? (
-                <ArrowUp className="w-5 h-5 text-[#8b95a1]" />
+                <ArrowUp className="w-4 h-4 text-text-tertiary" />
               ) : (
-                <ArrowDown className="w-5 h-5 text-[#8b95a1]" />
+                <ArrowDown className="w-4 h-4 text-text-tertiary" />
               )}
             </div>
             <div className="flex gap-2">
               <button 
                 onClick={handleOpenManageStatus}
-                className="flex items-center px-4 py-2 bg-white border border-[#d1d6db] text-[#4e5968] rounded-xl text-sm font-medium hover:bg-[#f2f4f6] transition-colors"
+                className="flex items-center px-4 py-2 bg-white border border-lithium-200 text-text-secondary rounded-xl text-sm font-bold hover:bg-lithium-50 transition-all shadow-sm active:scale-95"
               >
-                <Users className="w-4 h-4 mr-1" />
-                활성/비활성화 관리
+                <Users className="w-4 h-4 mr-2 text-nickel-600" />
+                활성 제어
               </button>
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsAddModalOpen(true);
                 }}
-                className="flex items-center px-4 py-2 bg-brand-500 text-white rounded-xl text-sm font-medium hover:bg-brand-600 transition-colors"
+                className="flex items-center px-4 py-2 bg-nickel-600 text-white rounded-xl text-sm font-bold hover:bg-nickel-700 transition-all shadow-lg shadow-nickel-100 active:scale-95"
               >
-                <Plus className="w-4 h-4 mr-1" />
-                부서/사용자 추가
+                <Plus className="w-4 h-4 mr-2" />
+                부서 추가
               </button>
             </div>
           </div>
@@ -469,29 +475,31 @@ export default function AdminDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-[#f9fafb] border-b border-[#e5e8eb]">
-                    <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider">이름</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider">부서 (코드)</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider">권한</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider">상태</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider text-right">관리</th>
+                  <tr className="bg-lithium-50 border-b border-lithium-200">
+                    <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">사용자</th>
+                    <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">부서 정보</th>
+                    <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">권한 레벨</th>
+                    <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest">활성 상태</th>
+                    <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-widest text-right">상세</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#e5e8eb]">
+                <tbody className="divide-y divide-lithium-100">
                   {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-[#f9fafb] transition-colors">
+                    <tr key={user.id} className="hover:bg-lithium-50/50 transition-colors group">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                          <div className="w-8 h-8 rounded-full bg-[#f2f4f6] flex items-center justify-center text-[#4e5968] font-bold mr-3">
+                          <div className="w-9 h-9 rounded-xl bg-lithium-100 flex items-center justify-center text-eco-black font-black text-xs mr-3 group-hover:bg-nickel-50 group-hover:text-nickel-700 transition-colors">
                             {user.name.charAt(0)}
                           </div>
-                          <span className="text-sm font-medium text-[#191f28]">{user.name}</span>
+                          <span className="text-sm font-bold text-eco-black">{user.name}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4e5968]">{user.department} <span className="text-[#8b95a1]">({user.code})</span></td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary font-medium">
+                        {user.department} <span className="text-text-tertiary font-mono">[{user.code}]</span>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          user.role === '시스템 관리자' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${
+                          user.role === '시스템 관리자' ? 'bg-cobalt-50 text-cobalt-600' : 'bg-nickel-50 text-nickel-600'
                         }`}>
                           {user.role}
                         </span>
@@ -501,9 +509,10 @@ export default function AdminDashboard() {
                           onClick={() => handleEditUser(user)}
                           className="focus:outline-none"
                         >
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            user.status === '활성' ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-700'
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
+                            user.status === '활성' ? 'bg-nickel-100 text-nickel-700' : 'bg-lithium-100 text-text-tertiary'
                           }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full mr-2 ${user.status === '활성' ? 'bg-nickel-500' : 'bg-text-tertiary'}`}></div>
                             {user.status}
                           </span>
                         </button>
@@ -511,7 +520,7 @@ export default function AdminDashboard() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button 
                           onClick={() => handleEditUser(user)}
-                          className="text-[#8b95a1] hover:text-[#191f28] transition-colors"
+                          className="p-2 text-text-tertiary hover:text-eco-black hover:bg-white hover:shadow-sm rounded-lg transition-all"
                         >
                           <MoreVertical className="w-5 h-5" />
                         </button>
@@ -816,53 +825,56 @@ export default function AdminDashboard() {
 
       {/* Submission Status Modal */}
       {isSubmissionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-brand-500 text-white">
-              <div className="flex items-center gap-2">
-                <FileUp className="w-5 h-5" />
-                <h3 className="text-lg font-bold">
-                  {submissionYear}년 {submissionPlanType} 제출 현황
-                </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-eco-black/40 backdrop-blur-md">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200">
+            <div className="px-8 py-6 border-b border-lithium-200 flex justify-between items-center bg-nickel-600 text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                  <FileUp className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black tracking-tight leading-tight">제출 현황 모니터링</h3>
+                  <p className="text-xs font-medium text-white/70">{submissionYear}년 {submissionPlanType}</p>
+                </div>
               </div>
               <button 
                 onClick={() => setIsSubmissionModalOpen(false)}
-                className="text-white/80 hover:text-white transition-colors"
+                className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-all"
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-8 overflow-y-auto flex-1 bg-white">
               <div className="grid grid-cols-1 gap-4">
                 {targetDepts.map(dept => {
                   const status = submissionStatuses[`${dept.code}_${submissionYear}_${submissionPlanType}`];
                   const isSubmitted = status && status.submitted;
                   
                   return (
-                    <div key={dept.code} className={`flex items-center justify-between p-4 rounded-xl border ${
-                      isSubmitted ? 'bg-brand-50 border-brand-100' : 'bg-white border-[#e5e8eb]'
+                    <div key={dept.code} className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
+                      isSubmitted ? 'bg-nickel-50/50 border-nickel-100' : 'bg-white border-lithium-200 shadow-sm'
                     }`}>
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          isSubmitted ? 'bg-brand-100 text-brand-600' : 'bg-[#f2f4f6] text-[#8b95a1]'
+                      <div className="flex items-center gap-5">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                          isSubmitted ? 'bg-nickel-100 text-nickel-600' : 'bg-lithium-50 text-text-tertiary'
                         }`}>
-                          {isSubmitted ? <CheckCircle2 className="w-6 h-6" /> : <Clock className="w-6 h-6" />}
+                          {isSubmitted ? <CheckCircle2 className="w-7 h-7" /> : <Clock className="w-7 h-7" />}
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-[#191f28]">{dept.name}</p>
-                          <p className="text-xs text-[#8b95a1]">부서코드: {dept.code}</p>
+                          <p className="text-base font-black text-eco-black leading-tight">{dept.name}</p>
+                          <p className="text-xs font-medium text-text-tertiary mt-1">부서코드: {dept.code}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          isSubmitted ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-700'
+                        <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-xs font-black tracking-tight ${
+                          isSubmitted ? 'bg-nickel-600 text-white shadow-sm' : 'bg-lithium-100 text-text-secondary'
                         }`}>
                           {isSubmitted ? '제출 완료' : '미제출'}
                         </span>
                         {isSubmitted && (
-                          <p className="text-[10px] text-[#8b95a1] mt-1">
-                            제출 시간: {status.time}
+                          <p className="text-[10px] font-bold text-text-tertiary mt-2">
+                            TIME: {status.time}
                           </p>
                         )}
                       </div>
@@ -872,15 +884,15 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-between items-center">
-              <p className="text-sm text-[#4e5968]">
-                전체 {totalDepts}개 부서 중 <span className="font-bold text-brand-500">{submissionCount}</span>개 부서 제출 완료
+            <div className="px-8 py-6 border-t border-lithium-200 bg-lithium-50 flex justify-between items-center">
+              <p className="text-sm font-bold text-text-secondary">
+                전체 {totalDepts}개 부서 중 <span className="font-black text-nickel-600 text-lg mx-1">{submissionCount}</span>개 완료
               </p>
               <button 
                 onClick={() => setIsSubmissionModalOpen(false)}
-                className="px-6 py-2 bg-brand-500 text-white font-medium hover:bg-brand-600 rounded-xl transition-colors"
+                className="px-10 py-3 bg-eco-black text-white font-black rounded-2xl hover:bg-eco-black/90 transition-all shadow-lg active:scale-95 text-sm"
               >
-                닫기
+                현황 닫기
               </button>
             </div>
           </div>

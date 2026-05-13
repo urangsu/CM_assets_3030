@@ -164,13 +164,13 @@ export default function BudgetOverrunCheck() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2"><AlertTriangle className="text-red-500"/> 예산 초과 점검</h1>
+      <h1 className="text-2xl font-bold mb-6 flex items-center gap-2 text-eco-black"><AlertTriangle className="text-cobalt-500"/> 예산 초과 점검</h1>
       
-      <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm mb-6">
+      <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm mb-6">
         <div className="grid grid-cols-6 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-bold mb-1">연도</label>
-            <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full p-2 border rounded-xl">
+            <label className="block text-sm font-bold mb-1 text-text-secondary">연도</label>
+            <select value={year} onChange={(e) => setYear(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
               <option value="2024">2024년</option>
               <option value="2025">2025년</option>
               <option value="2026">2026년</option>
@@ -178,8 +178,8 @@ export default function BudgetOverrunCheck() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1">계획구분</label>
-            <select value={planType} onChange={(e) => setPlanType(e.target.value)} className="w-full p-2 border rounded-xl">
+            <label className="block text-sm font-bold mb-1 text-text-secondary">계획구분</label>
+            <select value={planType} onChange={(e) => setPlanType(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
               <option value="경영계획">경영계획</option>
               <option value="수정경영계획">수정경영계획</option>
               <option value="1차RP">1차RP</option>
@@ -187,8 +187,8 @@ export default function BudgetOverrunCheck() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1">분기</label>
-            <select value={quarter} onChange={(e) => setQuarter(e.target.value)} className="w-full p-2 border rounded-xl">
+            <label className="block text-sm font-bold mb-1 text-text-secondary">분기</label>
+            <select value={quarter} onChange={(e) => setQuarter(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
               <option value="1Q">1Q</option>
               <option value="2Q">2Q</option>
               <option value="3Q">3Q</option>
@@ -197,8 +197,8 @@ export default function BudgetOverrunCheck() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1">부서</label>
-            <select value={selectedDeptCode} onChange={(e) => setSelectedDeptCode(e.target.value)} className="w-full p-2 border rounded-xl">
+            <label className="block text-sm font-bold mb-1 text-text-secondary">부서</label>
+            <select value={selectedDeptCode} onChange={(e) => setSelectedDeptCode(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
               <option value="전체">전체 조회 부서</option>
               {depts.filter(d => viewableDeptCodes.includes(d.code)).map(d => (
                 <option key={d.code} value={d.code}>{d.name}</option>
@@ -206,8 +206,8 @@ export default function BudgetOverrunCheck() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1">계정구분</label>
-            <select value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)} className="w-full p-2 border rounded-xl">
+            <label className="block text-sm font-bold mb-1 text-text-secondary">계정구분</label>
+            <select value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
               <option value="전체">전체</option>
               <option value="제조">제조</option>
               <option value="판관">판관</option>
@@ -216,84 +216,88 @@ export default function BudgetOverrunCheck() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1">초과 여부</label>
-            <select value={overrunFilter} onChange={(e) => setOverrunFilter(e.target.value)} className="w-full p-2 border rounded-xl">
+            <label className="block text-sm font-bold mb-1 text-text-secondary">초과 여부</label>
+            <select value={overrunFilter} onChange={(e) => setOverrunFilter(e.target.value)} className="w-full p-2 border border-lithium-200 rounded-xl focus:ring-2 focus:ring-nickel-500 outline-none transition-all">
               <option value="초과 항목만">초과 항목만</option>
               <option value="전체 보기">전체 보기</option>
             </select>
           </div>
         </div>
-        <div className="flex justify-between items-center text-sm text-gray-500">
+        <div className="flex justify-between items-center text-sm text-text-secondary">
           <span>* 조회 권한이 있는 부서의 데이터만 표시됩니다.<br/>* 급여성 계정은 권한이 있는 사용자에게만 표시됩니다.</span>
           <div className="flex gap-2">
-            <button onClick={exportToExcel} className="flex items-center px-4 py-2 border rounded-xl bg-white"><Download className="w-4 h-4 mr-2" /> 엑셀 다운로드</button>
-            <button onClick={handleSearch} className="flex items-center bg-blue-600 text-white px-6 py-2 rounded-xl"><Search className="w-4 h-4 mr-2" />조회</button>
+            <button onClick={exportToExcel} className="flex items-center px-4 py-2 border border-lithium-200 rounded-xl bg-white hover:bg-lithium-50 transition-colors"><Download className="w-4 h-4 mr-2" /> 엑셀 다운로드</button>
+            <button onClick={handleSearch} className="flex items-center bg-nickel-600 text-white px-6 py-2 rounded-xl hover:bg-nickel-700 shadow-sm transition-all"><Search className="w-4 h-4 mr-2" />조회</button>
           </div>
         </div>
       </div>
 
       {!searched && (
-        <div className="p-10 text-center text-gray-500">조건을 선택한 후 조회 버튼을 눌러 주세요.</div>
+        <div className="p-20 text-center text-text-tertiary font-medium bg-white rounded-2xl border border-lithium-200 shadow-sm">조건을 선택한 후 조회 버튼을 눌러 주세요.</div>
       )}
 
       {searched && results.length === 0 && (
-        <div className="p-10 text-center text-gray-500">선택한 조건에 해당하는 예산 초과 항목이 없습니다.</div>
+        <div className="p-20 text-center text-text-tertiary font-medium bg-white rounded-2xl border border-lithium-200 shadow-sm">선택한 조건에 해당하는 예산 초과 항목이 없습니다.</div>
       )}
       
       {searched && results.length > 0 && (
         <>
           <div className="grid grid-cols-4 gap-4 mb-6">
-             <div className="bg-white p-4 rounded-xl border">
-               <div className="text-sm text-gray-500 mb-1">초과 계정 수</div>
-               <div className="text-xl font-bold text-red-600">{results.filter(r => r.status === '초과').length}건</div>
+             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
+               <div className="text-sm text-text-secondary mb-1">초과 계정 수</div>
+               <div className="text-2xl font-black text-cobalt-600">{results.filter(r => r.status === '초과').length}건</div>
              </div>
-             <div className="bg-white p-4 rounded-xl border">
-               <div className="text-sm text-gray-500 mb-1">초과 금액 합계</div>
-               <div className="text-xl font-bold text-red-600">{results.reduce((sum, r) => sum + r.overrunAmount, 0).toLocaleString()}원</div>
+             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
+               <div className="text-sm text-text-secondary mb-1">초과 금액 합계</div>
+               <div className="text-2xl font-black text-cobalt-600">{results.reduce((sum, r) => sum + r.overrunAmount, 0).toLocaleString()}원</div>
              </div>
-             <div className="bg-white p-4 rounded-xl border">
-               <div className="text-sm text-gray-500 mb-1">무예산 집행 건수</div>
-               <div className="text-xl font-bold text-orange-500">{results.filter(r => r.status === '무예산 집행').length}건</div>
+             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
+               <div className="text-sm text-text-secondary mb-1">무예산 집행 건수</div>
+               <div className="text-2xl font-black text-cobalt-500">{results.filter(r => r.status === '무예산 집행').length}건</div>
              </div>
-             <div className="bg-white p-4 rounded-xl border">
-               <div className="text-sm text-gray-500 mb-1">조회 대상 부서 수</div>
-               <div className="text-xl font-bold">{new Set(results.map(r => r.deptCode)).size}개 부서</div>
+             <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm">
+               <div className="text-sm text-text-secondary mb-1">조회 대상 부서 수</div>
+               <div className="text-2xl font-black text-eco-black">{new Set(results.map(r => r.deptCode)).size}개 부서</div>
              </div>
           </div>
-          <div className="overflow-x-auto bg-white rounded-xl border">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-               <thead className="bg-[#f9fafb]">
+          <div className="overflow-x-auto bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden">
+            <table className="min-w-full divide-y divide-lithium-200 text-sm">
+               <thead className="bg-lithium-50">
                  <tr>
-                   <th className="px-4 py-3 text-left">부서코드</th>
-                   <th className="px-4 py-3 text-left">부서</th>
-                   <th className="px-4 py-3 text-left">계정과목코드</th>
-                   <th className="px-4 py-3 text-left">계정과목</th>
-                   <th className="px-4 py-3 text-right">분기예산</th>
-                   <th className="px-4 py-3 text-right">분기실적</th>
-                   <th className="px-4 py-3 text-right">초과금액</th>
-                   <th className="px-4 py-3 text-right">잔액</th>
-                   <th className="px-4 py-3 text-right">초과율</th>
-                   <th className="px-4 py-3 text-right">연도예산</th>
-                   <th className="px-4 py-3 text-right">연도실적</th>
-                   <th className="px-4 py-3 text-center">상태</th>
+                   <th className="px-4 py-4 text-left text-text-secondary font-bold">부서코드</th>
+                   <th className="px-4 py-4 text-left text-text-secondary font-bold">부서</th>
+                   <th className="px-4 py-4 text-left text-text-secondary font-bold">계정과목코드</th>
+                   <th className="px-4 py-4 text-left text-text-secondary font-bold">계정과목</th>
+                   <th className="px-4 py-4 text-right text-text-secondary font-bold">분기예산</th>
+                   <th className="px-4 py-4 text-right text-text-secondary font-bold">분기실적</th>
+                   <th className="px-4 py-4 text-right text-text-secondary font-bold">초과금액</th>
+                   <th className="px-4 py-4 text-right text-text-secondary font-bold">잔액</th>
+                   <th className="px-4 py-4 text-right text-text-secondary font-bold">초과율</th>
+                   <th className="px-4 py-4 text-right text-text-secondary font-bold">연도예산</th>
+                   <th className="px-4 py-4 text-right text-text-secondary font-bold">연도실적</th>
+                   <th className="px-4 py-4 text-center text-text-secondary font-bold">상태</th>
                  </tr>
                </thead>
-               <tbody className="divide-y divide-gray-200">
+               <tbody className="divide-y divide-lithium-100">
                  {results.map((r, i) => (
-                   <tr key={i} className="hover:bg-gray-50">
-                     <td className="px-4 py-2">{r.deptCode}</td>
-                     <td className="px-4 py-2">{depts.find(d => d.code === r.deptCode)?.name}</td>
-                     <td className="px-4 py-2">{r.accountCode}</td>
-                     <td className="px-4 py-2">{r.accountName}</td>
-                     <td className="px-4 py-2 text-right font-medium">{r.qBudget.toLocaleString()}</td>
-                     <td className="px-4 py-2 text-right">{r.qActual.toLocaleString()}</td>
-                     <td className={`px-4 py-2 text-right font-bold ${r.overrunAmount > 0 ? 'text-red-500' : ''}`}>{r.overrunAmount.toLocaleString()}</td>
-                     <td className="px-4 py-2 text-right">{r.balance.toLocaleString()}</td>
-                     <td className="px-4 py-2 text-right text-gray-500">{r.overrunRate ? r.overrunRate.toFixed(1) + '%' : '예산 없음'}</td>
-                     <td className="px-4 py-2 text-right text-gray-400">{r.yBudget.toLocaleString()}</td>
-                     <td className="px-4 py-2 text-right text-gray-400">{r.yActual.toLocaleString()}</td>
-                     <td className="px-4 py-2 text-center">
-                       <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${r.status === '초과' ? 'bg-red-100 text-red-700' : r.status === '무예산 집행' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700'}`}>
+                   <tr key={i} className="hover:bg-lithium-50/50 transition-colors">
+                     <td className="px-4 py-3 text-text-secondary">{r.deptCode}</td>
+                     <td className="px-4 py-3 font-medium text-eco-black">{depts.find(d => d.code === r.deptCode)?.name}</td>
+                     <td className="px-4 py-3 text-text-tertiary">{r.accountCode}</td>
+                     <td className="px-4 py-3 font-medium text-eco-black">{r.accountName}</td>
+                     <td className="px-4 py-3 text-right font-medium">{r.qBudget.toLocaleString()}</td>
+                     <td className="px-4 py-3 text-right">{r.qActual.toLocaleString()}</td>
+                     <td className={`px-4 py-3 text-right font-bold ${r.overrunAmount > 0 ? 'text-cobalt-600' : 'text-eco-black'}`}>{r.overrunAmount.toLocaleString()}</td>
+                     <td className="px-4 py-3 text-right text-text-secondary">{r.balance.toLocaleString()}</td>
+                     <td className="px-4 py-3 text-right text-text-tertiary">{r.overrunRate ? r.overrunRate.toFixed(1) + '%' : '예산 없음'}</td>
+                     <td className="px-4 py-3 text-right text-text-tertiary">{r.yBudget.toLocaleString()}</td>
+                     <td className="px-4 py-3 text-right text-text-tertiary">{r.yActual.toLocaleString()}</td>
+                     <td className="px-4 py-3 text-center">
+                       <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
+                         r.status === '초과' ? 'bg-cobalt-100 text-cobalt-700' : 
+                         r.status === '무예산 집행' ? 'bg-cobalt-50 text-cobalt-600' : 
+                         'bg-nickel-50 text-nickel-700'
+                       }`}>
                          {r.status}
                        </span>
                      </td>

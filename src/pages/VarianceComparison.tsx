@@ -796,14 +796,14 @@ export default function VarianceComparison() {
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="bg-white p-4 rounded-2xl border border-[#e5e8eb] shadow-sm flex flex-col gap-4">
+      <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm flex flex-col gap-4">
         <div className="flex items-center gap-4">
           <div className="flex-1 flex gap-2 items-center">
-            <span className="text-sm font-bold text-[#4e5968] w-10">기준</span>
+            <span className="text-sm font-bold text-text-secondary w-10">기준</span>
             <select 
               value={baseYear} 
               onChange={(e) => setBaseYear(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none flex-1"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               <option value="2024">2024년</option>
               <option value="2025">2025년</option>
@@ -813,7 +813,7 @@ export default function VarianceComparison() {
             <select 
               value={basePlanType} 
               onChange={(e) => setBasePlanType(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none flex-1"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               <option value="실적">실적</option>
               <option value="경영계획">경영계획</option>
@@ -824,20 +824,20 @@ export default function VarianceComparison() {
             <select 
               value={baseMonth} 
               onChange={(e) => setBaseMonth(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none flex-1"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               {PERIOD_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
-          <div className="text-[#8b95a1] font-bold">VS</div>
+          <div className="text-text-tertiary font-black px-2">VS</div>
           <div className="flex-1 flex gap-2 items-center">
-            <span className="text-sm font-bold text-[#4e5968] w-10">비교</span>
+            <span className="text-sm font-bold text-text-secondary w-10">비교</span>
             <select 
               value={targetYear} 
               onChange={(e) => setTargetYear(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none flex-1"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               <option value="2024">2024년</option>
               <option value="2025">2025년</option>
@@ -847,7 +847,7 @@ export default function VarianceComparison() {
             <select 
               value={targetPlanType} 
               onChange={(e) => setTargetPlanType(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none flex-1"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               <option value="실적">실적</option>
               <option value="경영계획">경영계획</option>
@@ -858,7 +858,7 @@ export default function VarianceComparison() {
             <select 
               value={targetMonth} 
               onChange={(e) => setTargetMonth(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none flex-1"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               {PERIOD_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -866,13 +866,13 @@ export default function VarianceComparison() {
             </select>
           </div>
         </div>
-        <div className="flex items-center gap-4 pt-4 border-t border-[#e5e8eb]">
+        <div className="flex items-center gap-4 pt-4 border-t border-lithium-100">
           <div className="flex-1 flex gap-2 items-center">
-            <span className="text-sm font-bold text-[#4e5968] w-10">부서</span>
+            <span className="text-sm font-bold text-text-secondary w-10">부서</span>
             <select 
               value={selectedDept} 
               onChange={(e) => setSelectedDept(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none w-40"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none w-48 outline-none transition-all"
             >
               {(currentUser?.code === '99999' || currentUser?.code === '32100') && (
                 <>
@@ -890,11 +890,11 @@ export default function VarianceComparison() {
               ))}
             </select>
             
-            <span className="text-sm font-bold text-[#4e5968] w-10 ml-4">계정</span>
+            <span className="text-sm font-bold text-text-secondary w-10 ml-6">계정</span>
             <select 
               value={selectedAccountCategory} 
               onChange={(e) => setSelectedAccountCategory(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2 font-medium appearance-none flex-1"
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               <option value="all">전체 계정</option>
               {INITIAL_CATEGORIES.map(cat => (
@@ -905,32 +905,32 @@ export default function VarianceComparison() {
           <div className="relative download-menu-container">
             <button
               onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#f2f4f6] text-[#4e5968] rounded-xl font-bold text-sm hover:bg-[#e5e8eb] transition-colors"
+              className="flex items-center gap-2 px-6 py-2.5 bg-lithium-100 text-eco-black rounded-xl font-bold text-sm hover:bg-lithium-200 transition-all shadow-sm"
             >
               <Download className="w-4 h-4" />
-              다운로드
+              보고서 다운로드
             </button>
             {showDownloadMenu && (
-              <div className="absolute right-0 mt-2 w-40 bg-white rounded-xl shadow-lg border border-[#e5e8eb] overflow-hidden z-10">
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-lithium-200 overflow-hidden z-20">
                 <button
                   onClick={() => { setShowDownloadMenu(false); handleDownloadExcel(); }}
-                  className="w-full text-left px-4 py-3 text-sm font-medium text-[#191f28] hover:bg-[#f2f4f6] transition-colors flex items-center gap-2"
+                  className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                  <FileSpreadsheet className="w-5 h-5 text-green-600" />
                   Excel 다운로드
                 </button>
                 <button
                   onClick={() => { setShowDownloadMenu(false); handleDownloadPPT(); }}
-                  className="w-full text-left px-4 py-3 text-sm font-medium text-[#191f28] hover:bg-[#f2f4f6] transition-colors flex items-center gap-2 border-t border-[#e5e8eb]"
+                  className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
                 >
-                  <Presentation className="w-4 h-4 text-orange-500" />
+                  <Presentation className="w-5 h-5 text-cobalt-600" />
                   PPT 다운로드
                 </button>
                 <button
                   onClick={() => { setShowDownloadMenu(false); handleDownloadPDF(); }}
-                  className="w-full text-left px-4 py-3 text-sm font-medium text-[#191f28] hover:bg-[#f2f4f6] transition-colors flex items-center gap-2 border-t border-[#e5e8eb]"
+                  className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
                 >
-                  <FileText className="w-4 h-4 text-red-500" />
+                  <FileText className="w-5 h-5 text-red-500" />
                   PDF 다운로드
                 </button>
               </div>
@@ -941,29 +941,29 @@ export default function VarianceComparison() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm">
-          <p className="text-sm font-medium text-[#4e5968]">{baseName} 총액</p>
-          <p className="text-3xl font-bold text-[#191f28] mt-2 text-right">{formatCurrency(toMillions(totalBase))} 백만원</p>
+        <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
+          <p className="text-sm font-medium text-text-secondary">{baseName} 총액</p>
+          <p className="text-3xl font-black text-eco-black mt-2 text-right">{formatCurrency(toMillions(totalBase))} <span className="text-sm font-normal text-text-tertiary">백만원</span></p>
         </div>
-        <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm">
-          <p className="text-sm font-medium text-[#4e5968]">{targetName} 총액</p>
-          <p className="text-3xl font-bold text-[#191f28] mt-2 text-right">{formatCurrency(toMillions(totalTarget))} 백만원</p>
+        <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
+          <p className="text-sm font-medium text-text-secondary">{targetName} 총액</p>
+          <p className="text-3xl font-black text-eco-black mt-2 text-right">{formatCurrency(toMillions(totalTarget))} <span className="text-sm font-normal text-text-tertiary">백만원</span></p>
         </div>
-        <div className={`p-6 rounded-2xl border shadow-sm ${totalVariance > 0 ? 'bg-red-50 border-red-100' : totalVariance < 0 ? 'bg-blue-50 border-blue-100' : 'bg-gray-50 border-gray-200'}`}>
-          <p className="text-sm font-medium text-[#4e5968]">증감액</p>
+        <div className={`p-6 rounded-2xl border shadow-sm transition-all hover:shadow-md ${totalVariance > 0 ? 'bg-cobalt-50 border-cobalt-100' : totalVariance < 0 ? 'bg-nickel-50 border-nickel-100' : 'bg-lithium-50 border-lithium-200'}`}>
+          <p className="text-sm font-medium text-text-secondary">증감액</p>
           <div className="flex items-center justify-between mt-2">
             {totalVariance > 0 ? (
-              <TrendingUp className="w-8 h-8 text-red-500 mr-2" />
+              <TrendingUp className="w-8 h-8 text-cobalt-500 mr-2" />
             ) : totalVariance < 0 ? (
-              <TrendingDown className="w-8 h-8 text-blue-500 mr-2" />
+              <TrendingDown className="w-8 h-8 text-nickel-500 mr-2" />
             ) : (
-              <Minus className="w-8 h-8 text-gray-500 mr-2" />
+              <Minus className="w-8 h-8 text-text-tertiary mr-2" />
             )}
             <div className="text-right">
-              <p className={`text-3xl font-bold ${totalVariance > 0 ? 'text-red-600' : totalVariance < 0 ? 'text-blue-600' : 'text-gray-700'}`}>
-                {totalVariance > 0 ? '+' : ''}{formatCurrency(toMillions(totalVariance))} 백만원
+              <p className={`text-3xl font-black ${totalVariance > 0 ? 'text-cobalt-700' : totalVariance < 0 ? 'text-nickel-700' : 'text-eco-black'}`}>
+                {totalVariance > 0 ? '+' : ''}{formatCurrency(toMillions(totalVariance))} <span className="text-sm font-normal">백만원</span>
               </p>
-              <p className={`text-sm font-bold ${totalVariance > 0 ? 'text-red-500' : totalVariance < 0 ? 'text-blue-500' : 'text-gray-500'}`}>
+              <p className={`text-sm font-bold ${totalVariance > 0 ? 'text-cobalt-600' : totalVariance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                 {totalVariance > 0 ? '+' : ''}{totalVariancePercent.toFixed(1)}%
               </p>
             </div>
@@ -972,45 +972,45 @@ export default function VarianceComparison() {
       </div>
 
       {/* Chart */}
-      <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm">
-        <h3 className="text-lg font-bold text-[#191f28] mb-6">계정별 예산 비교</h3>
-        <div className="h-80">
+      <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm overflow-hidden">
+        <h3 className="text-lg font-bold text-eco-black mb-6 tracking-tight">계정별 예산 비교</h3>
+        <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
               margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
             >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e8eb" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#4e5968', fontSize: 12 }} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 12 }} tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}백만`} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2f4f6" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} dy={10} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}M`} />
               <Tooltip 
-                cursor={{ fill: '#f9fafb' }}
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}
+                cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                contentStyle={{ borderRadius: '16px', border: '1px solid #dde5de', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                 formatter={(value: number) => [`${formatCurrency(value)}원`, '']}
               />
               <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-              <Bar dataKey={baseName} fill="#d1d6db" radius={[4, 4, 0, 0]} maxBarSize={40} />
-              <Bar dataKey={targetName} fill="var(--brand-500)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              <Bar dataKey={baseName} fill="#e5e8eb" radius={[6, 6, 0, 0]} maxBarSize={32} />
+              <Bar dataKey={targetName} fill="var(--nickel-500)" radius={[6, 6, 0, 0]} maxBarSize={32} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Data Table */}
-      <div className="bg-white rounded-2xl border border-[#e5e8eb] shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#e5e8eb] bg-[#f9fafb] flex justify-between items-center">
-          <h3 className="text-lg font-bold text-[#191f28]">상세 비교 데이터</h3>
+      <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden mb-10">
+        <div className="px-6 py-5 border-b border-lithium-200 bg-lithium-50 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-eco-black tracking-tight">상세 비교 데이터</h3>
           {selectedDept !== 'by_dept' && (
             <div className="flex gap-2">
               <button
                 onClick={() => setCollapsedCategories(new Set())}
-                className="px-3 py-1.5 text-xs font-medium bg-white border border-[#e5e8eb] text-[#4e5968] rounded-lg hover:bg-[#f9fafb] transition-colors"
+                className="px-3 py-1.5 text-xs font-bold bg-white border border-lithium-200 text-text-secondary rounded-lg hover:bg-lithium-50 transition-all shadow-sm"
               >
                 전체 펼치기
               </button>
               <button
                 onClick={() => setCollapsedCategories(new Set(categories.map(c => c.name).concat(['기타'])))}
-                className="px-3 py-1.5 text-xs font-medium bg-white border border-[#e5e8eb] text-[#4e5968] rounded-lg hover:bg-[#f9fafb] transition-colors"
+                className="px-3 py-1.5 text-xs font-bold bg-white border border-lithium-200 text-text-secondary rounded-lg hover:bg-lithium-50 transition-all shadow-sm"
               >
                 전체 접기
               </button>
@@ -1018,33 +1018,33 @@ export default function VarianceComparison() {
           )}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="bg-white border-b border-[#e5e8eb]">
+              <tr className="bg-lithium-100/50 border-b border-lithium-200">
                 {selectedDept !== 'by_dept' && (
-                  <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider w-[10%]">계정코드</th>
+                  <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider w-[10%]">코드</th>
                 )}
-                <th className={`px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider ${selectedDept !== 'by_dept' ? 'w-[20%]' : ''}`}>
+                <th className={`px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider ${selectedDept !== 'by_dept' ? 'w-[20%]' : ''}`}>
                   {selectedDept === 'by_dept' ? '부서명' : '계정명'}
                 </th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider text-right">{baseName} (백만원)</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider text-right">{targetName} (백만원)</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider text-right">차액 (백만원)</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#4e5968] uppercase tracking-wider text-right">증감률</th>
+                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">{baseName}</th>
+                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">{targetName}</th>
+                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">차액</th>
+                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">증감률</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#e5e8eb]">
+            <tbody className="divide-y divide-lithium-100">
               {(() => {
                 if (selectedDept === 'by_dept') {
                   return chartData.map((row, idx) => (
-                    <tr key={`${row.code}_${idx}`} className="hover:bg-[#f9fafb] transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#191f28]">{row.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-[#4e5968] text-right">{formatCurrency(toMillions(row[baseName]))}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#191f28] text-right">{formatCurrency(toMillions(row[targetName]))}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${row.variance > 0 ? 'text-red-600' : row.variance < 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <tr key={`${row.code}_${idx}`} className="hover:bg-lithium-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black">{row.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary text-right">{formatCurrency(toMillions(row[baseName]))}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(row[targetName]))}</td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                         {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
                       </td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${row.variancePercent > 0 ? 'text-red-500' : row.variancePercent < 0 ? 'text-blue-500' : 'text-gray-400'}`}>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                         {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
                       </td>
                     </tr>
@@ -1091,32 +1091,32 @@ export default function VarianceComparison() {
 
                     return (
                       <React.Fragment key={catName}>
-                        <tr className="bg-[#f2f4f6] border-b border-[#e5e8eb] cursor-pointer hover:bg-[#e5e8eb] transition-colors" onClick={() => toggleCategory(catName)}>
-                          <td colSpan={2} className="px-6 py-3 whitespace-nowrap text-sm font-bold text-[#191f28]">
+                        <tr className="bg-lithium-50/80 border-b border-lithium-100 cursor-pointer hover:bg-lithium-100 transition-all font-bold" onClick={() => toggleCategory(catName)}>
+                          <td colSpan={2} className="px-6 py-4 whitespace-nowrap text-sm text-eco-black">
                             <div className="flex items-center">
-                              {isCollapsed ? <Plus className="w-4 h-4 mr-2 text-[#8b95a1]" /> : <Minus className="w-4 h-4 mr-2 text-[#8b95a1]" />}
+                              {isCollapsed ? <Plus className="w-3.5 h-3.5 mr-3 text-text-tertiary" /> : <Minus className="w-3.5 h-3.5 mr-3 text-text-tertiary" />}
                               {catName}
                             </div>
                           </td>
-                          <td className="px-6 py-3 whitespace-nowrap text-sm font-bold text-[#4e5968] text-right">{formatCurrency(toMillions(totals[baseName]))}</td>
-                          <td className="px-6 py-3 whitespace-nowrap text-sm font-bold text-[#191f28] text-right">{formatCurrency(toMillions(totals[targetName]))}</td>
-                          <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${totals.variance > 0 ? 'text-red-600' : totals.variance < 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary text-right">{formatCurrency(toMillions(totals[baseName]))}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(totals[targetName]))}</td>
+                          <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${totals.variance > 0 ? 'text-cobalt-600' : totals.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                             {totals.variance > 0 ? '+' : ''}{formatCurrency(toMillions(totals.variance))}
                           </td>
-                          <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${totals.variancePercent > 0 ? 'text-red-500' : totals.variancePercent < 0 ? 'text-blue-500' : 'text-gray-400'}`}>
+                          <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${totals.variancePercent > 0 ? 'text-cobalt-500' : totals.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                             {totals.variancePercent > 0 ? '+' : ''}{totals.variancePercent.toFixed(1)}%
                           </td>
                         </tr>
                         {!isCollapsed && rows.map((row, idx) => (
-                          <tr key={`${row.code}_${catName}_${idx}`} className="hover:bg-[#f9fafb] transition-colors">
-                            <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-[#8b95a1]">{row.code}</td>
-                            <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-[#4e5968]">{row.name}</td>
-                            <td className="px-6 py-3 whitespace-nowrap text-sm text-[#4e5968] text-right">{formatCurrency(toMillions(row[baseName]))}</td>
-                            <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-[#191f28] text-right">{formatCurrency(toMillions(row[targetName]))}</td>
-                            <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${row.variance > 0 ? 'text-red-600' : row.variance < 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+                          <tr key={`${row.code}_${catName}_${idx}`} className="hover:bg-lithium-50 transition-colors">
+                            <td className="px-6 py-3 whitespace-nowrap text-xs font-medium text-text-tertiary">{row.code}</td>
+                            <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-eco-black">{row.name}</td>
+                            <td className="px-6 py-3 whitespace-nowrap text-sm text-text-secondary text-right">{formatCurrency(toMillions(row[baseName]))}</td>
+                            <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-eco-black text-right">{formatCurrency(toMillions(row[targetName]))}</td>
+                            <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                               {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
                             </td>
-                            <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${row.variancePercent > 0 ? 'text-red-500' : row.variancePercent < 0 ? 'text-blue-500' : 'text-gray-400'}`}>
+                            <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                               {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
                             </td>
                           </tr>
@@ -1127,37 +1127,37 @@ export default function VarianceComparison() {
                 }
               })()}
             </tbody>
-            <tfoot className="bg-[#f9fafb] border-t-2 border-[#d1d6db]">
-              <tr className="border-b border-[#e5e8eb]">
-                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#191f28]">제조 합계</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#4e5968] text-right">{formatCurrency(toMillions(summaryTotals.baseMfg))}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#191f28] text-right">{formatCurrency(toMillions(summaryTotals.targetMfg))}</td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${summaryTotals.targetMfg - summaryTotals.baseMfg > 0 ? 'text-red-600' : summaryTotals.targetMfg - summaryTotals.baseMfg < 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+            <tfoot className="bg-lithium-50 border-t-2 border-lithium-200">
+              <tr className="border-b border-lithium-100">
+                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black">제조 합계</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-text-secondary text-right">{formatCurrency(toMillions(summaryTotals.baseMfg))}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(summaryTotals.targetMfg))}</td>
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.targetMfg - summaryTotals.baseMfg > 0 ? 'text-cobalt-600' : summaryTotals.targetMfg - summaryTotals.baseMfg < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                   {summaryTotals.targetMfg - summaryTotals.baseMfg > 0 ? '+' : ''}{formatCurrency(toMillions(summaryTotals.targetMfg - summaryTotals.baseMfg))}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${summaryTotals.baseMfg === 0 ? 'text-gray-400' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg > 0 ? 'text-red-500' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg < 0 ? 'text-blue-500' : 'text-gray-400'}`}>
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.baseMfg === 0 ? 'text-text-tertiary' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg > 0 ? 'text-cobalt-500' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                   {summaryTotals.baseMfg === 0 ? '0.0%' : `${(summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg > 0 ? '+' : ''}${(((summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg) * 100).toFixed(1)}%`}
                 </td>
               </tr>
-              <tr className="border-b border-[#e5e8eb]">
-                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#191f28]">판관 합계</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#4e5968] text-right">{formatCurrency(toMillions(summaryTotals.baseSga))}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#191f28] text-right">{formatCurrency(toMillions(summaryTotals.targetSga))}</td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${summaryTotals.targetSga - summaryTotals.baseSga > 0 ? 'text-red-600' : summaryTotals.targetSga - summaryTotals.baseSga < 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+              <tr className="border-b border-lithium-100">
+                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black">판관 합계</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-text-secondary text-right">{formatCurrency(toMillions(summaryTotals.baseSga))}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(summaryTotals.targetSga))}</td>
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.targetSga - summaryTotals.baseSga > 0 ? 'text-cobalt-600' : summaryTotals.targetSga - summaryTotals.baseSga < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                   {summaryTotals.targetSga - summaryTotals.baseSga > 0 ? '+' : ''}{formatCurrency(toMillions(summaryTotals.targetSga - summaryTotals.baseSga))}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${summaryTotals.baseSga === 0 ? 'text-gray-400' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga > 0 ? 'text-red-500' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga < 0 ? 'text-blue-500' : 'text-gray-400'}`}>
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.baseSga === 0 ? 'text-text-tertiary' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga > 0 ? 'text-cobalt-500' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                   {summaryTotals.baseSga === 0 ? '0.0%' : `${(summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga > 0 ? '+' : ''}${(((summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga) * 100).toFixed(1)}%`}
                 </td>
               </tr>
-              <tr className="bg-[#f2f4f6]">
-                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-4 whitespace-nowrap text-base font-bold text-[#191f28]">총 합계</td>
-                <td className="px-6 py-4 whitespace-nowrap text-base font-bold text-[#4e5968] text-right">{formatCurrency(toMillions(totalBase))}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-base font-bold text-[#191f28] text-right">{formatCurrency(toMillions(totalTarget))}</td>
-                <td className={`px-6 py-4 whitespace-nowrap text-base font-bold text-right ${totalVariance > 0 ? 'text-red-600' : totalVariance < 0 ? 'text-blue-600' : 'text-gray-500'}`}>
+              <tr className="bg-lithium-100">
+                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black uppercase tracking-tight">총 합계</td>
+                <td className="px-6 py-5 whitespace-nowrap text-base font-bold text-text-secondary text-right">{formatCurrency(toMillions(totalBase))}</td>
+                <td className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black text-right">{formatCurrency(toMillions(totalTarget))}</td>
+                <td className={`px-6 py-5 whitespace-nowrap text-base font-black text-right ${totalVariance > 0 ? 'text-cobalt-600' : totalVariance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                   {totalVariance > 0 ? '+' : ''}{formatCurrency(toMillions(totalVariance))}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-base font-bold text-right ${totalVariancePercent > 0 ? 'text-red-500' : totalVariancePercent < 0 ? 'text-blue-500' : 'text-gray-400'}`}>
+                <td className={`px-6 py-5 whitespace-nowrap text-base font-black text-right ${totalVariancePercent > 0 ? 'text-cobalt-500' : totalVariancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                   {totalVariancePercent > 0 ? '+' : ''}{totalVariancePercent.toFixed(1)}%
                 </td>
               </tr>

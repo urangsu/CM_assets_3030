@@ -1156,11 +1156,11 @@ export default function AccountSelection() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div className="bg-white p-8 rounded-2xl border border-[#e5e8eb] shadow-sm">
+      <div className="bg-white p-8 rounded-2xl border border-lithium-200 shadow-sm">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-[#191f28]">전사 예산 계정 관리 및 부서별 선택</h2>
-            <p className="text-[#4e5968] mt-2">
+            <h2 className="text-2xl font-bold text-eco-black">전사 예산 계정 관리 및 부서별 선택</h2>
+            <p className="text-lithium-600 mt-2">
               운영자는 전사 계정을 추가하고, 각 부서는<br />
               필요한 계정을 선택하여 예산을 작성합니다.
             </p>
@@ -1179,7 +1179,7 @@ export default function AccountSelection() {
                       setSelectedSuffix('');
                       setIsAddModalOpen(true);
                     }}
-                    className="flex items-center px-4 py-2 bg-white border border-[#d1d6db] text-[#4e5968] rounded-xl text-sm font-medium hover:bg-[#f9fafb] transition-colors"
+                    className="flex items-center px-4 py-2 bg-white border border-lithium-300 text-lithium-600 rounded-xl text-sm font-medium hover:bg-lithium-50 transition-colors"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     계정 추가
@@ -1200,7 +1200,7 @@ export default function AccountSelection() {
                       }
                       setIsMoveModalOpen(true);
                     }}
-                    className="flex items-center px-4 py-2 bg-white border border-[#d1d6db] text-[#4e5968] rounded-xl text-sm font-medium hover:bg-[#f9fafb] transition-colors"
+                    className="flex items-center px-4 py-2 bg-white border border-lithium-300 text-lithium-600 rounded-xl text-sm font-medium hover:bg-lithium-50 transition-colors"
                   >
                     <ArrowRightLeft className="w-4 h-4 mr-2" />
                     계정 이동
@@ -1210,7 +1210,7 @@ export default function AccountSelection() {
               {/* [과제 1: 버튼 권한 분리 및 UI 재배치] - 계정 저장 버튼 이름 및 UI 밸런스 조정 */}
               <button 
                 onClick={handleSave}
-                className="flex items-center px-4 py-2 bg-brand-500 text-white rounded-xl text-sm font-medium hover:bg-brand-600 transition-colors shadow-sm"
+                className="flex items-center px-4 py-2 bg-nickel-600 text-white rounded-xl text-sm font-medium hover:bg-nickel-700 transition-colors shadow-sm"
               >
                 <Save className="w-4 h-4 mr-2" />
                 계정 저장
@@ -1222,12 +1222,12 @@ export default function AccountSelection() {
         {/* 필터 영역 */}
         <div className="flex flex-col sm:flex-row items-center mb-8 gap-4">
           <div className="flex items-center w-full sm:w-1/3">
-            <Building2 className="w-5 h-5 text-[#8b95a1] mr-3 flex-shrink-0" />
+            <Building2 className="w-5 h-5 text-lithium-500 mr-3 flex-shrink-0" />
             <div className="relative flex-1">
               <select
                 value={selectedDeptCode}
                 onChange={(e) => setSelectedDeptCode(e.target.value)}
-                className="block w-full pl-4 pr-10 py-2.5 text-sm border border-[#d1d6db] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 rounded-xl bg-white text-[#191f28] font-medium appearance-none cursor-pointer"
+                className="block w-full pl-4 pr-10 py-2.5 text-sm border border-lithium-300 focus:outline-none focus:ring-2 focus:ring-nickel-500 focus:border-nickel-500 rounded-xl bg-white text-eco-black font-medium appearance-none cursor-pointer"
               >
                 {viewableDepts.map(dept => (
                   <option key={dept.code} value={dept.code}>
@@ -1235,7 +1235,7 @@ export default function AccountSelection() {
                   </option>
                 ))}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#8b95a1]">
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-lithium-500">
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                 </svg>
@@ -1247,13 +1247,13 @@ export default function AccountSelection() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="block w-full pl-4 pr-10 py-2.5 text-sm border border-[#d1d6db] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 rounded-xl bg-white text-[#191f28] font-medium appearance-none cursor-pointer"
+              className="block w-full pl-4 pr-10 py-2.5 text-sm border border-lithium-300 focus:outline-none focus:ring-2 focus:ring-nickel-500 focus:border-nickel-500 rounded-xl bg-white text-eco-black font-medium appearance-none cursor-pointer"
             >
               <option value="ALL">전체 (제조/판관)</option>
               <option value="제조">제조</option>
               <option value="판관">판관</option>
             </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#8b95a1]">
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-lithium-500">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
               </svg>
@@ -1264,14 +1264,14 @@ export default function AccountSelection() {
             <select
               value={subCategoryFilter}
               onChange={(e) => setSubCategoryFilter(e.target.value)}
-              className="block w-full pl-4 pr-10 py-2.5 text-sm border border-[#d1d6db] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 rounded-xl bg-white text-[#191f28] font-medium appearance-none cursor-pointer"
+              className="block w-full pl-4 pr-10 py-2.5 text-sm border border-lithium-300 focus:outline-none focus:ring-2 focus:ring-nickel-500 focus:border-nickel-500 rounded-xl bg-white text-eco-black font-medium appearance-none cursor-pointer"
             >
               <option value="ALL">전체 분류</option>
               {Array.from(new Set(categories.map(c => c.name.split(' - ')[1] || c.name))).map(subName => (
                 <option key={subName} value={subName}>{subName}</option>
               ))}
             </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#8b95a1]">
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-lithium-500">
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
               </svg>
@@ -1286,11 +1286,11 @@ export default function AccountSelection() {
         <div className="flex justify-between items-center mb-6">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-[#8b95a1]" />
+              <Search className="h-5 w-5 text-lithium-500" />
             </div>
             <input
               type="text"
-              className="block w-full pl-11 pr-4 py-3 border border-[#d1d6db] rounded-xl text-[#191f28] placeholder-[#8b95a1] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-shadow"
+              className="block w-full pl-11 pr-4 py-3 border border-lithium-300 rounded-xl text-eco-black placeholder-lithium-500 focus:outline-none focus:ring-2 focus:ring-nickel-500 focus:border-transparent transition-shadow"
               placeholder="계정명 또는 코드 검색"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1298,7 +1298,7 @@ export default function AccountSelection() {
           </div>
           <button
             onClick={toggleAllCollapse}
-            className="ml-4 px-4 py-3 bg-[#f2f4f6] text-[#4e5968] rounded-xl text-sm font-bold hover:bg-[#e5e8eb] transition-colors flex items-center whitespace-nowrap"
+            className="ml-4 px-4 py-3 bg-lithium-100 text-lithium-600 rounded-xl text-sm font-bold hover:bg-lithium-200 transition-colors flex items-center whitespace-nowrap"
           >
             {collapsedCategories.size === filteredCategories.length ? <Plus className="w-4 h-4 mr-2" /> : <Minus className="w-4 h-4 mr-2" />}
             {collapsedCategories.size === filteredCategories.length ? '모두 펼치기' : '모두 접기'}
@@ -1313,11 +1313,11 @@ export default function AccountSelection() {
             
             return (
               <div key={category.name} className="space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-[#e5e8eb]">
+                <div className="flex items-center justify-between pb-2 border-b border-lithium-200">
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => toggleCategoryCollapse(category.name)}
-                      className="flex items-center justify-center w-6 h-6 rounded bg-white border border-[#d1d6db] text-[#4e5968] hover:bg-[#f2f4f6] transition-colors"
+                      className="flex items-center justify-center w-6 h-6 rounded bg-white border border-lithium-300 text-lithium-600 hover:bg-lithium-100 transition-colors"
                     >
                       {isCollapsed ? <Plus className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
                     </button>
@@ -1327,20 +1327,20 @@ export default function AccountSelection() {
                     >
                       <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
                         allSelected 
-                          ? 'bg-brand-500 border-brand-500' 
+                          ? 'bg-nickel-600 border-nickel-600' 
                           : someSelected 
-                            ? 'bg-brand-100 border-brand-300' 
-                            : 'border-[#d1d6db] group-hover:border-brand-400'
+                            ? 'bg-nickel-100 border-nickel-300' 
+                            : 'border-lithium-300 group-hover:border-nickel-400'
                       }`}>
                         {allSelected ? (
                           <Check className="w-3 h-3 text-white" />
                         ) : someSelected ? (
-                          <div className="w-2 h-0.5 bg-brand-500" />
+                          <div className="w-2 h-0.5 bg-nickel-600" />
                         ) : null}
                       </div>
-                      <h3 className="text-lg font-bold text-[#191f28] group-hover:text-brand-600 transition-colors">{category.name}</h3>
+                      <h3 className="text-lg font-bold text-eco-black group-hover:text-nickel-600 transition-colors">{category.name}</h3>
                     </div>
-                    <span className="text-xs text-[#8b95a1] font-medium">({category.accounts.length}개)</span>
+                    <span className="text-xs text-lithium-500 font-medium">({category.accounts.length}개)</span>
                   </div>
                 </div>
                 
@@ -1354,20 +1354,20 @@ export default function AccountSelection() {
                           onClick={() => toggleAccount(account.id)}
                           className={`relative flex items-center p-4 rounded-xl border-2 transition-all cursor-pointer ${
                             isSelected
-                              ? 'border-brand-500 bg-brand-50' 
-                              : 'border-[#e5e8eb] bg-white hover:border-[#d1d6db]'
+                              ? 'border-nickel-600 bg-nickel-50' 
+                              : 'border-lithium-200 bg-white hover:border-lithium-300'
                           }`}
                         >
                           <div className={`w-5 h-5 rounded-full border flex items-center justify-center mr-3 ${
-                            isSelected ? 'bg-brand-500 border-brand-500' : 'border-[#d1d6db]'
+                            isSelected ? 'bg-nickel-600 border-nickel-600' : 'border-lithium-300'
                           }`}>
                             {isSelected && <Check className="w-3 h-3 text-white" />}
                           </div>
                           <div>
-                            <p className={`text-sm font-bold ${isSelected ? 'text-brand-700' : 'text-[#191f28]'}`}>
+                            <p className={`text-sm font-bold ${isSelected ? 'text-nickel-700' : 'text-eco-black'}`}>
                               {account.name}
                             </p>
-                            <p className={`text-xs mt-0.5 ${isSelected ? 'text-brand-600' : 'text-[#8b95a1]'}`}>
+                            <p className={`text-xs mt-0.5 ${isSelected ? 'text-nickel-600' : 'text-lithium-500'}`}>
                               {account.code}
                             </p>
                           </div>
@@ -1381,7 +1381,7 @@ export default function AccountSelection() {
           })}
           
           {filteredCategories.length === 0 && (
-            <div className="text-center py-12 text-[#8b95a1]">
+            <div className="text-center py-12 text-lithium-500">
               검색 결과가 없습니다.
             </div>
           )}
@@ -1396,11 +1396,11 @@ export default function AccountSelection() {
           onPaste={(e) => e.stopPropagation()}
         >
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
-            <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-[#f9fafb]">
-              <h3 className="text-lg font-bold text-[#191f28]">계정 추가</h3>
+            <div className="px-6 py-4 border-b border-lithium-200 flex justify-between items-center bg-lithium-50">
+              <h3 className="text-lg font-bold text-eco-black">계정 추가</h3>
               <button 
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-[#8b95a1] hover:text-[#191f28] transition-colors"
+                className="text-lithium-500 hover:text-eco-black transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1411,14 +1411,14 @@ export default function AccountSelection() {
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#4e5968] mb-1">구분</label>
+                  <label className="block text-sm font-medium text-lithium-600 mb-1">구분</label>
                   <select
                     value={selectedPrefix}
                     onChange={(e) => {
                       setSelectedPrefix(e.target.value);
                       setSelectedSuffix(''); // Reset suffix when prefix changes
                     }}
-                    className="w-full px-4 py-2 border border-[#d1d6db] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                    className="w-full px-4 py-2 border border-lithium-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-nickel-500 bg-white"
                   >
                     <option value="">선택</option>
                     <option value="제조">제조</option>
@@ -1426,12 +1426,12 @@ export default function AccountSelection() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#4e5968] mb-1">소속 그룹</label>
+                  <label className="block text-sm font-medium text-lithium-600 mb-1">소속 그룹</label>
                   <select
                     value={selectedSuffix}
                     onChange={(e) => setSelectedSuffix(e.target.value)}
                     disabled={!selectedPrefix}
-                    className="w-full px-4 py-2 border border-[#d1d6db] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white disabled:bg-[#f2f4f6] disabled:text-[#8b95a1]"
+                    className="w-full px-4 py-2 border border-lithium-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-nickel-500 bg-white disabled:bg-lithium-100 disabled:text-lithium-500"
                   >
                     <option value="">그룹 선택</option>
                     {Array.from(new Set(
@@ -1446,7 +1446,7 @@ export default function AccountSelection() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#4e5968] mb-1">계정 코드</label>
+                <label className="block text-sm font-medium text-lithium-600 mb-1">계정 코드</label>
                 <input
                   type="text"
                   value={newAccountCode}
@@ -1462,7 +1462,7 @@ export default function AccountSelection() {
                   className={`w-full px-4 py-2 border rounded-xl focus:outline-none focus:ring-2 ${
                     newAccountCode && !isCodeValid(newAccountCode) 
                       ? 'border-red-500 focus:ring-red-100' 
-                      : 'border-[#d1d6db] focus:ring-brand-500'
+                      : 'border-lithium-300 focus:ring-nickel-500'
                   }`}
                 />
                 {newAccountCode && !isCodeValid(newAccountCode) && (
@@ -1473,44 +1473,44 @@ export default function AccountSelection() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-[#4e5968] mb-1">계정명</label>
+                <label className="block text-sm font-medium text-lithium-600 mb-1">계정명</label>
                 <input
                   type="text"
                   value={newAccountName}
                   onChange={(e) => setNewAccountName(e.target.value)}
                   onPaste={(e) => e.stopPropagation()}
                   placeholder="예: 제조비용_환경관리비_교육훈련비"
-                  className="w-full px-4 py-2 border border-[#d1d6db] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-full px-4 py-2 border border-lithium-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-nickel-500"
                 />
               </div>
 
-              <div className="mt-4 p-4 bg-[#f2f4f6] rounded-xl">
-                <p className="text-sm font-medium text-[#4e5968] mb-2">반영 미리보기 :</p>
-                <p className="text-[#191f28] font-bold">
+              <div className="mt-4 p-4 bg-lithium-100 rounded-xl">
+                <p className="text-sm font-medium text-lithium-600 mb-2">반영 미리보기 :</p>
+                <p className="text-eco-black font-bold">
                   {selectedPrefix && selectedSuffix ? `[${selectedPrefix} - ${selectedSuffix}] ` : ''}[{newAccountCode || '계정코드'}] {newAccountName || '계정명'}
                 </p>
               </div>
 
               <div className="mt-6">
-                <p className="text-xs text-[#8b95a1] mb-2">또는 엑셀 데이터를 복사하여 아래에 붙여넣기 하세요.</p>
+                <p className="text-xs text-lithium-500 mb-2">또는 엑셀 데이터를 복사하여 아래에 붙여넣기 하세요.</p>
                 <div 
                   tabIndex={0}
                   onPaste={(e) => {
                     e.stopPropagation();
                     handlePaste(e);
                   }}
-                  className="p-4 border-2 border-dashed border-[#d1d6db] rounded-xl bg-[#f9fafb] flex flex-col items-center justify-center text-center cursor-text hover:border-brand-500 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  className="p-4 border-2 border-dashed border-lithium-200 rounded-xl bg-lithium-50 flex flex-col items-center justify-center text-center cursor-text hover:border-nickel-500 transition-colors focus:outline-none focus:ring-2 focus:ring-nickel-100"
                 >
-                  <ClipboardPaste className="w-5 h-5 text-brand-500 mb-2" />
-                  <p className="text-sm text-[#4e5968] font-medium">여기를 클릭하고 Ctrl + V</p>
+                  <ClipboardPaste className="w-5 h-5 text-nickel-600 mb-2" />
+                  <p className="text-sm text-lithium-600 font-medium">여기를 클릭하고 Ctrl + V</p>
                 </div>
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-lithium-200 bg-lithium-50 flex justify-end gap-2">
               <button 
                 onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-2 text-[#4e5968] font-medium hover:bg-[#e5e8eb] rounded-xl transition-colors"
+                className="px-4 py-2 text-lithium-600 font-medium hover:bg-lithium-200 rounded-xl transition-colors"
               >
                 취소
               </button>
@@ -1519,8 +1519,8 @@ export default function AccountSelection() {
                 disabled={isAddButtonDisabled}
                 className={`px-4 py-2 font-medium rounded-xl transition-colors ${
                   isAddButtonDisabled 
-                    ? 'bg-[#e5e8eb] text-[#8b95a1] cursor-not-allowed' 
-                    : 'bg-brand-500 text-white hover:bg-brand-600'
+                    ? 'bg-lithium-200 text-lithium-500 cursor-not-allowed' 
+                    : 'bg-nickel-600 text-white hover:bg-nickel-700'
                 }`}
               >
                 추가하기
@@ -1536,11 +1536,11 @@ export default function AccountSelection() {
           onPaste={(e) => e.stopPropagation()}
         >
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
-            <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-[#f9fafb]">
-              <h3 className="text-lg font-bold text-[#191f28]">계정 이동</h3>
+            <div className="px-6 py-4 border-b border-lithium-200 flex justify-between items-center bg-lithium-50">
+              <h3 className="text-lg font-bold text-eco-black">계정 이동</h3>
               <button 
                 onClick={() => setIsMoveModalOpen(false)}
-                className="text-[#8b95a1] hover:text-[#191f28] transition-colors"
+                className="text-lithium-500 hover:text-eco-black transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1550,11 +1550,11 @@ export default function AccountSelection() {
             
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#4e5968] mb-1">이동할 소속 그룹 선택</label>
+                <label className="block text-sm font-medium text-lithium-600 mb-1">이동할 소속 그룹 선택</label>
                 <select
                   value={selectedTargetCategory}
                   onChange={(e) => setSelectedTargetCategory(e.target.value)}
-                  className="w-full px-4 py-2 border border-[#d1d6db] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                  className="w-full px-4 py-2 border border-lithium-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-nickel-500 bg-white"
                 >
                   <option value="">그룹을 선택하세요</option>
                   {categories.map(cat => (
@@ -1563,24 +1563,24 @@ export default function AccountSelection() {
                 </select>
               </div>
 
-              <div className="mt-4 p-4 bg-[#f2f4f6] rounded-xl">
-                <p className="text-sm font-medium text-[#4e5968] mb-2">선택된 계정 수 :</p>
-                <p className="text-[#191f28] font-bold">
+              <div className="mt-4 p-4 bg-lithium-100 rounded-xl">
+                <p className="text-sm font-medium text-lithium-600 mb-2">선택된 계정 수 :</p>
+                <p className="text-eco-black font-bold">
                   {currentSelected.size}개
                 </p>
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-lithium-200 bg-lithium-50 flex justify-end gap-2">
               <button 
                 onClick={() => setIsMoveModalOpen(false)}
-                className="px-4 py-2 text-[#4e5968] font-medium hover:bg-[#e5e8eb] rounded-xl transition-colors"
+                className="px-4 py-2 text-lithium-600 font-medium hover:bg-lithium-200 rounded-xl transition-colors"
               >
                 취소
               </button>
               <button 
                 onClick={handleMoveAccounts}
-                className="px-4 py-2 bg-brand-500 text-white font-medium hover:bg-brand-600 rounded-xl transition-colors"
+                className="px-4 py-2 bg-nickel-600 text-white font-medium hover:bg-nickel-700 rounded-xl transition-colors"
               >
                 이동하기
               </button>
@@ -1594,18 +1594,18 @@ export default function AccountSelection() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6">
-              <h3 className="text-lg font-bold text-[#191f28] mb-2">
+              <h3 className="text-lg font-bold text-eco-black mb-2">
                 {modalConfig.type === 'confirm' ? '확인' : '알림'}
               </h3>
-              <p className="text-[#4e5968] text-sm leading-relaxed">
+              <p className="text-lithium-600 text-sm leading-relaxed">
                 {modalConfig.message}
               </p>
             </div>
-            <div className="bg-[#f9fafb] px-6 py-4 flex justify-end gap-2 border-t border-[#e5e8eb]">
+            <div className="bg-lithium-50 px-6 py-4 flex justify-end gap-2 border-t border-lithium-200">
               {modalConfig.type === 'confirm' && (
                 <button
                   onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-[#4e5968] bg-white border border-[#d1d6db] rounded-xl hover:bg-[#f2f4f6] transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-lithium-600 bg-white border border-lithium-300 rounded-xl hover:bg-lithium-50 transition-colors"
                 >
                   취소
                 </button>
@@ -1617,7 +1617,7 @@ export default function AccountSelection() {
                     modalConfig.onConfirm();
                   }
                 }}
-                className="px-4 py-2 text-sm font-bold text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors"
+                className="px-4 py-2 text-sm font-bold text-white bg-nickel-600 rounded-xl hover:bg-nickel-700 transition-colors"
               >
                 확인
               </button>
@@ -1633,11 +1633,11 @@ export default function AccountSelection() {
           onPaste={(e) => e.stopPropagation()}
         >
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
-            <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-[#f9fafb]">
-              <h3 className="text-lg font-bold text-[#191f28]">계정 삭제</h3>
+            <div className="px-6 py-4 border-b border-lithium-200 flex justify-between items-center bg-lithium-50">
+              <h3 className="text-lg font-bold text-eco-black">계정 삭제</h3>
               <button 
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="text-[#8b95a1] hover:text-[#191f28] transition-colors"
+                className="text-lithium-500 hover:text-eco-black transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1646,7 +1646,7 @@ export default function AccountSelection() {
             </div>
             
             <div className="p-6">
-              <p className="text-[#4e5968] mb-4">
+              <p className="text-lithium-600 mb-4">
                 선택한 {currentSelected.size}개의 계정을 정말 삭제하시겠습니까?
               </p>
               <p className="text-sm text-red-500 font-medium">
@@ -1654,10 +1654,10 @@ export default function AccountSelection() {
               </p>
             </div>
 
-            <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-lithium-200 bg-lithium-50 flex justify-end gap-2">
               <button 
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2 text-[#4e5968] font-medium hover:bg-[#e5e8eb] rounded-xl transition-colors"
+                className="px-4 py-2 text-lithium-600 font-medium hover:bg-lithium-200 rounded-xl transition-colors"
               >
                 취소
               </button>
@@ -1679,11 +1679,11 @@ export default function AccountSelection() {
           onPaste={(e) => e.stopPropagation()}
         >
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl">
-            <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-[#f9fafb]">
-              <h3 className="text-lg font-bold text-[#191f28]">계정 재그룹화</h3>
+            <div className="px-6 py-4 border-b border-lithium-200 flex justify-between items-center bg-lithium-50">
+              <h3 className="text-lg font-bold text-eco-black">계정 재그룹화</h3>
               <button 
                 onClick={() => setIsRegroupModalOpen(false)}
-                className="text-[#8b95a1] hover:text-[#191f28] transition-colors"
+                className="text-lithium-500 hover:text-eco-black transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1692,21 +1692,21 @@ export default function AccountSelection() {
             </div>
             
             <div className="p-6">
-              <p className="text-[#4e5968]">
+              <p className="text-lithium-600">
                 모든 계정을 기본 분류 체계에 맞게 다시 그룹화하시겠습니까?
               </p>
             </div>
 
-            <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-lithium-200 bg-lithium-50 flex justify-end gap-2">
               <button 
                 onClick={() => setIsRegroupModalOpen(false)}
-                className="px-4 py-2 text-[#4e5968] font-medium hover:bg-[#e5e8eb] rounded-xl transition-colors"
+                className="px-4 py-2 text-lithium-600 font-medium hover:bg-lithium-200 rounded-xl transition-colors"
               >
                 취소
               </button>
               <button 
                 onClick={confirmRegroupAccounts}
-                className="px-4 py-2 bg-brand-500 text-white font-medium hover:bg-brand-600 rounded-xl transition-colors"
+                className="px-4 py-2 bg-nickel-600 text-white font-medium hover:bg-nickel-700 rounded-xl transition-colors"
               >
                 재그룹화
               </button>

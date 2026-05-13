@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
 @theme {
+  --color-nickel-50: var(--nickel-50);
+  --color-nickel-100: var(--nickel-100);
+  --color-nickel-500: var(--nickel-500);
+  --color-nickel-600: var(--nickel-600);
+  --color-nickel-700: var(--nickel-700);
+  --color-cobalt-50: var(--cobalt-50);
+  --color-cobalt-100: var(--cobalt-100);
+  --color-cobalt-500: var(--cobalt-500);
+  --color-cobalt-600: var(--cobalt-600);
+  --color-cobalt-700: var(--cobalt-700);
+  --color-lithium-50: var(--lithium-50);
+  --color-lithium-100: var(--lithium-100);
+  --color-lithium-200: var(--lithium-200);
+  --color-eco-black: var(--eco-black);
+  --color-eco-white: var(--eco-white);
+
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
   --color-brand-500: var(--brand-500);
@@ -11,19 +27,48 @@
 }
 
 :root {
-  /* Toss-like Green */
-  --brand-50: #e6f6ec;
-  --brand-100: #c0ebd0;
-  --brand-500: #00a84d;
-  --brand-600: #009042;
-  --brand-700: #007a38;
+  /* ECO BATTERY RECYCLING Design System Tokens */
+  --nickel-50: #E7F4F1;
+  --nickel-100: #CDE9E3;
+  --nickel-500: #008F83;
+  --nickel-600: #00786F;
+  --nickel-700: #005F58;
 
-  --bg-color: #f9fafb;
-  --surface-color: #ffffff;
-  --text-primary: #191f28;
+  --cobalt-50: #FFF2E8;
+  --cobalt-100: #FFE1C6;
+  --cobalt-500: #F7A059;
+  --cobalt-600: #E98532;
+  --cobalt-700: #C96A1D;
+
+  --lithium-50: #F7F9F7;
+  --lithium-100: #EEF2EC;
+  --lithium-200: #DDE5DE;
+
+  --eco-black: #111111;
+  --eco-white: #FFFFFF;
+
+  /* Aliases for backwards compatibility or logic */
+  --brand-50: var(--nickel-50);
+  --brand-100: var(--nickel-100);
+  --brand-500: var(--nickel-500);
+  --brand-600: var(--nickel-600);
+  --brand-700: var(--nickel-700);
+
+  --bg-color: var(--lithium-50);
+  --surface-color: var(--eco-white);
+  --text-primary: var(--eco-black);
   --text-secondary: #4e5968;
   --text-tertiary: #8b95a1;
-  --border-color: #e5e8eb;
+  --border-color: var(--lithium-200);
+
+  /* Sidebar Tokens */
+  --sidebar-bg: var(--eco-black);
+  --sidebar-text: rgba(255, 255, 255, 0.72);
+  --sidebar-text-hover: #FFFFFF;
+  --sidebar-active-bg: var(--nickel-600);
+  --sidebar-active-text: #FFFFFF;
+  --sidebar-active-icon: #FFFFFF;
+  --sidebar-active-bar: var(--nickel-100);
 }
 
 body {

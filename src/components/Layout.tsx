@@ -57,12 +57,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="flex h-screen bg-[#f9fafb]">
+    <div className="flex h-screen bg-[#f7f9f7]">
       {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-[#e5e8eb] flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-[#e5e8eb]">
-          <Calculator className="w-6 h-6 text-brand-500 mr-2" />
-          <span className="text-lg font-bold text-[#191f28]">클린메탈 예산</span>
+      <div className="w-64 bg-[#111111] text-white border-r border-black/10 flex flex-col">
+        <div className="h-16 flex items-center px-6 border-b border-white/10">
+          <Calculator className="w-6 h-6 text-nickel-500 mr-2" />
+          <span className="text-lg font-bold text-white tracking-tight">클린메탈 예산</span>
         </div>
         
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
@@ -73,31 +73,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.name}
                 to={item.href!}
-                className={`flex items-center px-3 py-3 rounded-xl text-sm font-medium transition-colors ${
+                className={`flex items-center px-3 py-3 rounded-xl text-sm font-medium transition-all relative group ${
                   isActive
-                    ? 'bg-brand-50 text-brand-600'
-                    : 'text-[#4e5968] hover:bg-[#f2f4f6] hover:text-[#191f28]'
+                    ? 'bg-nickel-600 text-white shadow-sm'
+                    : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                <item.icon className={`w-5 h-5 mr-3 ${isActive ? 'text-brand-500' : 'text-[#8b95a1]'}`} />
+                {isActive && (
+                  <span className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-nickel-100" />
+                )}
+                <item.icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white'}`} />
                 {item.name}
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-[#e5e8eb]">
-          <div className="flex items-center px-3 py-3 rounded-xl hover:bg-[#f2f4f6] transition-colors">
-            <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold mr-3">
+        <div className="p-4 border-t border-white/10">
+          <div className="flex items-center px-3 py-3 rounded-xl hover:bg-white/10 transition-colors">
+            <div className="w-8 h-8 rounded-full bg-nickel-500 flex items-center justify-center text-white font-bold mr-3 shadow-sm">
               {currentUser.name.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#191f28] truncate">{currentUser.name}</p>
-              <p className="text-xs text-[#8b95a1] truncate">{currentUser.code}</p>
+              <p className="text-sm font-medium text-white truncate">{currentUser.name}</p>
+              <p className="text-xs text-white/40 truncate">{currentUser.code}</p>
             </div>
             <button 
               onClick={handleLogout}
-              className="text-[#8b95a1] hover:text-[#191f28] ml-2"
+              className="text-white/40 hover:text-white ml-2 transition-colors"
               title="로그아웃"
             >
               <LogOut className="w-5 h-5" />
@@ -108,12 +111,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-[#e5e8eb] flex items-center px-8">
-          <h1 className="text-xl font-bold text-[#191f28]">
+        <header className="h-16 bg-white border-b border-[#dde5de] flex items-center px-8 shadow-sm z-10">
+          <h1 className="text-xl font-bold text-[#111111] tracking-tight">
             {navigation.find((item) => item.href === location.pathname)?.name || '클린메탈 예산'}
           </h1>
         </header>
-        <main className="flex-1 overflow-y-auto p-8 flex flex-col">
+        <main className="flex-1 overflow-y-auto p-8 flex flex-col bg-[#f7f9f7]">
           <div className="max-w-7xl mx-auto w-full flex-1">
             {children}
           </div>

@@ -42,10 +42,10 @@ const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, 
   }, [isResizing, minWidth, onResize]);
 
   return (
-    <div className="relative flex items-center justify-center w-full h-full px-2 py-3 text-xs font-semibold text-[#4e5968]">
+    <div className="relative flex items-center justify-center w-full h-full px-2 py-3 text-xs font-semibold text-lithium-600">
       <span className="truncate">{title}</span>
       <div 
-        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-brand-500 z-30"
+        className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-nickel-500 z-30"
         onMouseDown={handleMouseDown}
       />
     </div>
@@ -1297,18 +1297,18 @@ export default function BudgetCreation() {
   return (
     <div className="space-y-6">
       {/* Filters & Actions */}
-      <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex flex-wrap gap-4">
           <div>
-            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">작성 부서</label>
+            <label className="block text-xs font-bold text-lithium-500 uppercase mb-1">작성 부서</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Building2 className="h-4 w-4 text-[#8b95a1]" />
+                <Building2 className="h-4 w-4 text-lithium-500" />
               </div>
               <select 
                 value={selectedDeptCode} 
                 onChange={(e) => setSelectedDeptCode(e.target.value)}
-                className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 block w-40 pl-9 p-2.5 font-bold appearance-none"
+                className="bg-lithium-100 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 block w-40 pl-9 p-2.5 font-bold appearance-none"
               >
                 <option value="viewable">조회 가능 부서</option>
                 {(currentUser?.code === '99999' || currentUser?.code === '32100') ? (
@@ -1332,11 +1332,11 @@ export default function BudgetCreation() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">연도</label>
+            <label className="block text-xs font-bold text-lithium-500 uppercase mb-1">연도</label>
             <select 
               value={year} 
               onChange={(e) => setYear(e.target.value)}
-              className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 block w-32 p-2.5 font-medium appearance-none"
+              className="bg-lithium-100 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 block w-32 p-2.5 font-medium appearance-none"
             >
               <option value="2025">2025년</option>
               <option value="2026">2026년</option>
@@ -1345,12 +1345,12 @@ export default function BudgetCreation() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">계획 구분</label>
+            <label className="block text-xs font-bold text-lithium-500 uppercase mb-1">계획 구분</label>
             <div className="flex items-center gap-2">
               <select 
                 value={planType} 
                 onChange={(e) => setPlanType(e.target.value)}
-                className="bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 block w-40 p-2.5 font-medium appearance-none"
+                className="bg-lithium-100 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 block w-40 p-2.5 font-medium appearance-none"
               >
                 <option value="경영계획">경영계획</option>
                 <option value="수정경영계획">수정경영계획</option>
@@ -1363,8 +1363,8 @@ export default function BudgetCreation() {
                   onClick={() => handleSort('dept_code')}
                   className={`flex items-center px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
                     sortConfig.key === 'dept_code' 
-                      ? 'bg-brand-500 text-white shadow-md' 
-                      : 'bg-[#f2f4f6] text-[#4e5968] hover:bg-[#e5e8eb]'
+                      ? 'bg-nickel-600 text-white shadow-md' 
+                      : 'bg-lithium-100 text-lithium-600 hover:bg-lithium-200'
                   }`}
                 >
                   <LayoutGrid className="w-3.5 h-3.5 mr-1.5" />
@@ -1380,35 +1380,35 @@ export default function BudgetCreation() {
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Data Import Group */}
-          <div className="flex items-center gap-1.5 p-1 bg-[#f2f4f6] rounded-2xl">
+          <div className="flex items-center gap-1.5 p-1 bg-lithium-100 rounded-2xl">
             <button 
               onClick={() => setImportModal({ ...importModal, isOpen: true })} 
               disabled={planType === '실적' || isLocked}
-              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-lithium-600 border border-lithium-200 rounded-xl text-xs font-bold hover:bg-lithium-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <FileDown className="w-3.5 h-3.5 mr-1.5 text-brand-500" />
+              <FileDown className="w-3.5 h-3.5 mr-1.5 text-nickel-600" />
               데이터 가져오기
             </button>
             <button 
               onClick={handleDistributeBudget} 
               disabled={planType === '실적' || isLocked}
-              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-lithium-600 border border-lithium-200 rounded-xl text-xs font-bold hover:bg-lithium-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Divide className="w-3.5 h-3.5 mr-1.5 text-brand-500" />
+              <Divide className="w-3.5 h-3.5 mr-1.5 text-nickel-600" />
               입력예산분산
             </button>
             <button 
               onClick={handleCopyAccount} 
               disabled={planType === '실적' || isLocked}
-              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-lithium-600 border border-lithium-200 rounded-xl text-xs font-bold hover:bg-lithium-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Copy className="w-3.5 h-3.5 mr-1.5 text-brand-500" />
+              <Copy className="w-3.5 h-3.5 mr-1.5 text-nickel-600" />
               계정복사
             </button>
             <button 
               onClick={handleDeleteAccount} 
               disabled={planType === '실적' || isLocked}
-              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-lithium-600 border border-lithium-200 rounded-xl text-xs font-bold hover:bg-lithium-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5 mr-1.5 text-red-500" />
               계정삭제
@@ -1416,13 +1416,13 @@ export default function BudgetCreation() {
           </div>
 
           {/* Action Group */}
-          <div className="flex items-center gap-1.5 p-1 bg-[#f2f4f6] rounded-2xl">
+          <div className="flex items-center gap-1.5 p-1 bg-lithium-100 rounded-2xl">
             <button 
               onClick={handleSave} 
               disabled={isLocked}
-              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-lithium-600 border border-lithium-200 rounded-xl text-xs font-bold hover:bg-lithium-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save className="w-3.5 h-3.5 mr-1.5 text-brand-500" />
+              <Save className="w-3.5 h-3.5 mr-1.5 text-nickel-600" />
               임시저장
             </button>
             
@@ -1465,7 +1465,7 @@ export default function BudgetCreation() {
                 <button 
                   onClick={handleSubmit} 
                   disabled={planType === '실적'}
-                  className="flex items-center justify-center w-[120px] py-1.5 bg-brand-500 text-white rounded-xl text-xs font-bold hover:bg-brand-600 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center w-[120px] py-1.5 bg-nickel-600 text-white rounded-xl text-xs font-bold hover:bg-nickel-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-3.5 h-3.5 mr-1.5" />
                   재상신하기
@@ -1475,7 +1475,7 @@ export default function BudgetCreation() {
               <button 
                 onClick={handleSubmit} 
                 disabled={planType === '실적'}
-                className="flex items-center justify-center w-[120px] py-1.5 bg-brand-500 text-white rounded-xl text-xs font-bold hover:bg-brand-600 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center w-[120px] py-1.5 bg-nickel-600 text-white rounded-xl text-xs font-bold hover:bg-nickel-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send className="w-3.5 h-3.5 mr-1.5" />
                 상신하기
@@ -1485,16 +1485,16 @@ export default function BudgetCreation() {
             <button 
               onClick={handleReset} 
               disabled={isLocked}
-              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-lithium-600 border border-lithium-200 rounded-xl text-xs font-bold hover:bg-lithium-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Trash2 className="w-3.5 h-3.5 mr-1.5 text-red-500" />
               초기화
             </button>
             <button 
               onClick={handleExportExcel} 
-              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm"
+              className="flex items-center justify-center w-[120px] py-1.5 bg-white text-lithium-600 border border-lithium-200 rounded-xl text-xs font-bold hover:bg-lithium-50 transition-all shadow-sm"
             >
-              <Download className="w-3.5 h-3.5 mr-1.5 text-brand-500" />
+              <Download className="w-3.5 h-3.5 mr-1.5 text-nickel-600" />
               엑셀 다운로드
             </button>
           </div>
@@ -1502,27 +1502,27 @@ export default function BudgetCreation() {
       </div>
 
       {/* Grid Area */}
-      <div className="bg-white rounded-2xl border border-[#e5e8eb] shadow-sm overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-[#f9fafb]">
+      <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden flex flex-col">
+        <div className="px-6 py-4 border-b border-lithium-200 flex justify-between items-center bg-lithium-50">
           <div className="flex items-center gap-4">
-            <h2 className="text-lg font-bold text-[#191f28]">{currentDept.name} 예산 입력 그리드</h2>
+            <h2 className="text-lg font-bold text-eco-black">{currentDept.name} 예산 입력 그리드</h2>
             <button 
               onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-              className="flex items-center justify-center w-6 h-6 rounded bg-white border border-[#d1d6db] text-[#4e5968] hover:bg-[#f2f4f6]"
+              className="flex items-center justify-center w-6 h-6 rounded bg-white border border-lithium-300 text-lithium-600 hover:bg-lithium-100"
               title={isDetailsExpanded ? "상세내역/산출법 접기" : "상세내역/산출법 펼치기"}
             >
               {isDetailsExpanded ? '-' : '+'}
             </button>
           </div>
-          <div className="flex items-center text-xs text-[#8b95a1]">
+          <div className="flex items-center text-xs text-lithium-500">
             <ClipboardPaste className="w-4 h-4 mr-1" />
             엑셀에서 복사(Ctrl+C) 후 그리드에 붙여넣기(Ctrl+V) 가능
           </div>
         </div>
         
         {data.length === 0 ? (
-          <div className="p-12 text-center text-[#8b95a1]">
-            <p className="text-lg font-bold text-[#191f28] mb-2">선택된 예산 계정이 없습니다.</p>
+          <div className="p-12 text-center text-lithium-500">
+            <p className="text-lg font-bold text-eco-black mb-2">선택된 예산 계정이 없습니다.</p>
             <p>'예산 계정 선택' 메뉴에서 {currentDept.name}이 사용할 계정을 먼저 선택하고 저장해주세요.</p>
           </div>
         ) : (
@@ -1534,30 +1534,30 @@ export default function BudgetCreation() {
             <table className="w-full text-left border-collapse" style={{ tableLayout: 'fixed', width: 'max-content' }}>
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-[#f9fafb] p-0 border border-[#e5e8eb] w-12">
+                  <th className="sticky left-0 z-10 bg-lithium-50 p-0 border border-lithium-200 w-12">
                     <div className="flex items-center justify-center px-4 py-3 w-full">
                       <input 
                         type="checkbox" 
-                        className="w-4 h-4 text-brand-600 rounded border-gray-300 focus:ring-brand-500 cursor-pointer"
+                        className="w-4 h-4 text-nickel-600 rounded border-gray-300 focus:ring-nickel-500 cursor-pointer"
                         checked={sortedData.length > 0 && selectedRows.size === sortedData.length}
                         onChange={handleSelectAll}
                       />
                     </div>
                   </th>
-                  <th className="sticky left-12 z-10 bg-[#f9fafb] p-0 border border-[#e5e8eb] w-24">
+                  <th className="sticky left-12 z-10 bg-lithium-50 p-0 border border-lithium-200 w-24">
                     <button 
                       onClick={() => handleSort('code')}
-                      className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold text-[#4e5968] w-full hover:bg-[#f2f4f6] transition-colors group"
+                      className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold text-lithium-600 w-full hover:bg-lithium-100 transition-colors group"
                     >
                       계정코드
                       {sortConfig.key === 'code' ? (
-                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-brand-500" /> : <ArrowDown className="w-3 h-3 text-brand-500" />
+                        sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-nickel-500" /> : <ArrowDown className="w-3 h-3 text-nickel-500" />
                       ) : (
-                        <ArrowUpDown className="w-3 h-3 text-[#d1d6db] opacity-0 group-hover:opacity-100" />
+                        <ArrowUpDown className="w-3 h-3 text-lithium-300 opacity-0 group-hover:opacity-100" />
                       )}
                     </button>
                   </th>
-                  <th className="sticky left-36 z-10 bg-[#f9fafb] p-0 border border-[#e5e8eb]" style={{ width: colWidths.name, minWidth: colWidths.name }}>
+                  <th className="sticky left-36 z-10 bg-lithium-50 p-0 border border-lithium-200" style={{ width: colWidths.name, minWidth: colWidths.name }}>
                     <ResizableHeader 
                       title="계정명" 
                       width={colWidths.name} 
@@ -1567,25 +1567,25 @@ export default function BudgetCreation() {
                   </th>
                   {selectedDeptCode === 'all' ? (
                     <>
-                      <th className="bg-[#f9fafb] p-0 border border-[#e5e8eb] w-28">
-                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-[#4e5968] w-full">
+                      <th className="bg-lithium-50 p-0 border border-lithium-200 w-28">
+                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full">
                           예산통제구분
                         </div>
                       </th>
-                      <th className="bg-[#f9fafb] p-0 border border-[#e5e8eb] w-28">
-                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-[#4e5968] w-full">
+                      <th className="bg-lithium-50 p-0 border border-lithium-200 w-28">
+                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full">
                           부서코드
                         </div>
                       </th>
-                      <th className="bg-[#f9fafb] p-0 border border-[#e5e8eb] w-36">
-                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-[#4e5968] w-full">
+                      <th className="bg-lithium-50 p-0 border border-lithium-200 w-36">
+                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full">
                           부서명
                         </div>
                       </th>
                     </>
                   ) : isDetailsExpanded && (
                     <>
-                      <th className="bg-[#f9fafb] p-0 border border-[#e5e8eb]" style={{ width: colWidths.detail, minWidth: colWidths.detail }}>
+                      <th className="bg-lithium-50 p-0 border border-lithium-200" style={{ width: colWidths.detail, minWidth: colWidths.detail }}>
                         <ResizableHeader 
                           title="예산상세내역" 
                           width={colWidths.detail} 
@@ -1593,7 +1593,7 @@ export default function BudgetCreation() {
                           onResize={(w) => setColWidths({...colWidths, detail: w})} 
                         />
                       </th>
-                      <th className="bg-[#f9fafb] p-0 border border-[#e5e8eb]" style={{ width: colWidths.calculation, minWidth: colWidths.calculation }}>
+                      <th className="bg-lithium-50 p-0 border border-lithium-200" style={{ width: colWidths.calculation, minWidth: colWidths.calculation }}>
                         <ResizableHeader 
                           title="산출법" 
                           width={colWidths.calculation} 
