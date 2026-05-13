@@ -5,6 +5,7 @@ import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_
 import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked, getSubmissionStatus } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
+import { inferBudgetTypeByAccountCode, inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 
 import { usePermission } from '../lib/permissions';
 
@@ -972,30 +973,34 @@ export default function BudgetCreation() {
         let wsData;
         if (selectedDeptCode === 'all') {
           wsData = [
-            ['계정코드', '계정명', '예산통제구분', '부서코드', '부서명', ...Array.from({length: 12}, (_, i) => `${i + 1}월`), '합계', '비고'],
+            ['연도', '계획구분', '예산유형', '관리구분', '작성부서', '귀속부서', '계정코드', '계정명', '연간금액', ...Array.from({length: 12}, (_, i) => `${i + 1}월`)],
             ...rows.map(row => [
+              year,
+              planType,
+              (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
+              row.managementCategory || inferManagementCategoryByAccountCode(row.code),
+              allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
+              deptName,
               row.code,
               row.name,
-              'D.부서',
-              row.attributedDeptCode,
-              deptName,
-              ...row.values,
               row.values.reduce((a: number, b: number) => a + b, 0),
-              row.remark || ''
+              ...row.values
             ])
           ];
         } else {
           wsData = [
-            ['계정코드', '계정명', '예산상세내역', '산출법', ...Array.from({length: 12}, (_, i) => `${i + 1}월`), '합계', '비고', '귀속부서'],
+            ['연도', '계획구분', '예산유형', '관리구분', '작성부서', '귀속부서', '계정코드', '계정명', '연간금액', ...Array.from({length: 12}, (_, i) => `${i + 1}월`)],
             ...rows.map(row => [
+              year,
+              planType,
+              (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
+              row.managementCategory || inferManagementCategoryByAccountCode(row.code),
+              allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
+              deptName,
               row.code,
               row.name,
-              row.detail || '',
-              row.calculation || '',
-              ...row.values,
               row.values.reduce((a: number, b: number) => a + b, 0),
-              row.remark || '',
-              deptName
+              ...row.values
             ])
           ];
         }
@@ -1014,16 +1019,18 @@ export default function BudgetCreation() {
       });
     } else {
       const wsData = [
-        ['계정코드', '계정명', '예산상세내역', '산출법', ...Array.from({length: 12}, (_, i) => `${i + 1}월`), '합계', '비고', '귀속부서'],
+        ['연도', '계획구분', '예산유형', '관리구분', '작성부서', '귀속부서', '계정코드', '계정명', '연간금액', ...Array.from({length: 12}, (_, i) => `${i + 1}월`)],
         ...data.map(row => [
+          year,
+          planType,
+          (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
+          row.managementCategory || inferManagementCategoryByAccountCode(row.code),
+          allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
+          allDepts.find((d: any) => d.code === row.attributedDeptCode)?.name || '',
           row.code,
           row.name,
-          row.detail || '',
-          row.calculation || '',
-          ...row.values,
           row.values.reduce((a: number, b: number) => a + b, 0),
-          row.remark || '',
-          allDepts.find(d => d.code === row.attributedDeptCode)?.name || ''
+          ...row.values
         ])
       ];
       const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -1488,6 +1495,60 @@ export default function BudgetCreation() {
                       />
                     </div>
                   </th>
+                  <th className="bg-lithium-50 p-0 border border-lithium-200 w-16">
+                    <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full whitespace-nowrap">
+                      연도
+                    </div>
+                  </th>
+                  <th className="bg-lithium-50 p-0 border border-lithium-200 w-20">
+                    <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full whitespace-nowrap">
+                      계획구분
+                    </div>
+                  </th>
+                  <th className="bg-lithium-50 p-0 border border-lithium-200 w-20">
+                    <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full whitespace-nowrap">
+                      예산유형
+                    </div>
+                  </th>
+                  <th className="bg-lithium-50 p-0 border border-lithium-200 w-24">
+                    <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full whitespace-nowrap">
+                      관리구분
+                    </div>
+                  </th>
+                  <th className="bg-lithium-50 p-0 border border-lithium-200 w-28">
+                    <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full whitespace-nowrap">
+                      작성부서
+                    </div>
+                  </th>
+                  <th className="bg-lithium-50 p-0 border border-lithium-200 w-28">
+                    <div className="flex flex-col w-full">
+                      <button 
+                        onClick={() => handleSort('dept')}
+                        className="flex items-center justify-center gap-1.5 px-4 pt-2 pb-1 text-xs font-semibold text-lithium-600 w-full hover:bg-lithium-100 transition-colors group border-b border-lithium-200"
+                      >
+                        귀속부서
+                        {sortConfig.key === 'dept' ? (
+                          sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-nickel-500" /> : <ArrowDown className="w-3 h-3 text-nickel-500" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-lithium-300 opacity-0 group-hover:opacity-100" />
+                        )}
+                      </button>
+                      {selectedDeptCode !== 'all' && (
+                        <div className="px-2 py-1 bg-white">
+                          <select 
+                            value={deptFilter}
+                            onChange={(e) => setDeptFilter(e.target.value)}
+                            className="w-full text-[10px] bg-lithium-50 border-none rounded p-1 focus:ring-1 focus:ring-nickel-500 outline-none font-medium"
+                          >
+                            <option value="all">전체 부서</option>
+                            {allDepts.filter((d: any) => d.code !== '99999').map((dept: any) => (
+                              <option key={dept.code} value={dept.code}>{dept.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </th>
                   <th className="sticky left-12 z-10 bg-lithium-50 p-0 border border-lithium-200 w-24">
                     <button 
                       onClick={() => handleSort('code')}
@@ -1509,60 +1570,12 @@ export default function BudgetCreation() {
                       onResize={handleNameColResize} 
                     />
                   </th>
-                  {selectedDeptCode === 'all' ? (
-                    <>
-                      <th className="bg-lithium-50 p-0 border border-lithium-200 w-28">
-                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full">
-                          예산통제구분
-                        </div>
-                      </th>
-                      <th className="bg-lithium-50 p-0 border border-lithium-200 w-28">
-                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full">
-                          부서코드
-                        </div>
-                      </th>
-                      <th className="bg-lithium-50 p-0 border border-lithium-200 w-36">
-                        <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-lithium-600 w-full">
-                          부서명
-                        </div>
-                      </th>
-                    </>
-                  ) : isDetailsExpanded && (
-                    <>
-                      <th className="bg-lithium-50 p-0 border border-lithium-200" style={{ width: colWidths.detail, minWidth: colWidths.detail }}>
-                        <ResizableHeader 
-                          title="예산상세내역" 
-                          width={colWidths.detail} 
-                          minWidth={100} 
-                          onResize={(w) => setColWidths({...colWidths, detail: w})} 
-                        />
-                      </th>
-                      <th className="bg-lithium-50 p-0 border border-lithium-200" style={{ width: colWidths.calculation, minWidth: colWidths.calculation }}>
-                        <ResizableHeader 
-                          title="산출법" 
-                          width={colWidths.calculation} 
-                          minWidth={100} 
-                          onResize={(w) => setColWidths({...colWidths, calculation: w})} 
-                        />
-                      </th>
-                    </>
-                  )}
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <th key={i} className="bg-[#f9fafb] p-0 border border-[#e5e8eb]" style={{ width: colWidths.months[i], minWidth: colWidths.months[i] }}>
-                      <ResizableHeader 
-                        title={`${i + 1}월`} 
-                        width={colWidths.months[i]} 
-                        minWidth={60} 
-                        onResize={(w) => handleMonthColResize(i, w)} 
-                      />
-                    </th>
-                  ))}
                   <th className="bg-brand-50 p-0 border border-[#e5e8eb] w-32">
                     <button 
                       onClick={() => handleSort('total')}
                       className="flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold text-brand-700 w-full hover:bg-brand-100 transition-colors group"
                     >
-                      합계
+                      연간금액
                       {sortConfig.key === 'total' ? (
                         sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-brand-500" /> : <ArrowDown className="w-3 h-3 text-brand-500" />
                       ) : (
@@ -1570,41 +1583,17 @@ export default function BudgetCreation() {
                       )}
                     </button>
                   </th>
-                  <th className="bg-[#f9fafb] p-0 border border-[#e5e8eb] w-48">
-                    <div className="flex items-center justify-center px-4 py-3 text-xs font-semibold text-[#4e5968] w-full">
-                      비고
-                    </div>
-                  </th>
-                  {selectedDeptCode !== 'all' && (
-                    <th className="bg-[#f9fafb] p-0 border border-[#e5e8eb] w-40">
-                      <div className="flex flex-col w-full">
-                        <button 
-                          onClick={() => handleSort('dept')}
-                          className="flex items-center justify-center gap-1.5 px-4 pt-2 pb-1 text-xs font-semibold text-[#4e5968] w-full hover:bg-[#f2f4f6] transition-colors group border-b border-[#e5e8eb]"
-                        >
-                          귀속부서
-                          {sortConfig.key === 'dept' ? (
-                            sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 text-brand-500" /> : <ArrowDown className="w-3 h-3 text-brand-500" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-[#d1d6db] opacity-0 group-hover:opacity-100" />
-                          )}
-                        </button>
-                        <div className="px-2 py-1 bg-white">
-                          <select 
-                            value={deptFilter}
-                            onChange={(e) => setDeptFilter(e.target.value)}
-                            className="w-full text-[10px] bg-[#f2f4f6] border-none rounded p-1 focus:ring-1 focus:ring-brand-500 outline-none font-medium"
-                          >
-                            <option value="all">전체 부서</option>
-                            {allDepts.filter(d => d.code !== '99999').map(dept => (
-                              <option key={dept.code} value={dept.code}>{dept.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <th key={i} className="bg-[#f9fafb] p-0 border border-[#e5e8eb]" style={{ width: colWidths.months[i], minWidth: colWidths.months[i] }}>
+                      <ResizableHeader 
+                        title={`${i + 1}월`} 
+                        width={colWidths.months[i]} 
+                        minWidth={60} 
+                        onResize={(w: number) => handleMonthColResize(i, w)} 
+                      />
                     </th>
-                  )}
-                </tr>
+                  ))}
+</tr>
               </thead>
               <tbody>
                 {filteredAndSortedData.map((row, rowIndex) => {
@@ -1645,50 +1634,38 @@ export default function BudgetCreation() {
                           />
                         </div>
                       </td>
+                      <td className="bg-white px-4 py-2 text-sm border border-[#e5e8eb] text-center align-top whitespace-nowrap">{year}</td>
+                      <td className="bg-white px-4 py-2 text-sm border border-[#e5e8eb] text-center align-top whitespace-nowrap">{planType}</td>
+                      <td className="bg-white px-4 py-2 text-sm border border-[#e5e8eb] text-center align-top whitespace-nowrap">
+                        {row.budgetType ? (row.budgetType === 'GENERAL' ? '일반' : '투자') : (inferBudgetTypeByAccountCode(row.code) === 'GENERAL' ? '일반' : '투자')}
+                      </td>
+                      <td className="bg-white px-4 py-2 text-sm border border-[#e5e8eb] text-center align-top whitespace-nowrap">
+                        {row.managementCategory || inferManagementCategoryByAccountCode(row.code)}
+                      </td>
+                      <td className="bg-white px-4 py-2 text-sm border border-[#e5e8eb] text-center align-top whitespace-nowrap">
+                        {allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '부서오류'}
+                      </td>
+                      <td className="bg-white p-0 border border-[#e5e8eb] text-center align-top">
+                        {selectedDeptCode !== 'all' ? (
+                          <select
+                            value={row.attributedDeptCode}
+                            onChange={(e) => handleAttributedDeptChange(row.id, e.target.value)}
+                            disabled={(row.isReadOnly && planType !== '실적') || isLocked}
+                            className={`w-full h-full min-h-[44px] px-3 py-2 text-sm text-[#191f28] bg-transparent outline-none focus:ring-2 focus:ring-brand-500 appearance-none font-medium text-center ${((row.isReadOnly && planType !== '실적') || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
+                          >
+                            {allDepts.filter((d: any) => d.code !== '99999').map((dept: any) => (
+                              <option key={dept.code} value={dept.code}>{dept.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="px-4 py-2 whitespace-nowrap">{deptName}</div>
+                        )}
+                      </td>
                       <td className={`sticky left-12 z-10 ${selectedRows.has(row.id) ? 'bg-brand-50' : (isHandedOver ? 'bg-red-50 text-red-700 font-bold' : (isReceived ? 'bg-[#FFFFCC] text-amber-700 font-bold' : 'bg-white text-[#4e5968]'))} px-4 py-2 text-sm border border-[#e5e8eb] text-center font-mono align-top`}>{row.code}</td>
                       <td className={`sticky left-36 z-10 ${selectedRows.has(row.id) ? 'bg-brand-50' : (isHandedOver ? 'bg-red-50' : (isReceived ? 'bg-[#FFFFCC]' : 'bg-white'))} px-4 py-2 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-center align-top`}>{row.name}</td>
-                      {selectedDeptCode === 'all' ? (
-                        <>
-                          <td className="bg-white px-4 py-3 text-sm text-[#191f28] border border-[#e5e8eb] text-center align-top">
-                            D.부서
-                          </td>
-                          <td className="bg-white px-4 py-3 text-sm text-[#191f28] border border-[#e5e8eb] text-center align-top">
-                            {row.attributedDeptCode}
-                          </td>
-                          <td className="bg-white px-4 py-3 text-sm text-[#191f28] border border-[#e5e8eb] text-center align-top">
-                            {deptName}
-                          </td>
-                        </>
-                      ) : isDetailsExpanded && (
-                        <>
-                          <td className="bg-white p-0 border border-[#e5e8eb] align-top">
-                            <textarea
-                              id={`cell-${rowIndex}-detail`}
-                              value={row.detail || ''}
-                              onChange={(e) => handleTextChange(row.id, 'detail', e.target.value)}
-                              onKeyDown={(e) => handleKeyDown(e, rowIndex, undefined, 'detail')}
-                              onFocus={() => setFocusedCell({ rowIndex, field: 'detail' })}
-                              readOnly={row.isReadOnly || isLocked}
-                              className={`w-full h-full min-h-[44px] px-4 py-3 text-sm text-[#191f28] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:z-20 relative bg-transparent resize ${(row.isReadOnly || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
-                              placeholder="상세내역 입력"
-                              rows={1}
-                            />
-                          </td>
-                          <td className="bg-white p-0 border border-[#e5e8eb] align-top">
-                            <textarea
-                              id={`cell-${rowIndex}-calculation`}
-                              value={row.calculation || ''}
-                              onChange={(e) => handleTextChange(row.id, 'calculation', e.target.value)}
-                              onKeyDown={(e) => handleKeyDown(e, rowIndex, undefined, 'calculation')}
-                              onFocus={() => setFocusedCell({ rowIndex, field: 'calculation' })}
-                              readOnly={row.isReadOnly || isLocked}
-                              className={`w-full h-full min-h-[44px] px-4 py-3 text-sm text-[#191f28] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:z-20 relative bg-transparent resize ${(row.isReadOnly || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
-                              placeholder="산출법 입력"
-                              rows={1}
-                            />
-                          </td>
-                        </>
-                      )}
+                      <td className="px-4 py-2 text-sm font-bold text-brand-700 border border-[#e5e8eb] text-right bg-brand-50/30 align-top">
+                        {rowTotal.toLocaleString()}
+                      </td>
                       {row.values.map((val: number, colIndex: number) => {
                         const actualKey = `${row.attributedDeptCode}_${row.sourceDeptCode || row.attributedDeptCode}_${row.code}`;
                         const actualVal = actualsMap.get(actualKey)?.[colIndex];
@@ -1730,36 +1707,6 @@ export default function BudgetCreation() {
                           </td>
                         );
                       })}
-                      <td className="px-4 py-2 text-sm font-bold text-brand-700 border border-[#e5e8eb] text-right bg-brand-50/30 align-top">
-                        {rowTotal.toLocaleString()}
-                      </td>
-                      <td className="bg-white p-0 border border-[#e5e8eb] align-top">
-                        <textarea
-                          id={`cell-${rowIndex}-remark`}
-                          value={row.remark || ''}
-                          onChange={(e) => handleTextChange(row.id, 'remark', e.target.value)}
-                          onKeyDown={(e) => handleKeyDown(e, rowIndex, undefined, 'remark')}
-                          onFocus={() => setFocusedCell({ rowIndex, field: 'remark' })}
-                          readOnly={row.isReadOnly || isLocked}
-                          className={`w-full h-full min-h-[44px] px-4 py-3 text-sm text-[#191f28] focus:outline-none focus:ring-2 focus:ring-brand-500 focus:z-20 relative bg-transparent resize ${(row.isReadOnly || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
-                          placeholder="비고 입력"
-                          rows={1}
-                        />
-                      </td>
-                      {selectedDeptCode !== 'all' && (
-                        <td className="p-0 border border-[#e5e8eb] align-top">
-                          <select
-                            value={row.attributedDeptCode}
-                            onChange={(e) => handleAttributedDeptChange(row.id, e.target.value)}
-                            disabled={(row.isReadOnly && planType !== '실적') || isLocked}
-                            className={`w-full h-full min-h-[44px] px-3 py-2 text-sm text-[#191f28] bg-transparent outline-none focus:ring-2 focus:ring-brand-500 appearance-none font-medium ${((row.isReadOnly && planType !== '실적') || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
-                          >
-                            {allDepts.filter(d => d.code !== '99999').map(dept => (
-                              <option key={dept.code} value={dept.code}>{dept.name}</option>
-                            ))}
-                          </select>
-                        </td>
-                      )}
                     </tr>
                     </React.Fragment>
                   );
@@ -1767,36 +1714,20 @@ export default function BudgetCreation() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={3} className="sticky left-0 z-10 bg-[#f2f4f6] px-4 py-3 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-center">
+                  <td colSpan={9} className="sticky left-0 z-10 bg-[#f2f4f6] px-4 py-3 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-center">
                     합계
                   </td>
-                  {selectedDeptCode === 'all' ? (
-                    <>
-                      <td className="bg-[#f2f4f6] border border-[#e5e8eb]"></td>
-                      <td className="bg-[#f2f4f6] border border-[#e5e8eb]"></td>
-                      <td className="bg-[#f2f4f6] border border-[#e5e8eb]"></td>
-                    </>
-                  ) : isDetailsExpanded && (
-                    <>
-                      <td className="bg-[#f2f4f6] border border-[#e5e8eb]"></td>
-                      <td className="bg-[#f2f4f6] border border-[#e5e8eb]"></td>
-                    </>
-                  )}
+                  <td className="bg-[#f2f4f6] px-4 py-3 text-sm font-bold text-brand-700 border border-[#e5e8eb] text-right">
+                    {filteredAndSortedData.filter(r => !r.isHandedOver).reduce((sum, row) => sum + row.values.reduce((a: number, b: number) => a + b, 0), 0).toLocaleString()}
+                  </td>
                   {Array.from({ length: 12 }).map((_, colIndex) => {
                     const colTotal = filteredAndSortedData.filter(r => !r.isHandedOver).reduce((sum, row) => sum + row.values[colIndex], 0);
                     return (
-                      <td key={colIndex} className="px-4 py-3 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-right bg-[#f2f4f6]">
+                      <td key={colIndex} className="bg-[#f2f4f6] px-4 py-3 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-right">
                         {colTotal.toLocaleString()}
                       </td>
                     );
                   })}
-                  <td className="px-4 py-3 text-sm font-bold text-brand-700 border border-[#e5e8eb] text-right bg-brand-100">
-                    {filteredAndSortedData.filter(r => !r.isHandedOver).reduce((sum, row) => sum + row.values.reduce((a: number, b: number) => a + b, 0), 0).toLocaleString()}
-                  </td>
-                  <td className="bg-[#f2f4f6] border border-[#e5e8eb]"></td>
-                  {selectedDeptCode !== 'all' && (
-                    <td className="bg-[#f2f4f6] border border-[#e5e8eb]"></td>
-                  )}
                 </tr>
               </tfoot>
             </table>

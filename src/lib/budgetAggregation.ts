@@ -4,12 +4,31 @@ import { INITIAL_CATEGORIES } from '../pages/AccountSelection';
 
 export interface BudgetRow {
   id?: number | string;
+  year?: string;
+  planType?: string;
+  
+  budgetType?: 'GENERAL' | 'INVESTMENT';
+  managementCategory?: '제조' | '판관' | '안전' | '환경' | '연구' | '투자';
+  
+  writerDeptCode?: string;
+  writerDeptName?: string;
+  
+  attributedDeptCode: string;
+  attributedDeptName?: string;
+  
   code: string;
   name?: string;
+  
+  accountCode?: string;
   accountName?: string;
-  attributedDeptCode: string;
+  
+  detail?: string;
+  calculation?: string;
+  
+  annualAmount?: number;
   values: number[];
-  sourceType?: string;
+  
+  sourceType?: 'MANUAL' | 'UPLOAD' | 'BUSINESS_ACTIVITY_AUTO' | 'TRANSFER';
   sourceFormulaId?: string;
 }
 

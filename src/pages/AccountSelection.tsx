@@ -570,6 +570,21 @@ export const INITIAL_CATEGORIES = [
     accounts: [
       { id: 'acc_B52900101', code: 'B52900101', name: '판관비_기타판매비' },
     ]
+  },
+  {
+    name: '투자 - 투자',
+    accounts: [
+      { id: 'acc_12310000', code: '12310000', name: '토지' },
+      { id: 'acc_12320000', code: '12320000', name: '건물' },
+      { id: 'acc_12330000', code: '12330000', name: '구축물' },
+      { id: 'acc_12340000', code: '12340000', name: '기계장치' },
+      { id: 'acc_12360000', code: '12360000', name: '공구와기구' },
+      { id: 'acc_12370000', code: '12370000', name: '비품' },
+      { id: 'acc_12390000', code: '12390000', name: '건설중인자산' },
+      { id: 'acc_12480000', code: '12480000', name: '기타무형자산' },
+      { id: 'acc_12480200', code: '12480200', name: '소프트웨어' },
+      { id: 'acc_12107401', code: '12107401', name: '임차보증금' },
+    ]
   }
 ];
 
