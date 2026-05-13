@@ -4,6 +4,7 @@ import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth, aggregateByDeptAccount } from '../lib/budgetAggregation';
 import { canViewSalaryAccounts, getViewableDeptCodes } from '../lib/permissions';
+import { isInvestmentAccount } from '../lib/accountMaster';
 
 // Components
 import { PageHeader } from '../components/ui/PageHeader';
@@ -31,7 +32,7 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => i);
 export default function BudgetOverrunCheck() {
   const [year, setYear] = useState('2026');
   const [planType, setPlanType] = useState('경영계획');
-  const [quarter, setQuarter] = useState('1Q');
+  const [period, setPeriod] = useState('1Q');
   const [selectedDeptCode, setSelectedDeptCode] = useState('전체');
   const [accountCategory, setAccountCategory] = useState('전체');
   const [overrunFilter, setOverrunFilter] = useState('초과 항목만');
@@ -73,7 +74,12 @@ export default function BudgetOverrunCheck() {
 
     const budgetRows = getBudgetRowsByDeptYearPlan(deptCodes, year, planType);
     const actualRows = getActualRowsByYear(year);
-    const qMonths = quarter === '전체' ? MONTHS : QUARTERS[quarter];
+    let qMonths = MONTHS;
+    if (period in QUARTERS) {
+      qMonths = QUARTERS[period];
+    } else if (period.endsWith('월')) {
+      qMonths = [parseInt(period) - 1];
+    }
 
     const rawData = aggregateByDeptAccount({
       budgetRows,
@@ -89,6 +95,10 @@ export default function BudgetOverrunCheck() {
       if (accountCategory === '판관' && !row.accountCode.startsWith('B')) return false;
       if (accountCategory === '인건비 제외' && isSalaryAccountCode(row.accountCode)) return false;
       if (accountCategory === '인건비만 보기' && !isSalaryAccountCode(row.accountCode)) return false;
+      
+      const isInvest = typeof isInvestmentAccount !== 'undefined' ? isInvestmentAccount(row.accountCode) : false;
+      if (accountCategory === '투자예산' && !isInvest) return false;
+      if (accountCategory === '일반비용' && isInvest) return false;
 
       // 2. Filter by overrun status
       if (overrunFilter === '초과 항목만' && row.status === '정상') return false;
@@ -164,7 +174,7 @@ export default function BudgetOverrunCheck() {
       XLSX.utils.book_append_sheet(wb, wsDetails, '월별상세');
       
       const deptName = selectedDeptCode === '전체' ? '전체부서' : (depts.find(d => d.code === selectedDeptCode)?.name || selectedDeptCode);
-      XLSX.writeFile(wb, `예산초과점검_${year}_${planType}_${quarter}_${deptName}.xlsx`);
+      XLSX.writeFile(wb, `예산초과점검_${year}_${planType}_${period}_${deptName}.xlsx`);
     });
   };
 
@@ -203,13 +213,25 @@ export default function BudgetOverrunCheck() {
             <option value="2차RP">2차RP</option>
           </AppSelect>
         </FilterItem>
-        <FilterItem label="분기">
-          <AppSelect value={quarter} onChange={(e) => setQuarter(e.target.value)}>
-            <option value="1Q">1Q</option>
-            <option value="2Q">2Q</option>
-            <option value="3Q">3Q</option>
-            <option value="4Q">4Q</option>
-            <option value="전체">전체</option>
+        <FilterItem label="분석기간">
+          <AppSelect value={period} onChange={(e) => setPeriod(e.target.value)}>
+            <option value="전체">전체 연도</option>
+            <option value="1Q">1분기</option>
+            <option value="2Q">2분기</option>
+            <option value="3Q">3분기</option>
+            <option value="4Q">4분기</option>
+            <option value="1월">1월</option>
+            <option value="2월">2월</option>
+            <option value="3월">3월</option>
+            <option value="4월">4월</option>
+            <option value="5월">5월</option>
+            <option value="6월">6월</option>
+            <option value="7월">7월</option>
+            <option value="8월">8월</option>
+            <option value="9월">9월</option>
+            <option value="10월">10월</option>
+            <option value="11월">11월</option>
+            <option value="12월">12월</option>
           </AppSelect>
         </FilterItem>
         <FilterItem label="부서">
@@ -223,6 +245,8 @@ export default function BudgetOverrunCheck() {
         <FilterItem label="계정구분">
           <AppSelect value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)}>
             <option value="전체">전체</option>
+            <option value="일반비용">일반비용</option>
+            <option value="투자예산">투자예산</option>
             <option value="제조">제조</option>
             <option value="판관">판관</option>
             <option value="인건비 제외">인건비 제외</option>

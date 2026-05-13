@@ -9,6 +9,7 @@ import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } 
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
+import { isInvestmentAccount } from '../lib/accountMaster';
 import { ChartCard } from '../components/charts/ChartCard';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 
@@ -589,7 +590,13 @@ export default function VarianceComparison() {
               }
 
               if (selectedAccountCategory !== 'all') {
-                if (catName !== selectedAccountCategory) return;
+                if (selectedAccountCategory === '투자예산') {
+                  if (!isInvestmentAccount(item.accountCode)) return;
+                } else if (selectedAccountCategory === '일반비용') {
+                  if (isInvestmentAccount(item.accountCode)) return;
+                } else {
+                  if (catName !== selectedAccountCategory) return;
+                }
               }
 
               const amount = item.completed || 0;
@@ -654,7 +661,13 @@ export default function VarianceComparison() {
               }
 
               if (selectedAccountCategory !== 'all') {
-                if (catName !== selectedAccountCategory) return;
+                if (selectedAccountCategory === '투자예산') {
+                  if (!isInvestmentAccount(row.code)) return;
+                } else if (selectedAccountCategory === '일반비용') {
+                  if (isInvestmentAccount(row.code)) return;
+                } else {
+                  if (catName !== selectedAccountCategory) return;
+                }
               }
 
               let amount = 0;
@@ -882,6 +895,8 @@ export default function VarianceComparison() {
               className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
               <option value="all">전체 계정</option>
+              <option value="일반비용">일반비용</option>
+              <option value="투자예산">투자예산</option>
               {INITIAL_CATEGORIES.map(cat => (
                 <option key={cat.name} value={cat.name}>{cat.name}</option>
               ))}

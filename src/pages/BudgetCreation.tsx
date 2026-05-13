@@ -119,6 +119,11 @@ export default function BudgetCreation() {
     key: '',
     direction: null
   });
+  const [viewFilters, setViewFilters] = useState({
+    hideEmptyRows: false,
+    showOnlyWithAmount: false,
+    showOnlyNeedsInput: false
+  });
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [colWidths, setColWidths] = useState({
     name: 128,
@@ -416,9 +421,33 @@ export default function BudgetCreation() {
       });
     } else {
       rows.forEach((row, rowIndex) => {
-        if (rowIndex < newData.length) {
+        if (rowIndex < newData.length && row.length > 0) {
+          // 24컬럼: 선택, 연도, 계획구분, 투자여부, 일반구분, 작성부서, 귀속부서, 계정과목코드, 계정과목, 내역, 산출기준, 금액, 1월~12월
+          if (row.length >= 24) {
+            const budgetTypeStr = row[3];
+            const mgmtCategoryStr = row[4];
+            
+            newData[rowIndex].detail = row[9] || newData[rowIndex].detail || '';
+            newData[rowIndex].calculation = row[10] || newData[rowIndex].calculation || '';
+            
+            const amountTotal = parseFloat((row[11] || '0').replace(/,/g, '')) || 0;
+            
+            let monthSum = 0;
+            for (let i = 0; i < 12; i++) {
+              if (row[12 + i] !== undefined) {
+                const val = parseFloat(row[12 + i].replace(/,/g, ''));
+                if (!isNaN(val)) {
+                  newData[rowIndex].values[i] = val;
+                  monthSum += val;
+                }
+              }
+            }
+            if (monthSum === 0 && amountTotal > 0) {
+              // 1월~12월 값이 모두 비어있고 금액만 있으면 배분 필요 상태
+            }
+          } 
           // 12개월 데이터만 복사한 경우
-          if (row.length === 12) {
+          else if (row.length === 12) {
             row.forEach((cell, colIndex) => {
               const val = parseFloat(cell.replace(/,/g, ''));
               if (!isNaN(val)) {
@@ -426,33 +455,7 @@ export default function BudgetCreation() {
               }
             });
           } 
-          // 계정코드, 계정명 포함 전체를 복사한 경우 (16개 이상)
-          else if (row.length >= 16) {
-            newData[rowIndex].detail = row[2] || '';
-            newData[rowIndex].calculation = row[3] || '';
-            for (let i = 0; i < 12; i++) {
-              if (row[4 + i] !== undefined) {
-                const val = parseFloat(row[4 + i].replace(/,/g, ''));
-                if (!isNaN(val)) {
-                  newData[rowIndex].values[i] = val;
-                }
-              }
-            }
-          }
-          // 상세내역, 산출법, 12개월 데이터를 복사한 경우 (14개)
-          else if (row.length >= 14) {
-            newData[rowIndex].detail = row[0] || '';
-            newData[rowIndex].calculation = row[1] || '';
-            for (let i = 0; i < 12; i++) {
-              if (row[2 + i] !== undefined) {
-                const val = parseFloat(row[2 + i].replace(/,/g, ''));
-                if (!isNaN(val)) {
-                  newData[rowIndex].values[i] = val;
-                }
-              }
-            }
-          }
-          // 그 외의 경우 (기존 로직 유지하되, 숫자 데이터 위주로 처리)
+          // 그 외의 경우 (숫자 데이터 위주로 처리)
           else {
             row.forEach((cell, colIndex) => {
               const val = parseFloat(cell.replace(/,/g, ''));
@@ -794,6 +797,17 @@ export default function BudgetCreation() {
         if (isOnlyZeros && !hasActuals) {
           return false;
         }
+      }
+
+      // 상태 필터 적용
+      if (viewFilters.hideEmptyRows && !hasPlan && !hasActuals) {
+        return false;
+      }
+      if (viewFilters.showOnlyWithAmount && !hasPlan) {
+        return false;
+      }
+      if (viewFilters.showOnlyNeedsInput && hasPlan) {
+        return false; // 이미 금액이 있으면 입력 필요 아님
       }
 
       return hasActuals || hasPlan || isSelected;
@@ -1454,20 +1468,54 @@ export default function BudgetCreation() {
 
       {/* Grid Area */}
       <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b border-lithium-200 flex justify-between items-center bg-lithium-50">
-          <div className="flex items-center gap-4">
+        <div className="px-6 py-4 border-b border-lithium-200 flex flex-wrap justify-between items-center bg-lithium-50 gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <h2 className="text-lg font-bold text-eco-black">{currentDept.name} 예산 입력 그리드</h2>
+            
+            <div className="flex items-center gap-2 bg-white px-2 py-1.5 rounded-lg border border-lithium-200">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-lithium-600 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="rounded border-lithium-300 text-brand-600 focus:ring-brand-500"
+                  checked={viewFilters.hideEmptyRows}
+                  onChange={(e) => setViewFilters(prev => ({...prev, hideEmptyRows: e.target.checked}))}
+                />
+                빈 row 숨기기
+              </label>
+              <div className="w-px h-4 bg-lithium-200 mx-1"></div>
+              <label className="flex items-center gap-1.5 text-xs font-bold text-lithium-600 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="rounded border-lithium-300 text-brand-600 focus:ring-brand-500"
+                  checked={viewFilters.showOnlyWithAmount}
+                  onChange={(e) => setViewFilters(prev => ({...prev, showOnlyWithAmount: e.target.checked}))}
+                />
+                금액 있는 계정만
+              </label>
+              <div className="w-px h-4 bg-lithium-200 mx-1"></div>
+              <label className="flex items-center gap-1.5 text-xs font-bold text-lithium-600 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="rounded border-lithium-300 text-brand-600 focus:ring-brand-500"
+                  checked={viewFilters.showOnlyNeedsInput}
+                  onChange={(e) => setViewFilters(prev => ({...prev, showOnlyNeedsInput: e.target.checked}))}
+                />
+                입력 필요 계정만
+              </label>
+            </div>
+            
             <button 
               onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
-              className="flex items-center justify-center w-6 h-6 rounded bg-white border border-lithium-300 text-lithium-600 hover:bg-lithium-100"
-              title={isDetailsExpanded ? "상세내역/산출법 접기" : "상세내역/산출법 펼치기"}
+              className={`flex items-center justify-center px-3 py-1.5 rounded text-xs font-bold border transition-colors ${isDetailsExpanded ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-white border-lithium-300 text-lithium-600 hover:bg-lithium-100'}`}
             >
-              {isDetailsExpanded ? '-' : '+'}
+              {isDetailsExpanded ? "상세 패널 숨기기" : "상세 패널 펼치기"}
             </button>
           </div>
-          <div className="flex items-center text-xs text-lithium-500">
-            <ClipboardPaste className="w-4 h-4 mr-1" />
-            엑셀에서 복사(Ctrl+C) 후 그리드에 붙여넣기(Ctrl+V) 가능
+          <div className="flex items-center gap-3">
+            <div className="flex items-center text-xs text-lithium-500">
+              <ClipboardPaste className="w-4 h-4 mr-1" />
+              엑셀에서 복사(Ctrl+C) 후 그리드에 붙여넣기(Ctrl+V) 가능
+            </div>
           </div>
         </div>
         
@@ -1477,8 +1525,9 @@ export default function BudgetCreation() {
             <p>'예산 계정 선택' 메뉴에서 {currentDept.name}이 사용할 계정을 먼저 선택하고 저장해주세요.</p>
           </div>
         ) : (
+          <div className="flex flex-row overflow-hidden flex-1 group">
           <div 
-            className="overflow-x-auto p-4"
+            className="overflow-x-auto p-4 flex-1"
             ref={gridRef}
             onPaste={handlePaste}
           >
@@ -1662,7 +1711,9 @@ export default function BudgetCreation() {
                         )}
                       </td>
                       <td className={`sticky left-12 z-10 ${selectedRows.has(row.id) ? 'bg-brand-50' : (isHandedOver ? 'bg-red-50 text-red-700 font-bold' : (isReceived ? 'bg-[#FFFFCC] text-amber-700 font-bold' : 'bg-white text-[#4e5968]'))} px-4 py-2 text-sm border border-[#e5e8eb] text-center font-mono align-top`}>{row.code}</td>
-                      <td className={`sticky left-36 z-10 ${selectedRows.has(row.id) ? 'bg-brand-50' : (isHandedOver ? 'bg-red-50' : (isReceived ? 'bg-[#FFFFCC]' : 'bg-white'))} px-4 py-2 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-center align-top`}>{row.name}</td>
+                      <td className={`sticky left-36 z-10 ${selectedRows.has(row.id) ? 'bg-brand-50' : (isHandedOver ? 'bg-red-50' : (isReceived ? 'bg-[#FFFFCC]' : 'bg-white'))} px-4 py-2 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-center align-top`}>
+                        <div className="line-clamp-2 w-full text-left" title={row.name}>{row.name}</div>
+                      </td>
                       <td className="px-4 py-2 text-sm font-bold text-brand-700 border border-[#e5e8eb] text-right bg-brand-50/30 align-top">
                         {rowTotal.toLocaleString()}
                       </td>
@@ -1686,7 +1737,7 @@ export default function BudgetCreation() {
                                 onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
                                 onFocus={() => setFocusedCell({ rowIndex, colIndex })}
                                 readOnly={row.isReadOnly || isLocked}
-                                className={`w-full h-full min-h-[44px] px-4 py-3 text-right text-sm outline-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:z-20 relative bg-transparent text-[#191f28] ${(row.isReadOnly || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
+                                className={`w-full h-full min-h-[44px] px-4 py-3 text-right text-sm outline-none focus:outline-none focus:ring-2 focus:ring-brand-500 focus:z-20 relative bg-transparent text-[#191f28] tabular-nums ${val === 0 ? 'text-opacity-30' : 'font-bold'} ${(row.isReadOnly || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''} ${val !== 0 && !row.isReadOnly && !isLocked ? 'bg-blue-50/10' : ''}`}
                                 placeholder="0"
                               />
                               {planType === '실적' && row.budgetValues && row.budgetValues[colIndex] !== 0 && (
@@ -1731,6 +1782,72 @@ export default function BudgetCreation() {
                 </tr>
               </tfoot>
             </table>
+          </div>
+          {/* Detail Panel */}
+          {isDetailsExpanded && (
+            <div className="w-[300px] flex-shrink-0 border-l border-lithium-200 bg-lithium-50 flex flex-col h-full overflow-y-auto">
+              <div className="p-4 border-b border-lithium-200 sticky top-0 bg-lithium-50 z-10 flex justify-between items-center">
+                <h3 className="font-bold text-eco-black text-sm">상세 내역</h3>
+                <button onClick={() => setIsDetailsExpanded(false)} className="text-lithium-500 hover:text-lithium-700">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 flex-1 space-y-4">
+                {selectedRows.size === 1 ? (
+                  data.filter(r => selectedRows.has(r.id)).map(selectedRow => {
+                    return (
+                      <div key={selectedRow.id} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-lithium-600 mb-1">계정과목</label>
+                          <div className="text-sm font-medium text-eco-black overflow-hidden text-ellipsis whitespace-nowrap" title={selectedRow.name}>
+                            [{selectedRow.code}] {selectedRow.name}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-lithium-600 mb-1">내역</label>
+                          <textarea
+                            value={selectedRow.detail || ''}
+                            onChange={(e) => handleTextChange(selectedRow.id, 'detail', e.target.value)}
+                            disabled={selectedRow.isReadOnly || isLocked}
+                            className="w-full text-sm border-lithium-200 rounded p-2 min-h-[80px] outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-lithium-100 disabled:text-lithium-500"
+                            placeholder="상세 내역 입력..."
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-lithium-600 mb-1">산출기준</label>
+                          <textarea
+                            value={selectedRow.calculation || ''}
+                            onChange={(e) => handleTextChange(selectedRow.id, 'calculation', e.target.value)}
+                            disabled={selectedRow.isReadOnly || isLocked}
+                            className="w-full text-sm border-lithium-200 rounded p-2 min-h-[80px] outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-lithium-100 disabled:text-lithium-500"
+                            placeholder="산출기준 입력..."
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-lithium-600 mb-1">비고 (메모)</label>
+                          <textarea
+                            value={selectedRow.remark || ''}
+                            onChange={(e) => handleTextChange(selectedRow.id, 'remark', e.target.value)}
+                            disabled={selectedRow.isReadOnly || isLocked}
+                            className="w-full text-sm border-lithium-200 rounded p-2 min-h-[60px] outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-lithium-100 disabled:text-lithium-500"
+                            placeholder="메모 입력..."
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : selectedRows.size > 1 ? (
+                  <div className="text-sm text-lithium-500 text-center py-10">
+                    단일 행을 선택하면 상세 내역을 편집할 수 있습니다.
+                  </div>
+                ) : (
+                  <div className="text-sm text-lithium-500 text-center py-10">
+                    그리드에서 행을 선택해주세요.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           </div>
         )}
       </div>
