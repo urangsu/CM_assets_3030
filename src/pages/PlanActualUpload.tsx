@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { Upload, Clipboard, Trash2, Save, Calendar, Search, X, Edit3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
+import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 
 interface ActualData {
@@ -152,7 +153,7 @@ export default function PlanActualUpload() {
 
   useEffect(() => {
     if (planType === '실적') {
-      const savedData = localStorage.getItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`);
+      const savedData = localStorage.getItem(getActualDataKey(year));
       if (savedData) {
         let actualData: ActualData[] = JSON.parse(savedData);
         
@@ -183,7 +184,7 @@ export default function PlanActualUpload() {
       let idCounter = 1;
 
       allDepts.forEach(dept => {
-        const key = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}_${year}_${planType}`;
+        const key = getBudgetDataKey(dept.code, year, planType);
         const budgetRows = JSON.parse(localStorage.getItem(key) || '[]');
         
         budgetRows.forEach((row: any) => {
@@ -345,7 +346,7 @@ export default function PlanActualUpload() {
 
   const handleSave = () => {
     if (planType === '실적') {
-      localStorage.setItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`, JSON.stringify(data));
+      localStorage.setItem(getActualDataKey(year), JSON.stringify(data));
       setAlertModal({ isOpen: true, message: '실적 데이터가 저장되었습니다.' });
     } else {
       // Group data by usageCode
@@ -361,7 +362,7 @@ export default function PlanActualUpload() {
 
       deptsToUpdate.forEach(dept => {
         const deptCode = dept.code;
-        const key = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${planType}`;
+        const key = getBudgetDataKey(deptCode, year, planType);
         const deptData = groupedByDept.get(deptCode) || [];
         
         const newBudgetRows: any[] = [];
@@ -408,17 +409,17 @@ export default function PlanActualUpload() {
         if (planType === '실적') {
           if (currentUser?.code === '99999') {
             setData([]);
-            localStorage.removeItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`);
+            localStorage.removeItem(getActualDataKey(year));
           } else {
             const remainingData = data.filter(item => !viewableDeptCodes.includes(item.usageCode));
             setData(remainingData);
-            localStorage.setItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`, JSON.stringify(remainingData));
+            localStorage.setItem(getActualDataKey(year), JSON.stringify(remainingData));
           }
         } else {
           // Clear budget data for relevant depts
           const deptsToClear = currentUser?.code === '99999' ? getAllDepartments() : viewableDepts;
           deptsToClear.forEach(dept => {
-            localStorage.removeItem(`${STORAGE_KEYS.BUDGET_DATA}_${dept.code}_${year}_${planType}`);
+            localStorage.removeItem(getBudgetDataKey(dept.code, year, planType));
           });
           setData([]);
         }

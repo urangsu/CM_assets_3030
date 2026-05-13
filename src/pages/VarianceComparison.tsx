@@ -6,6 +6,7 @@ import pptxgen from 'pptxgenjs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
+import { getBudgetDataKey } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 
 export default function VarianceComparison() {
@@ -547,7 +548,7 @@ export default function VarianceComparison() {
           // Load saved actuals to get the overridden attributedDeptCode
           const savedActualsMap = new Map<string, string>();
           allDepts.forEach(d => {
-            const key = `${STORAGE_KEYS.BUDGET_DATA}_${d.code}_${year}_실적`;
+            const key = getBudgetDataKey(d.code, year, '실적');
             try {
               const saved = JSON.parse(localStorage.getItem(key) || '[]');
               saved.forEach((row: any) => {
@@ -642,7 +643,8 @@ export default function VarianceComparison() {
         const internalAggregated = new Map<string, { deptCode: string, accountCode: string, accountName: string, amount: number }>();
 
         allDepts.forEach(dept => {
-          const savedDataStr = localStorage.getItem(`${STORAGE_KEYS.BUDGET_DATA}_${dept.code}_${year}_${planType}`);
+          const savedDataStr = localStorage.getItem(getBudgetDataKey(dept.code, year, planType));
+          // Keep oldKey as fallback for migration support
           const oldKey = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}`;
           const dataStr = savedDataStr || (year === '2026' && planType === '경영계획' ? localStorage.getItem(oldKey) : null);
 

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, MouseEvent } from 'react';
 import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
+import { getBudgetDataKey, getSubmissionStatusKey } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 
 // Resizable Header Component
@@ -242,7 +243,7 @@ export default function BudgetCreation() {
     // Load saved actuals to get the overridden attributedDeptCode
     const savedActualsMap = new Map<string, string>();
     allDepts.forEach(d => {
-      const key = `${STORAGE_KEYS.BUDGET_DATA}_${d.code}_${year}_실적`;
+      const key = getBudgetDataKey(d.code, year, '실적');
       try {
         const saved = JSON.parse(localStorage.getItem(key) || '[]');
         saved.forEach((row: any) => {
@@ -304,7 +305,7 @@ export default function BudgetCreation() {
         : [allDepts.find(d => d.code === selectedDeptCode)].filter(Boolean) as any[];
 
       deptsToLoad.forEach(dept => {
-        const key = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}_${year}_${planType === '실적' ? '경영계획' : planType}`;
+        const key = getBudgetDataKey(dept.code, year, planType === '실적' ? '경영계획' : planType);
         const savedData = localStorage.getItem(key);
         if (savedData) {
           budgetRows = [...budgetRows, ...JSON.parse(savedData)];
@@ -1109,7 +1110,7 @@ export default function BudgetCreation() {
       showAlert('전체 보기 모드에서는 저장이 불가능합니다. 개별 부서를 선택해주세요.');
       return;
     }
-    const key = `${STORAGE_KEYS.BUDGET_DATA}_${selectedDeptCode}_${year}_${planType}`;
+    const key = getBudgetDataKey(selectedDeptCode, year, planType);
     localStorage.setItem(key, JSON.stringify(data));
     showAlert('예산 데이터가 임시 저장되었습니다.');
   };
@@ -1120,7 +1121,7 @@ export default function BudgetCreation() {
       return;
     }
     showConfirm('정말 초기화하시겠습니까?', () => {
-      const key = `${STORAGE_KEYS.BUDGET_DATA}_${selectedDeptCode}_${year}_${planType}`;
+      const key = getBudgetDataKey(selectedDeptCode, year, planType);
       localStorage.removeItem(key);
       setReloadTrigger(prev => prev + 1);
       showAlert('초기화되었습니다.');
@@ -1133,7 +1134,7 @@ export default function BudgetCreation() {
       return;
     }
     showConfirm('작성한 예산을 상신하시겠습니까? 상신 후에는 수정이 제한될 수 있습니다.', async () => {
-      const key = `${STORAGE_KEYS.BUDGET_DATA}_${selectedDeptCode}_${year}_${planType}`;
+      const key = getBudgetDataKey(selectedDeptCode, year, planType);
       localStorage.setItem(key, JSON.stringify(data));
       
       // Save submission status

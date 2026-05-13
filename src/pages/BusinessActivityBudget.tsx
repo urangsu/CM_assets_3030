@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Download, Save, Send, Trash2, Plus, Building2, FileDown, Divide, Copy } from 'lucide-react';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
+import { getBudgetDataKey } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { Navigate, useNavigate } from 'react-router-dom';
 
@@ -181,7 +182,7 @@ export default function BusinessActivityBudget() {
         delete newHeadcounts[deptCode];
         
         // Immediately remove from budget data
-        const storageKey = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}`;
+        const storageKey = getBudgetDataKey(deptCode, year, planType);
         const existingDataStr = localStorage.getItem(storageKey);
         if (existingDataStr) {
           let budgetData: any[] = JSON.parse(existingDataStr);
@@ -223,7 +224,7 @@ export default function BusinessActivityBudget() {
     
     // 1. First, remove these accounts from ALL departments to clean up any orphaned data
     allDepts.forEach(dept => {
-      const storageKey = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}`;
+      const storageKey = getBudgetDataKey(dept.code, year, planType);
       const existingDataStr = localStorage.getItem(storageKey);
       if (existingDataStr) {
         let budgetData: any[] = JSON.parse(existingDataStr);
@@ -238,7 +239,7 @@ export default function BusinessActivityBudget() {
     Object.keys(headcounts).forEach(deptCode => {
       const deptHeadcounts = headcounts[deptCode];
       const category = deptHeadcounts.category; // '제조' | '판관'
-      const storageKey = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}`;
+      const storageKey = getBudgetDataKey(deptCode, year, planType);
       const existingDataStr = localStorage.getItem(storageKey);
       let budgetData: any[] = existingDataStr ? JSON.parse(existingDataStr) : [];
 
@@ -287,7 +288,7 @@ export default function BusinessActivityBudget() {
       
       const targetAccountCodes = ['A60624102', 'B52224102', 'A60601123', 'B52201123', 'A60601155', 'B52201155'];
       allDepts.forEach(dept => {
-        const storageKey = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}`;
+        const storageKey = getBudgetDataKey(dept.code, year, planType);
         const existingDataStr = localStorage.getItem(storageKey);
         if (existingDataStr) {
           let budgetData: any[] = JSON.parse(existingDataStr);
