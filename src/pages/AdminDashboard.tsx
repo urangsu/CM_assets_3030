@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Users, Upload, FileUp, Plus, MoreVertical, X, Calendar, FileText, CheckCircle2, Clock, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, Upload, FileUp, Plus, MoreVertical, X, Calendar, FileText, CheckCircle2, Clock, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
+import { isSubmittedLike } from '../lib/storageKeys';
+import { BackupRepository } from '../repositories/BackupRepository';
 
 export default function AdminDashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -61,7 +63,7 @@ export default function AdminDashboard() {
 
   const submittedDepts = targetDepts.filter(dept => {
     const status = submissionStatuses[`${dept.code}_${submissionYear}_${submissionPlanType}`];
-    return status && status.submitted;
+    return isSubmittedLike(status);
   });
 
   const submissionCount = submittedDepts.length;
@@ -338,6 +340,44 @@ export default function AdminDashboard() {
     alert('사용자가 추가되었습니다.');
   };
 
+  const handleExportData = () => {
+    if (!confirm('전체 데이터를 백업하시겠습니까?')) return;
+    const jsonStr = BackupRepository.exportAll();
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cm_assets_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!confirm('기존 데이터가 덮어씌워질 수 있습니다. 복구하시겠습니까?')) {
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        const success = BackupRepository.importAll(content);
+        if (success) {
+          alert('데이터 복구가 완료되었습니다. 페이지를 새로고침합니다.');
+          window.location.reload();
+        } else {
+          alert('올바르지 않은 백업 파일입니다.');
+        }
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   return (
     <div className="space-y-8">
       {/* Overview Cards */}
@@ -432,6 +472,30 @@ export default function AdminDashboard() {
           <p className="text-xs text-text-tertiary mt-1">ID / 비밀번호 변경</p>
         </div>
       </div>
+
+      {/* Backup and Restore */}
+      {isAdmin && (
+        <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-eco-black">시스템 데이터 백업 및 복구</h3>
+            <p className="text-sm text-text-secondary mt-1">시스템 전체 데이터를 JSON 형태로 내보내거나 가져옵니다.</p>
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={handleExportData}
+              className="px-4 py-2 bg-cobalt-50 text-cobalt-600 font-bold rounded-xl hover:bg-cobalt-100 transition-colors flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              데이터 내보내기 (백업)
+            </button>
+            <label className="px-4 py-2 border border-lithium-200 text-eco-black font-bold rounded-xl hover:bg-lithium-50 transition-colors flex items-center gap-2 cursor-pointer">
+              <Upload className="w-4 h-4 text-text-tertiary" />
+              데이터 가져오기 (복구)
+              <input type="file" accept="application/json" onChange={handleImportData} className="hidden" />
+            </label>
+          </div>
+        </div>
+      )}
 
       {/* User Management */}
       {isAdmin && (

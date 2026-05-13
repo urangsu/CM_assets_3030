@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect, MouseEvent } from 'react';
 import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked } from '../lib/storageKeys';
+import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked, getSubmissionStatus } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
+
+import { usePermission } from '../lib/permissions';
 
 // Resizable Header Component
 const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, width: number, minWidth: number, onResize: (newWidth: number) => void }) => {
@@ -98,17 +100,8 @@ export default function BudgetCreation() {
     localStorage.setItem('budget_creation_dept', selectedDeptCode);
   }, [year, planType, selectedDeptCode]);
   const [data, setData] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('current_user');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
-    }
-  }, []);
-
+  const { currentUser, isAdmin, hasSalaryAccess, viewableDepts, viewableDeptCodes } = usePermission();
   const allDepts = getAllDepartments();
-  const viewableDepts = currentUser ? getViewableDepts(currentUser.code) : [];
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [lastSelectedRowIndex, setLastSelectedRowIndex] = useState<number | null>(null);
   const [focusedCell, setFocusedCell] = useState<{ rowIndex: number, colIndex?: number, field?: string } | null>(null);
@@ -187,39 +180,14 @@ export default function BudgetCreation() {
 
   const currentDept = allDepts.find(d => d.code === selectedDeptCode) || allDepts[1];
 
-  type BudgetStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
-  interface SubmissionStatus {
-    status: BudgetStatus;
-    time?: string;
-    reason?: string;
-    deptName?: string;
-  }
-
   const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus>({ status: 'DRAFT' });
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
 
-  const isAdmin = currentUser?.code === '99999' || currentUser?.code === '32100';
-  const isLocked = submissionStatus.status === 'SUBMITTED' || submissionStatus.status === 'APPROVED';
+  const isLocked = isBudgetLocked(selectedDeptCode, year, planType);
 
   useEffect(() => {
-    const statusKey = STORAGE_KEYS.SUBMISSION_STATUS;
-    const statuses = JSON.parse(localStorage.getItem(statusKey) || '{}');
-    const mapKey = getSubmissionStatusMapKey(selectedDeptCode, year, planType);
-    const currentStatus = statuses[mapKey];
-    
-    // Migrate old format { submitted: true/false } to new format
-    if (currentStatus) {
-      if (currentStatus.submitted === true) {
-        setSubmissionStatus({ status: 'SUBMITTED', time: currentStatus.time, deptName: currentStatus.deptName });
-      } else if (currentStatus.submitted === false) {
-        setSubmissionStatus({ status: 'DRAFT', time: currentStatus.time, deptName: currentStatus.deptName });
-      } else {
-        setSubmissionStatus(currentStatus);
-      }
-    } else {
-      setSubmissionStatus({ status: 'DRAFT' });
-    }
+    setSubmissionStatus(getSubmissionStatus(selectedDeptCode, year, planType));
   }, [selectedDeptCode, year, planType]);
 
   // Load data from localStorage when department changes
@@ -366,11 +334,6 @@ export default function BudgetCreation() {
       });
 
       // Final filtering and salary access check
-      const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-      const settings = savedSettings ? JSON.parse(savedSettings) : {};
-      const userSetting = currentUser ? settings[currentUser.code] : null;
-      const hasSalaryAccess = (currentUser?.code === '99999' || currentUser?.code === '32100') || (userSetting?.hasSalaryAccess ?? false);
-
       let finalData = mergedData.filter(row => {
         if (selectedDeptCode === 'viewable') {
           return viewableDeptCodes.has(row.attributedDeptCode);
@@ -957,11 +920,6 @@ export default function BudgetCreation() {
       });
 
       if (selectedDeptCode === 'all') {
-        const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-        const settings = savedSettings ? JSON.parse(savedSettings) : {};
-        const userSetting = currentUser ? settings[currentUser.code] : null;
-        const hasSalaryAccess = (currentUser?.code === '99999' || currentUser?.code === '32100') || (userSetting?.hasSalaryAccess ?? false);
-        
         const validDepts = allDepts.filter(d => d.code !== '99999');
         validDepts.forEach(dept => {
           if (!deptGroups.has(dept.code)) {

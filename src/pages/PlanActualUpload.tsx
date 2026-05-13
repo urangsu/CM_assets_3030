@@ -202,7 +202,7 @@ export default function PlanActualUpload() {
         
         budgetRows.forEach((row: any) => {
           row.values.forEach((val: number, idx: number) => {
-            if (val !== 0 && val !== 1) {
+            if (val !== 0) {
               flattenedData.push({
                 id: idCounter++,
                 year: year,
@@ -370,11 +370,7 @@ export default function PlanActualUpload() {
           balance,
           remarks: String(row[15] || ''),
         };
-        // Skip unused rows based on planType
-        const isSkip = planType === '실적' ? (item.amount === 1 && item.completed === 0) : item.amount === 1;
-        if (!isSkip) {
-          validRows.push(item);
-        }
+        validRows.push(item);
       }
     });
 
@@ -422,21 +418,26 @@ export default function PlanActualUpload() {
         const key = getBudgetDataKey(deptCode, year, planType);
         const deptData = groupedByDept.get(deptCode) || [];
         
-        const newBudgetRows: any[] = [];
+        if (deptData.length === 0) return;
+
+        const existingData = localStorage.getItem(key);
+        const budgetRows: any[] = existingData ? JSON.parse(existingData) : [];
         
         deptData.forEach(uploadRow => {
           const monthIndex = parsePeriodMonth(uploadRow.period);
           if (monthIndex !== null) {
-            let budgetRow = newBudgetRows.find((r: any) => r.code === uploadRow.accountCode);
+            let budgetRow = budgetRows.find((r: any) => r.code === uploadRow.accountCode);
             if (budgetRow) {
               budgetRow.values[monthIndex] = uploadRow.amount;
+              if (uploadRow.remarks) budgetRow.detail = uploadRow.remarks;
             } else {
-              newBudgetRows.push({
-                id: uploadRow.accountCode,
+              budgetRows.push({
+                id: `acc_${Date.now()}_${uploadRow.accountCode}_${Math.random().toString(36).substr(2, 5)}`,
                 code: uploadRow.accountCode,
                 name: uploadRow.accountName,
                 detail: uploadRow.remarks || '',
-                calculation: '',
+                calculation: '일괄 업로드',
+                sourceType: 'MANUAL',
                 values: Array(12).fill(0).map((v, i) => i === monthIndex ? uploadRow.amount : 0),
                 attributedDeptCode: deptCode
               });
@@ -444,7 +445,7 @@ export default function PlanActualUpload() {
           }
         });
         
-        localStorage.setItem(key, JSON.stringify(newBudgetRows));
+        localStorage.setItem(key, JSON.stringify(budgetRows));
       });
       setAlertModal({ isOpen: true, message: `${planType} 데이터가 저장되었습니다.` });
     }

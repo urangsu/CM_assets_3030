@@ -7,27 +7,19 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
+import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { ChartCard } from '../components/charts/ChartCard';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 
 export default function VarianceComparison() {
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('current_user');
-    if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
-    }
-  }, []);
+  const { currentUser, isAdmin, isPlanningTeam, hasSalaryAccess, viewableDeptCodes, viewableDepts } = usePermission();
 
   const getUserInitDept = () => {
-    const savedUserStr = localStorage.getItem('current_user');
-    if (savedUserStr) {
-      const user = JSON.parse(savedUserStr);
-      if (user.code === '99999' || user.code === '32100') return 'all';
-      const viewable = getViewableDepts(user.code);
-      return viewable.length > 0 ? viewable[0].code : user.code; // 자신의 첫 번째 소속 부서 기본값
+    if (currentUser) {
+      if (isAdmin || isPlanningTeam) return 'all';
+      const viewable = getViewableDepts(currentUser.code);
+      return viewable.length > 0 ? viewable[0].code : currentUser.code;
     }
     return 'all';
   };
@@ -75,7 +67,6 @@ export default function VarianceComparison() {
   const toMillions = (val: number) => Math.round(val / 1000000);
 
   const allDepts = getAllDepartments();
-  const viewableDepts = currentUser ? getViewableDepts(currentUser.code) : [];
 
   const getDeptName = () => {
     if (selectedDept === 'all') return '전체부서';
@@ -194,19 +185,22 @@ export default function VarianceComparison() {
     const sgaVar = summaryTotals.targetSga - summaryTotals.baseSga;
     const sgaVarPct = summaryTotals.baseSga === 0 ? 0 : (sgaVar / summaryTotals.baseSga) * 100;
     
-    const totalVar = totalTarget - totalBase;
-    const totalVarPct = totalBase === 0 ? 0 : (totalVar / totalBase) * 100;
+    // Compute directly inside function to avoid stale closures
+    const excelTotalBase = chartData.reduce((sum, item) => sum + (item[baseName] || 0), 0);
+    const excelTotalTarget = chartData.reduce((sum, item) => sum + (item[targetName] || 0), 0);
+    const totalVar = excelTotalTarget - excelTotalBase;
+    const totalVarPct = excelTotalBase === 0 ? 0 : (totalVar / excelTotalBase) * 100;
 
     excelData.push([]); // Empty row for spacing
     
     if (selectedDept === 'by_dept') {
       excelData.push(['제조 합계', summaryTotals.baseMfg, summaryTotals.targetMfg, mfgVar, mfgVarPct.toFixed(2) + '%']);
       excelData.push(['판관 합계', summaryTotals.baseSga, summaryTotals.targetSga, sgaVar, sgaVarPct.toFixed(2) + '%']);
-      excelData.push(['총 합계', totalBase, totalTarget, totalVar, totalVarPct.toFixed(2) + '%']);
+      excelData.push(['총 합계', excelTotalBase, excelTotalTarget, totalVar, totalVarPct.toFixed(2) + '%']);
     } else {
       excelData.push(['', '제조 합계', summaryTotals.baseMfg, summaryTotals.targetMfg, mfgVar, mfgVarPct.toFixed(2) + '%']);
       excelData.push(['', '판관 합계', summaryTotals.baseSga, summaryTotals.targetSga, sgaVar, sgaVarPct.toFixed(2) + '%']);
-      excelData.push(['', '총 합계', totalBase, totalTarget, totalVar, totalVarPct.toFixed(2) + '%']);
+      excelData.push(['', '총 합계', excelTotalBase, excelTotalTarget, totalVar, totalVarPct.toFixed(2) + '%']);
     }
 
     const ws = XLSX.utils.aoa_to_sheet(excelData);
@@ -252,16 +246,16 @@ export default function VarianceComparison() {
     const slide2 = pres.addSlide();
     slide2.addText('요약', { x: 0.5, y: 0.5, w: '90%', h: 0.5, fontSize: 24, bold: true, color: '191f28' });
     
-    const totalBase = chartData.reduce((sum, item) => sum + item[baseName], 0);
-    const totalTarget = chartData.reduce((sum, item) => sum + item[targetName], 0);
-    const totalVariance = totalTarget - totalBase;
-    const totalVariancePercent = totalBase === 0 ? 0 : (totalVariance / totalBase) * 100;
+    const pptTotalBase = chartData.reduce((sum, item) => sum + (item[baseName] || 0), 0);
+    const pptTotalTarget = chartData.reduce((sum, item) => sum + (item[targetName] || 0), 0);
+    const pptTotalVariance = pptTotalTarget - pptTotalBase;
+    const pptTotalVariancePercent = pptTotalBase === 0 ? 0 : (pptTotalVariance / pptTotalBase) * 100;
 
-    slide2.addText(`${baseName} 총액: ${formatCurrency(totalBase)}원`, { x: 0.5, y: 1.5, w: '90%', h: 0.5, fontSize: 18 });
-    slide2.addText(`${targetName} 총액: ${formatCurrency(totalTarget)}원`, { x: 0.5, y: 2.2, w: '90%', h: 0.5, fontSize: 18 });
+    slide2.addText(`${baseName} 총액: ${formatCurrency(pptTotalBase)}원`, { x: 0.5, y: 1.5, w: '90%', h: 0.5, fontSize: 18 });
+    slide2.addText(`${targetName} 총액: ${formatCurrency(pptTotalTarget)}원`, { x: 0.5, y: 2.2, w: '90%', h: 0.5, fontSize: 18 });
     
-    const varianceText = `${totalVariance > 0 ? '+' : ''}${formatCurrency(totalVariance)}원 (${totalVariance > 0 ? '+' : ''}${totalVariancePercent.toFixed(1)}%)`;
-    slide2.addText(`증감액: ${varianceText}`, { x: 0.5, y: 2.9, w: '90%', h: 0.5, fontSize: 18, bold: true, color: totalVariance > 0 ? 'FF0000' : '0000FF' });
+    const varianceText = `${pptTotalVariance > 0 ? '+' : ''}${formatCurrency(pptTotalVariance)}원 (${pptTotalVariance > 0 ? '+' : ''}${pptTotalVariancePercent.toFixed(1)}%)`;
+    slide2.addText(`증감액: ${varianceText}`, { x: 0.5, y: 2.9, w: '90%', h: 0.5, fontSize: 18, bold: true, color: pptTotalVariance > 0 ? 'FF0000' : '0000FF' });
 
     const slide3 = pres.addSlide();
     slide3.addText('상세 비교 데이터', { x: 0.5, y: 0.5, w: '90%', h: 0.5, fontSize: 24, bold: true, color: '191f28' });
@@ -388,15 +382,15 @@ export default function VarianceComparison() {
     doc.setFontSize(12);
     doc.text(`기준: ${baseName} / 비교: ${targetName}`, 14, 32);
 
-    const totalBase = chartData.reduce((sum, item) => sum + item[baseName], 0);
-    const totalTarget = chartData.reduce((sum, item) => sum + item[targetName], 0);
-    const totalVariance = totalTarget - totalBase;
-    const totalVariancePercent = totalBase === 0 ? 0 : (totalVariance / totalBase) * 100;
+    const pdfTotalBase = chartData.reduce((sum, item) => sum + (item[baseName] || 0), 0);
+    const pdfTotalTarget = chartData.reduce((sum, item) => sum + (item[targetName] || 0), 0);
+    const pdfTotalVariance = pdfTotalTarget - pdfTotalBase;
+    const pdfTotalVariancePercent = pdfTotalBase === 0 ? 0 : (pdfTotalVariance / pdfTotalBase) * 100;
 
     doc.text(`총액 요약:`, 14, 42);
-    doc.text(`- ${baseName} 총액: ${formatCurrency(totalBase)}원`, 14, 48);
-    doc.text(`- ${targetName} 총액: ${formatCurrency(totalTarget)}원`, 14, 54);
-    const varianceText = `${totalVariance > 0 ? '+' : ''}${formatCurrency(totalVariance)}원 (${totalVariance > 0 ? '+' : ''}${totalVariancePercent.toFixed(1)}%)`;
+    doc.text(`- ${baseName} 총액: ${formatCurrency(pdfTotalBase)}원`, 14, 48);
+    doc.text(`- ${targetName} 총액: ${formatCurrency(pdfTotalTarget)}원`, 14, 54);
+    const varianceText = `${pdfTotalVariance > 0 ? '+' : ''}${formatCurrency(pdfTotalVariance)}원 (${pdfTotalVariance > 0 ? '+' : ''}${pdfTotalVariancePercent.toFixed(1)}%)`;
     doc.text(`- 증감액: ${varianceText}`, 14, 60);
 
     let head = [];
@@ -530,11 +524,6 @@ export default function VarianceComparison() {
         });
       });
 
-      const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-      const settings = savedSettings ? JSON.parse(savedSettings) : {};
-      const userSetting = currentUser ? settings[currentUser.code] : null;
-      const hasSalaryAccess = (currentUser?.code === '99999' || currentUser?.code === '32100') || (userSetting?.hasSalaryAccess ?? false);
-      
       const salaryAccountCodes = new Set<string>();
       INITIAL_CATEGORIES.forEach(cat => {
         if (SALARY_CATEGORIES.includes(cat.name)) {

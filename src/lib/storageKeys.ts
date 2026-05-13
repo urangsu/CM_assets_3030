@@ -23,6 +23,14 @@ export function getSubmissionStatusMapKey(deptCode: string, year: string, planTy
   return `${deptCode}_${year}_${planType}`;
 }
 
+export function normalizeSubmissionStatus(raw: any): SubmissionStatus {
+  if (!raw) return { status: 'DRAFT' };
+  if (raw.status) return raw as SubmissionStatus;
+  if (raw.submitted === true) return { ...raw, status: 'SUBMITTED' };
+  if (raw.submitted === false) return { ...raw, status: 'DRAFT' };
+  return { status: 'DRAFT' };
+}
+
 export function getSubmissionStatus(deptCode: string, year: string, planType: string): SubmissionStatus {
   try {
     const rawData = localStorage.getItem(STORAGE_KEYS.SUBMISSION_STATUS);
@@ -31,7 +39,7 @@ export function getSubmissionStatus(deptCode: string, year: string, planType: st
       const key = getSubmissionStatusMapKey(deptCode, year, planType);
       const statusData = allStatuses[key];
       if (statusData) {
-        return statusData as SubmissionStatus;
+        return normalizeSubmissionStatus(statusData);
       }
     }
   } catch (e) {
@@ -40,7 +48,14 @@ export function getSubmissionStatus(deptCode: string, year: string, planType: st
   return { status: 'DRAFT' };
 }
 
-export function isBudgetLocked(deptCode: string, year: string, planType: string): boolean {
-  const status = getSubmissionStatus(deptCode, year, planType).status;
-  return status === 'SUBMITTED' || status === 'REVIEWING' || status === 'APPROVED' || status === 'LOCKED';
+export function isSubmittedLike(status: any): boolean {
+  if (!status) return false;
+  if (status.submitted === true) return true;
+  return ['SUBMITTED', 'REVIEWING', 'APPROVED', 'LOCKED'].includes(status.status);
 }
+
+export function isBudgetLocked(deptCode: string, year: string, planType: string): boolean {
+  const normalized = getSubmissionStatus(deptCode, year, planType);
+  return isSubmittedLike(normalized);
+}
+
