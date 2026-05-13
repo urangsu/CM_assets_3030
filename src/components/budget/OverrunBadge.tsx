@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppBadge } from '../ui/AppBadge';
 
-export type OverrunStatus = '정상' | '초과' | '무예산 집행';
+export type OverrunStatus = '정상' | '초과' | '무예산 집행' | '미달' | string;
 
 interface OverrunBadgeProps {
   status: OverrunStatus;
@@ -13,6 +13,7 @@ export function OverrunBadge({ status, className }: OverrunBadgeProps) {
     '정상': { variant: 'primary' as const },
     '초과': { variant: 'danger' as const },
     '무예산 집행': { variant: 'warning' as const },
+    '미달': { variant: 'success' as const },
   };
 
   const { variant } = config[status] || { variant: 'default' };

@@ -98,8 +98,9 @@ export interface MonthlyDetail {
   budget: number;
   actual: number;
   overrunAmount: number;
+  shortfallAmount: number;
   balance: number;
-  status: '정상' | '초과' | '무예산 집행';
+  status: '정상' | '초과' | '무예산 집행' | '미달';
 }
 
 export interface DeptAccountSummary {
@@ -113,10 +114,15 @@ export interface DeptAccountSummary {
   balance: number;
   overrunAmount: number;
   overrunRate: number | null;
-  status: '정상' | '초과' | '무예산 집행';
+  shortfallAmount: number;
+  shortfallRate: number | null;
+  status: '정상' | '초과' | '무예산 집행' | '미달';
   overrunMonths: number[];
   maxOverrunMonth: number | null;
   maxOverrunAmount: number;
+  shortfallMonths: number[];
+  maxShortfallMonth: number | null;
+  maxShortfallAmount: number;
   monthlyDetails: MonthlyDetail[];
 }
 
@@ -176,33 +182,48 @@ export function aggregateByDeptAccount(params: {
     const yActual = actualRow ? actualRow.yActual : 0;
 
     const overrunAmount = Math.max(qActual - qBudget, 0);
+    const shortfallAmount = Math.max(qBudget - qActual, 0);
     const balance = qBudget - qActual;
     const overrunRate = qBudget > 0 ? (qActual / qBudget) * 100 : null;
+    const shortfallRate = qBudget > 0 ? (shortfallAmount / qBudget) * 100 : null;
 
-    let status: '정상' | '초과' | '무예산 집행' = '정상';
+    let status: '정상' | '초과' | '무예산 집행' | '미달' = '정상';
     if (qBudget === 0 && qActual > 0) status = '무예산 집행';
     else if (qActual > qBudget) status = '초과';
+    else if (qBudget > 0 && qActual < qBudget) status = '미달';
 
     const monthlyDetails: MonthlyDetail[] = [];
     const overrunMonths: number[] = [];
     let maxOverrunMonth: number | null = null;
     let maxOverrunAmount = 0;
+    
+    const shortfallMonths: number[] = [];
+    let maxShortfallMonth: number | null = null;
+    let maxShortfallAmount = 0;
 
     months.forEach(m => {
       const b = budgetRow ? (budgetRow.values[m] || 0) : 0;
       const a = actualRow ? (actualRow.monthlyActuals[m] || 0) : 0;
       const mOverrun = Math.max(a - b, 0);
+      const mShortfall = Math.max(b - a, 0);
       const mBalance = b - a;
       
-      let mStatus: '정상' | '초과' | '무예산 집행' = '정상';
+      let mStatus: '정상' | '초과' | '무예산 집행' | '미달' = '정상';
       if (b === 0 && a > 0) mStatus = '무예산 집행';
       else if (a > b) mStatus = '초과';
+      else if (b > 0 && a < b) mStatus = '미달';
 
-      if (mStatus !== '정상') {
+      if (mStatus === '초과' || mStatus === '무예산 집행') {
         overrunMonths.push(m + 1); // 1-based month
         if (mOverrun > maxOverrunAmount) {
           maxOverrunAmount = mOverrun;
           maxOverrunMonth = m + 1;
+        }
+      } else if (mStatus === '미달') {
+        shortfallMonths.push(m + 1);
+        if (mShortfall > maxShortfallAmount) {
+          maxShortfallAmount = mShortfall;
+          maxShortfallMonth = m + 1;
         }
       }
 
@@ -211,6 +232,7 @@ export function aggregateByDeptAccount(params: {
         budget: b,
         actual: a,
         overrunAmount: mOverrun,
+        shortfallAmount: mShortfall,
         balance: mBalance,
         status: mStatus
       });
@@ -227,10 +249,15 @@ export function aggregateByDeptAccount(params: {
       balance,
       overrunAmount,
       overrunRate,
+      shortfallAmount,
+      shortfallRate,
       status,
       overrunMonths,
       maxOverrunMonth,
       maxOverrunAmount,
+      shortfallMonths,
+      maxShortfallMonth,
+      maxShortfallAmount,
       monthlyDetails
     });
   });
@@ -243,8 +270,9 @@ export interface MonthlySummary {
   budget: number;
   actual: number;
   overrunAmount: number;
+  shortfallAmount: number;
   balance: number;
-  status: '정상' | '초과' | '무예산 집행';
+  status: '정상' | '초과' | '무예산 집행' | '미달';
 }
 
 export interface AccountSummary {
