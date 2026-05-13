@@ -4,6 +4,7 @@ import { Upload, Clipboard, Trash2, Save, Calendar, Search, X, Edit3 } from 'luc
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
+import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 
 interface ActualData {
@@ -276,6 +277,8 @@ export default function PlanActualUpload() {
 
   const processImportedData = (rows: any[][]) => {
     let hasInvalidData = false;
+    const invalidPeriodRows: { rowNum: number, periodStr: string }[] = [];
+
     const newData: ActualData[] = rows
       .map((row, index) => {
         const parseNum = (val: any) => {
@@ -284,16 +287,16 @@ export default function PlanActualUpload() {
           return Number(String(val).replace(/[^0-9.-]/g, '')) || 0;
         };
 
-        // New mapping based on user request:
-        // row[1]: year, row[2]: period, row[3]: accountCode, row[4]: accountName, row[5]: controlType, 
-        // row[6]: usageCode, row[7]: usageDept, row[8]: amount, row[9]: additional, row[10]: transferred,
-        // row[11]: carriedOver, row[12]: planned, row[13]: completed, row[14]: balance, row[15]: remarks
-
         const yearVal = String(row[1] || year);
         const usageCodeVal = String(row[6] || '');
+        const periodStr = String(row[2] || '');
 
         if (isNaN(Number(yearVal)) || isNaN(Number(usageCodeVal))) {
           hasInvalidData = true;
+        }
+
+        if (periodStr && parsePeriodMonth(periodStr) === null) {
+           invalidPeriodRows.push({ rowNum: index + 2, periodStr });
         }
 
         const amount = parseNum(row[8]);
@@ -309,7 +312,7 @@ export default function PlanActualUpload() {
         return {
           id: data.length + index + 1,
           year: yearVal,
-          period: String(row[2] || ''),
+          period: periodStr,
           accountCode: String(row[3] || ''),
           accountName: String(row[4] || ''),
           controlType: String(row[5] || ''),
@@ -325,13 +328,20 @@ export default function PlanActualUpload() {
           remarks: String(row[15] || ''),
         };
       })
-      .filter(item => item.accountCode && item.period)
+      .filter(item => item.accountCode && item.period && parsePeriodMonth(item.period) !== null)
       .filter(item => planType === '실적' ? (item.amount !== 1 || item.completed !== 0) : item.amount !== 1)
       .filter(item => currentUser?.code === '99999' || viewableDeptCodes.includes(item.usageCode));
 
     if (hasInvalidData) {
       setAlertModal({ isOpen: true, message: '예산년도와 예산사용처코드는 숫자만 입력 가능합니다. 데이터를 확인 후 다시 입력해 주세요.' });
       return;
+    }
+
+    if (invalidPeriodRows.length > 0) {
+       const examples = invalidPeriodRows.slice(0, 3).map(r => `엑셀 ${r.rowNum}행 ('${r.periodStr}')`).join(', ');
+       const etc = invalidPeriodRows.length > 3 ? ` 등 ${invalidPeriodRows.length}건` : '';
+       setAlertModal({ isOpen: true, message: `기간 형식이 잘못된 데이터가 있습니다: ${examples}${etc}. 올바른 월 형식(예: 1, 01, 1월, 2026.01 등)으로 수정한 뒤 다시 업로드 해주세요.` });
+       return;
     }
 
     if (newData.length === 0) {

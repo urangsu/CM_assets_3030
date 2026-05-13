@@ -71,6 +71,15 @@ export const isSalaryAccountCode = (accountCode: string) => {
   return isSalary;
 };
 
+export interface MonthlyDetail {
+  month: number;
+  budget: number;
+  actual: number;
+  overrunAmount: number;
+  balance: number;
+  status: '정상' | '초과' | '무예산 집행';
+}
+
 export interface DeptAccountSummary {
   deptCode: string;
   accountCode: string;
@@ -83,6 +92,10 @@ export interface DeptAccountSummary {
   overrunAmount: number;
   overrunRate: number | null;
   status: '정상' | '초과' | '무예산 집행';
+  overrunMonths: number[];
+  maxOverrunMonth: number | null;
+  maxOverrunAmount: number;
+  monthlyDetails: MonthlyDetail[];
 }
 
 export function aggregateByDeptAccount(params: {
@@ -102,7 +115,7 @@ export function aggregateByDeptAccount(params: {
     budgetMap.set(key, { ...row });
   });
 
-  const actualMap = new Map<string, { qActual: number, yActual: number, accountName: string }>();
+  const actualMap = new Map<string, { qActual: number, yActual: number, accountName: string, monthlyActuals: Record<number, number> }>();
   actualRows.forEach(a => {
     const monthIndex = parsePeriodMonth(a.period);
     if (monthIndex === null) return; // Skip invalid periods
@@ -115,9 +128,10 @@ export function aggregateByDeptAccount(params: {
       unionKeys.add(key);
     }
 
-    const existing = actualMap.get(key) || { qActual: 0, yActual: 0, accountName: a.accountName || a.accountCode };
+    const existing = actualMap.get(key) || { qActual: 0, yActual: 0, accountName: a.accountName || a.accountCode, monthlyActuals: {} };
     if (isQuarter) existing.qActual += a.completed || 0;
     existing.yActual += a.completed || 0;
+    existing.monthlyActuals[monthIndex] = (existing.monthlyActuals[monthIndex] || 0) + (a.completed || 0);
     actualMap.set(key, existing);
   });
 
@@ -147,6 +161,39 @@ export function aggregateByDeptAccount(params: {
     if (qBudget === 0 && qActual > 0) status = '무예산 집행';
     else if (qActual > qBudget) status = '초과';
 
+    const monthlyDetails: MonthlyDetail[] = [];
+    const overrunMonths: number[] = [];
+    let maxOverrunMonth: number | null = null;
+    let maxOverrunAmount = 0;
+
+    months.forEach(m => {
+      const b = budgetRow ? (budgetRow.values[m] || 0) : 0;
+      const a = actualRow ? (actualRow.monthlyActuals[m] || 0) : 0;
+      const mOverrun = Math.max(a - b, 0);
+      const mBalance = b - a;
+      
+      let mStatus: '정상' | '초과' | '무예산 집행' = '정상';
+      if (b === 0 && a > 0) mStatus = '무예산 집행';
+      else if (a > b) mStatus = '초과';
+
+      if (mStatus !== '정상') {
+        overrunMonths.push(m + 1); // 1-based month
+        if (mOverrun > maxOverrunAmount) {
+          maxOverrunAmount = mOverrun;
+          maxOverrunMonth = m + 1;
+        }
+      }
+
+      monthlyDetails.push({
+        month: m + 1,
+        budget: b,
+        actual: a,
+        overrunAmount: mOverrun,
+        balance: mBalance,
+        status: mStatus
+      });
+    });
+
     results.push({
       deptCode,
       accountCode,
@@ -158,7 +205,11 @@ export function aggregateByDeptAccount(params: {
       balance,
       overrunAmount,
       overrunRate,
-      status
+      status,
+      overrunMonths,
+      maxOverrunMonth,
+      maxOverrunAmount,
+      monthlyDetails
     });
   });
 

@@ -832,10 +832,10 @@ export default function BudgetCreation() {
       // 3. Is selected in budget accounts
       const isSelected = deptSelectedIds.has(row.id) || deptSelectedIds.has(row.code) || deptSelectedCodes.has(row.code);
 
-      // 관리부서(전체) 필터링 시 1만 있는 계정은 UI에서 숨김 (다운로드 시에는 data에 포함되어 있으므로 다운로드됨)
+      // 관리부서(전체) 필터링 시 0만 있는 계정은 UI에서 숨김 (다운로드 시에는 data에 포함되어 있으므로 다운로드됨)
       if (selectedDeptCode === 'all') {
-        const isOnlyOnes = row.values && row.values.every((v: number) => v === 1);
-        if (isOnlyOnes && !hasActuals) {
+        const isOnlyZeros = row.values && row.values.every((v: number) => v === 0);
+        if (isOnlyZeros && !hasActuals) {
           return false;
         }
       }
