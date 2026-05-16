@@ -5,6 +5,8 @@ import { getBudgetDataKey, isBudgetLocked } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { AppTable, AppTableHeader, AppTableRow, AppTableHead, AppTableBody, AppTableCell } from '../components/ui/AppTable';
+import { AppModal } from '../components/ui/AppModal';
+import { AppButton } from '../components/ui/AppButton';
 
 const DEPT_ORDER = [
   '32100', '32200', '21001', '21100', '21110', '21002', 
@@ -445,39 +447,55 @@ export default function BusinessActivityBudget() {
       )}
 
       {deptModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/10 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl w-96 max-h-[80vh] overflow-y-auto shadow-popover border border-lithium-200">
-            <h3 className="text-lg font-bold mb-4">부서 추가</h3>
-            <div className="space-y-2">
-              {viewableDepts.filter(d => !headcounts[d.code]).map(dept => (
-                <label key={dept.code} className="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <input 
-                    type="checkbox"
-                    checked={selectedDeptsToAdd.includes(dept.code)}
-                    onChange={(e) => {
-                      if (e.target.checked) setSelectedDeptsToAdd([...selectedDeptsToAdd, dept.code]);
-                      else setSelectedDeptsToAdd(selectedDeptsToAdd.filter(c => c !== dept.code));
-                    }}
-                    className="mr-2"
-                  />
-                  {dept.name} ({dept.code})
-                </label>
-              ))}
+        <AppModal
+          isOpen={deptModal}
+          title="부서 추가"
+          description={`선택 가능 부서: ${viewableDepts.filter(d => !headcounts[d.code]).length}개`}
+          onClose={() => { setSelectedDeptsToAdd([]); setDeptModal(false); }}
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <div className="text-sm text-text-muted">
+                선택 {selectedDeptsToAdd.length}개
+              </div>
+              <div className="flex gap-2">
+                <AppButton variant="secondary" onClick={() => { setSelectedDeptsToAdd([]); setDeptModal(false); }}>
+                  취소
+                </AppButton>
+                <AppButton
+                  disabled={selectedDeptsToAdd.length === 0}
+                  onClick={() => {
+                    const newHeadcounts = {...headcounts};
+                    selectedDeptsToAdd.forEach(deptCode => {
+                      newHeadcounts[deptCode] = { category: '판관', data: Array(12).fill(0) };
+                    });
+                    setHeadcounts(newHeadcounts);
+                    setSelectedDeptsToAdd([]);
+                    setDeptModal(false);
+                  }}
+                >
+                  추가
+                </AppButton>
+              </div>
             </div>
-            <div className="flex justify-end mt-4 gap-2">
-              <button onClick={() => { setSelectedDeptsToAdd([]); setDeptModal(false); }} className="px-4 py-2 bg-gray-200 rounded-xl font-bold">취소</button>
-              <button onClick={() => {
-                const newHeadcounts = {...headcounts};
-                selectedDeptsToAdd.forEach(deptCode => {
-                  newHeadcounts[deptCode] = { category: '판관', data: Array(12).fill(0) };
-                });
-                setHeadcounts(newHeadcounts);
-                setSelectedDeptsToAdd([]);
-                setDeptModal(false);
-              }} className="px-4 py-2 bg-brand-500 text-white rounded-xl font-bold">추가</button>
-            </div>
+          }
+        >
+          <div className="space-y-2">
+            {viewableDepts.filter(d => !headcounts[d.code]).map(dept => (
+              <label key={dept.code} className="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                <input 
+                  type="checkbox"
+                  checked={selectedDeptsToAdd.includes(dept.code)}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelectedDeptsToAdd([...selectedDeptsToAdd, dept.code]);
+                    else setSelectedDeptsToAdd(selectedDeptsToAdd.filter(c => c !== dept.code));
+                  }}
+                  className="mr-2"
+                />
+                {dept.name} ({dept.code})
+              </label>
+            ))}
           </div>
-        </div>
+        </AppModal>
       )}
 
       <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm">

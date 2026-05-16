@@ -1,65 +1,54 @@
-import React, { useEffect } from 'react';
-import { cn } from '../../lib/utils';
-import { X } from 'lucide-react';
+import React from 'react';
 
 interface AppModalProps {
   isOpen: boolean;
-  onClose: () => void;
-  title: React.ReactNode;
+  title: string;
+  description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl';
+  onClose?: () => void;
+  maxWidthClassName?: string;
 }
 
-export function AppModal({ isOpen, onClose, title, children, footer, maxWidth = 'md' }: AppModalProps) {
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
-    };
-  }, [isOpen, onClose]);
-
+export function AppModal({
+  isOpen,
+  title,
+  description,
+  children,
+  footer,
+  onClose,
+  maxWidthClassName = 'max-w-lg',
+}: AppModalProps) {
   if (!isOpen) return null;
 
-  const maxWidthClasses = {
-    sm: 'max-w-sm',
-    md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
-    '2xl': 'max-w-2xl',
-    '4xl': 'max-w-4xl',
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div 
-        className="absolute inset-0" 
-        onClick={onClose}
-      />
-      <div className={cn("bg-white rounded-2xl shadow-xl w-full flex flex-col max-h-[90vh] relative animate-in fade-in zoom-in duration-200", maxWidthClasses[maxWidth])}>
-        <div className="px-6 py-4 border-b border-lithium-200 flex justify-between items-center bg-lithium-50 rounded-t-2xl shrink-0">
-          <h3 className="text-lg font-bold text-eco-black">{title}</h3>
-          <button 
-            onClick={onClose}
-            className="text-lithium-500 hover:text-eco-black transition-colors rounded-lg p-1 hover:bg-lithium-100"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-md p-4">
+      <div className={`bg-white rounded-2xl border border-lithium-200 shadow-popover w-full ${maxWidthClassName} max-h-[86vh] flex flex-col overflow-hidden`}>
+        <div className="flex-none px-6 py-4 border-b border-lithium-200">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-eco-black">{title}</h3>
+              {description && (
+                <p className="mt-1 text-sm text-text-muted">{description}</p>
+              )}
+            </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="text-text-subtle hover:text-eco-black ml-2"
+              >
+                닫기
+              </button>
+            )}
+          </div>
         </div>
-        
-        <div className="p-6 overflow-y-auto">
+
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {children}
         </div>
 
         {footer && (
-          <div className="px-6 py-4 border-t border-lithium-200 bg-lithium-50 flex justify-end gap-2 shrink-0 rounded-b-2xl">
+          <div className="flex-none px-6 py-4 border-t border-lithium-200 bg-white/95 backdrop-blur-sm">
             {footer}
           </div>
         )}
