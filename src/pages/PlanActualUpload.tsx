@@ -1,45 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { ActualUploadValidationResult, detectUploadFormat, normalizeHeader, parseActualWideMonthlyRows } from '../lib/actualUploadParser';
+import { ActualData, ActualUploadValidationResult, parseUploadRecords, normalizeHeader } from '../lib/actualUploadParser';
 import { AppModal } from '../components/ui/AppModal';
 import { AppButton } from '../components/ui/AppButton';
-import { AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info, X, AlertCircle, Calendar, Search, Edit3, Upload, Trash2, Save, Clipboard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, getActualDataKey, isBudgetLocked } from '../lib/storageKeys';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
-
-interface ActualData {
-  id: number;
-  year: string;
-  period: string;
-  accountCode: string;
-  accountName: string;
-  controlType: string;
-  usageCode: string;
-  usageDept: string;
-  amount: number;
-  additional: number;
-  transferred: number;
-  carriedOver: number;
-  planned: number;
-  completed: number;
-  balance: number;
-  remarks: string;
-}
-
-interface ValidationIssue {
-  rowNum: number;
-  message: string;
-}
-
-interface ActualUploadValidationResult {
-  validRows: ActualData[];
-  warningRows: ValidationIssue[];
-  errorRows: ValidationIssue[];
-}
 
 // Resizable Header Component
 const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, width: number, minWidth: number, onResize: (newWidth: number) => void }) => {
@@ -268,7 +238,7 @@ export default function PlanActualUpload() {
       const ws = wb.Sheets[wsname];
       const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
       
-      processImportedData(jsonData.slice(1)); // Skip header
+      processImportedData(jsonData); // Pass all data
     };
     reader.readAsBinaryString(file);
     // Reset file input

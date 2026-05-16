@@ -23,14 +23,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   if (!currentUser) return null;
 
   const navigation = [
-    { name: '홈 대시보드', href: '/dashboard', icon: LayoutDashboard },
-    { name: '예산 계정 선택', href: '/account-selection', icon: Settings },
-    { name: '예산 작성', href: '/budget-creation', icon: FileSpreadsheet },
-    { name: '업무활동경비', href: '/business-activity-budget', icon: Briefcase },
-    { name: '계획/실적 업로드', href: '/actual-upload', icon: Upload },
-    { name: '예산 점검', href: '/overrun-check', icon: AlertTriangle },
-    { name: '비교 분석', href: '/variance-comparison', icon: BarChart3 },
+    { category: '홈', name: '대시보드', href: '/dashboard', icon: LayoutDashboard },
+    { category: '예산 입력', name: '예산 계정 선택', href: '/account-selection', icon: Settings },
+    { category: '예산 입력', name: '예산 작성', href: '/budget-creation', icon: FileSpreadsheet },
+    { category: '예산 입력', name: '업무활동경비', href: '/business-activity-budget', icon: Briefcase },
+    { category: '실적/업로드', name: '계획/실적 업로드', href: '/actual-upload', icon: Upload },
+    { category: '분석/점검', name: '예산 점검', href: '/overrun-check', icon: AlertTriangle },
+    { category: '분석/점검', name: '비교 분석', href: '/variance-comparison', icon: BarChart3 },
     { 
+      category: '관리',
       name: '사용자 및 부서관리', 
       href: '/user-management',
       icon: Users, 
@@ -52,6 +53,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return true;
   });
 
+  // Group by category
+  const groupedNavigation = filteredNavigation.reduce((acc, item) => {
+    if (!acc[item.category]) acc[item.category] = [];
+    acc[item.category].push(item);
+    return acc;
+  }, {} as Record<string, typeof navigation>);
+
   const handleLogout = () => {
     localStorage.removeItem('current_user');
     navigate('/');
@@ -66,28 +74,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <span className="text-lg font-bold text-white tracking-tight">클린메탈 예산</span>
         </div>
         
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-          {filteredNavigation.map((item) => {
-            const isActive = location.pathname === item.href;
-            
-            return (
-              <Link
-                key={item.name}
-                to={item.href!}
-                className={`flex items-center px-3 py-3 rounded-xl text-sm font-medium transition-all relative group ${
-                  isActive
-                    ? 'bg-nickel-600 text-white shadow-sm'
-                    : 'text-white/70 hover:bg-white/10 hover:text-white'
-                }`}
-              >
-                {isActive && (
-                  <span className="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-nickel-100" />
-                )}
-                <item.icon className={`w-5 h-5 mr-3 transition-colors ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white'}`} />
-                {item.name}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-4 py-6 space-y-6 overflow-y-auto">
+          {Object.entries(groupedNavigation).map(([category, items]) => (
+            <div key={category}>
+              <div className="px-3 text-[10px] font-black text-white/20 uppercase tracking-widest mb-2">
+                {category}
+              </div>
+              {items.map((item) => {
+                const isActive = location.pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href!}
+                    className={`flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative group ${
+                      isActive
+                        ? 'bg-nickel-600 text-white shadow-sm'
+                        : 'text-white/70 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    {isActive && (
+                      <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-nickel-100" />
+                    )}
+                    <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white'}`} />
+                    {item.name}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="p-4 border-t border-white/10">

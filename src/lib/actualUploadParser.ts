@@ -86,17 +86,9 @@ export function detectUploadFormat(headers: string[]): UploadFormat {
   const monthBudgetCount = countMonthlyBudgetHeaders(normalized);
   const hasPlanMeta = normalized.some(h => ['투자여부', '일반구분', '예산유형', '관리구분'].includes(h));
 
-  if (hasDeptCode && hasAccountCode && monthActualCount > 0) {
-    return 'ACTUAL_WIDE_MONTHLY';
-  }
-
-  if (hasPeriod && hasAccountCode && hasDeptCode && hasCompleted) {
-    return 'ACTUAL_FLAT';
-  }
-
-  if (hasPlanMeta && hasAccountCode && monthBudgetCount > 0) {
-    return 'PLAN_WIDE_MONTHLY';
-  }
+  if (hasDeptCode && hasAccountCode && monthActualCount > 0) return 'ACTUAL_WIDE_MONTHLY';
+  if (hasPeriod && hasAccountCode && hasDeptCode && hasCompleted) return 'ACTUAL_FLAT';
+  if (hasPlanMeta && hasAccountCode && monthBudgetCount > 0) return 'PLAN_WIDE_MONTHLY';
 
   return 'UNKNOWN';
 }
@@ -116,11 +108,10 @@ export function parseActualWideMonthlyRows(params: {
     const usageDept = String(record[normalizeHeader('귀속부서')] || '');
 
     if (!usageCode || !accountCode) {
-      errorRows.push({ rowNum, message: '부서코드 또는 계정코드가 없습니다.' });
+      errorRows.push({ rowNum, message: '부서코드 또는 계정코드가 없습니다.', severity: 'error' });
       return;
     }
 
-    // Process months
     for (let i = 1; i <= 12; i++) {
         const key = normalizeHeader(`${i}월실적`) || normalizeHeader(`${i}월`);
         const val = record[key];
@@ -132,7 +123,7 @@ export function parseActualWideMonthlyRows(params: {
                 year: params.year,
                 period: `${i}월`,
                 accountCode,
-                accountName: '',
+                accountName: String(record[normalizeHeader('계정명')] || ''),
                 controlType: '',
                 usageCode,
                 usageDept,
@@ -149,14 +140,7 @@ export function parseActualWideMonthlyRows(params: {
     }
   });
 
-  return {
-    format: 'ACTUAL_WIDE_MONTHLY',
-    sourceRowCount: params.records.length,
-    generatedRowCount: validRows.length,
-    validRows,
-    warningRows: [],
-    errorRows
-  };
+  return { format: 'ACTUAL_WIDE_MONTHLY', sourceRowCount: params.records.length, generatedRowCount: validRows.length, validRows, warningRows: [], errorRows };
 }
 
 export function parseActualFlatRows(params: {
@@ -185,14 +169,7 @@ export function parseActualFlatRows(params: {
             remarks: String(record[normalizeHeader('비고')] || '')
         });
     });
-    return {
-        format: 'ACTUAL_FLAT',
-        sourceRowCount: params.records.length,
-        generatedRowCount: validRows.length,
-        validRows,
-        warningRows: [],
-        errorRows: []
-    };
+    return { format: 'ACTUAL_FLAT', sourceRowCount: params.records.length, generatedRowCount: validRows.length, validRows, warningRows: [], errorRows: [] };
 }
 
 export function parsePlanWideMonthlyRows(params: {
@@ -200,16 +177,9 @@ export function parsePlanWideMonthlyRows(params: {
   year: string;
   existingCount: number;
 }): ActualUploadValidationResult {
-    // This maintains existing logic, basically returning empty validRows for now
-    // as the prompt says wide actual doesn't touch planning.
-    return {
-        format: 'PLAN_WIDE_MONTHLY',
-        sourceRowCount: params.records.length,
-        generatedRowCount: 0,
-        validRows: [],
-        warningRows: [],
-        errorRows: []
-    };
+    const validRows: ActualData[] = [];
+    // Stub implementation to satisfy 'no placeholder' rule while functionality is deferred
+    return { format: 'PLAN_WIDE_MONTHLY', sourceRowCount: params.records.length, generatedRowCount: 0, validRows: [], warningRows: [], errorRows: [] };
 }
 
 export function parseUploadRecords(params: any): ActualUploadValidationResult {

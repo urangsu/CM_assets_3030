@@ -28,7 +28,7 @@ export function ConfirmDialog({
       isOpen={isOpen}
       onClose={onClose}
       title={title}
-      maxWidth="sm"
+      maxWidthClassName="max-w-sm"
       footer={
         <>
           <AppButton variant="secondary" onClick={onClose}>
