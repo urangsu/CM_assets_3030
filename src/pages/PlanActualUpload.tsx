@@ -1,9 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { ActualData, ActualUploadValidationResult, parseUploadRecords, normalizeHeader } from '../lib/actualUploadParser';
+import { 
+  ActualData, 
+  ActualUploadValidationResult, 
+  PlanBudgetUploadRow,
+  UploadParseResult,
+  parseUploadRecords, 
+  normalizeHeader 
+} from '../lib/actualUploadParser';
 import { AppModal } from '../components/ui/AppModal';
 import { AppButton } from '../components/ui/AppButton';
-import { AlertTriangle, CheckCircle, Info, X, AlertCircle, Calendar, Search, Edit3, Upload, Trash2, Save, Clipboard } from 'lucide-react';
+import { 
+  AlertTriangle, 
+  CheckCircle, 
+  Info, 
+  X, 
+  AlertCircle, 
+  Calendar, 
+  Search, 
+  Edit3, 
+  Upload, 
+  Trash2, 
+  Save, 
+  Clipboard 
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, getActualDataKey, isBudgetLocked } from '../lib/storageKeys';
@@ -291,9 +311,15 @@ export default function PlanActualUpload() {
 
   const confirmImport = () => {
     if (validationResult) {
-       const updatedData = [...data, ...validationResult.validRows];
+       const updatedData = [...data, ...validationResult.actualRows];
        setData(updatedData);
-       setAlertModal({ isOpen: true, message: `${validationResult.validRows.length}개의 데이터가 추가되었습니다. 저장하기를 눌러 반영해 주세요.` });
+       
+       if (validationResult.budgetRows.length > 0) {
+           // Handle budget rows - needs implementation based on PLAN_WIDE logic
+           setAlertModal({ isOpen: true, message: `${validationResult.actualRows.length}개의の実적 데이터와 ${validationResult.budgetRows.length}개의 계획 데이터가 처리를 위해 준비되었습니다.` });
+       } else {
+           setAlertModal({ isOpen: true, message: `${validationResult.actualRows.length}개의 실적 데이터가 추가되었습니다. 저장하기를 눌러 반영해 주세요.` });
+       }
        setValidationResult(null);
     }
   };
@@ -528,15 +554,22 @@ export default function PlanActualUpload() {
     <div className="space-y-6" onPaste={handlePaste}>
       {/* Batch Edit Modal */}
       {isBatchEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center">
-              <h3 className="text-lg font-bold text-[#191f28]">데이터 일괄 수정 ({selectedRows.size}건)</h3>
-              <button onClick={() => setIsBatchEditModalOpen(false)} className="text-[#8b95a1] hover:text-[#4e5968]">
-                <X className="w-6 h-6" />
-              </button>
+        <AppModal
+          isOpen={isBatchEditModalOpen}
+          title={`데이터 일괄 수정 (${selectedRows.size}건)`}
+          onClose={() => setIsBatchEditModalOpen(false)}
+          footer={
+            <div className="flex justify-end gap-3">
+              <AppButton variant="secondary" onClick={() => setIsBatchEditModalOpen(false)}>
+                기존 데이터 보존
+              </AppButton>
+              <AppButton onClick={handleBatchUpdate}>
+                변경
+              </AppButton>
             </div>
-            <div className="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
+          }
+        >
+            <div className="p-2 space-y-4 max-h-[60vh] overflow-y-auto">
               <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-600 mb-4">
                 수정할 항목을 체크하고 값을 입력해주세요. 체크되지 않은 항목은 기존 데이터가 유지됩니다.
               </div>
@@ -674,31 +707,32 @@ export default function PlanActualUpload() {
                 />
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-end gap-3">
-              <button 
-                onClick={() => setIsBatchEditModalOpen(false)}
-                className="px-4 py-2 text-[#4e5968] font-medium hover:bg-[#e5e8eb] rounded-xl transition-colors"
-              >
-                기존 데이터 보존
-              </button>
-              <button 
-                onClick={handleBatchUpdate}
-                className="px-4 py-2 bg-brand-500 text-white font-medium hover:bg-brand-600 rounded-xl transition-colors"
-              >
-                변경
-              </button>
-            </div>
-          </div>
-        </div>
+        </AppModal>
       )}
       {/* Validation Result Modal */}
       {validationResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl flex flex-col max-h-[90vh]">
-            <h3 className="text-xl font-bold text-[#191f28] mb-4">데이터 유효성 검사 결과</h3>
-            <div className="space-y-4 mb-6 text-sm flex-1 overflow-y-auto pr-2">
-              <p className="text-[#4e5968]">총 {validationResult.validRows.length + validationResult.warningRows.length + validationResult.errorRows.length}건 중 
-              정상 <span className="font-bold text-green-600 px-1">{validationResult.validRows.length}</span>건, 
+        <AppModal
+          isOpen={!!validationResult}
+          title="데이터 유효성 검사 결과"
+          onClose={() => setValidationResult(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <AppButton variant="secondary" onClick={() => setValidationResult(null)}>
+                취소
+              </AppButton>
+              <AppButton 
+                onClick={confirmImport}
+                disabled={validationResult.actualRows.length === 0 && validationResult.budgetRows.length === 0}
+              >
+                저장 후 계속
+              </AppButton>
+            </div>
+          }
+        >
+            <div className="space-y-4 text-sm">
+              <p className="text-[#4e5968]">총 {validationResult.actualRows.length + validationResult.budgetRows.length + validationResult.warningRows.length + validationResult.errorRows.length}건 중 
+              실적 {validationResult.actualRows.length}건, 
+              계획 {validationResult.budgetRows.length}건, 
               경고 <span className="font-bold text-yellow-600 px-1">{validationResult.warningRows.length}</span>건, 
               오류 <span className="font-bold text-red-600 px-1">{validationResult.errorRows.length}</span>건</p>
               
@@ -728,23 +762,7 @@ export default function PlanActualUpload() {
                 오류가 있는 행은 저장 대상에서 제외됩니다.<br/>계속하시겠습니까?
               </p>
             </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <button
-                className="px-5 py-2.5 bg-[#f2f4f6] text-[#4e5968] rounded-xl text-sm font-semibold hover:bg-[#e5e8eb] transition-colors"
-                onClick={() => setValidationResult(null)}
-              >
-                취소
-              </button>
-              <button
-                className="px-5 py-2.5 bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 transition-colors shadow-m disabled:opacity-50"
-                onClick={confirmImport}
-                disabled={validationResult.validRows.length === 0}
-              >
-                저장 후 계속
-              </button>
-            </div>
-          </div>
-        </div>
+        </AppModal>
       )}
 
       {/* Modals */}
