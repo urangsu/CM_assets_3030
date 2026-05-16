@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '../../lib/utils';
 
 export interface AppBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'primary' | 'warning' | 'danger' | 'locked' | 'success';
+  variant?: 'default' | 'primary' | 'warning' | 'danger' | 'locked' | 'success' | 'info' | 'muted';
   className?: string;
   children?: React.ReactNode;
 }
@@ -15,6 +15,8 @@ export function AppBadge({ className, variant = 'default', children, ...props }:
     danger: 'bg-red-50 text-red-600',
     locked: 'bg-gray-100 text-gray-600',
     success: 'bg-green-50 text-green-700',
+    info: 'bg-blue-50 text-blue-700',
+    muted: 'bg-gray-50 text-gray-700',
   };
 
   return (

@@ -348,6 +348,8 @@ export function aggregateByAccount(params: {
         } else {
           existing.monthlyDetails[idx].budget += m.budget;
           existing.monthlyDetails[idx].actual += m.actual;
+          existing.monthlyDetails[idx].overrunAmount += m.overrunAmount;
+          existing.monthlyDetails[idx].shortfallAmount += m.shortfallAmount;
         }
       });
     }
@@ -359,9 +361,11 @@ export function aggregateByAccount(params: {
     acc.overrunRate = acc.qBudget > 0 ? (acc.qActual / acc.qBudget) * 100 : null;
     acc.monthlyDetails.forEach(m => {
       m.overrunAmount = Math.max(m.actual - m.budget, 0);
+      m.shortfallAmount = Math.max(m.budget - m.actual, 0);
       m.balance = m.budget - m.actual;
       if (m.budget === 0 && m.actual > 0) m.status = '무예산 집행';
       else if (m.actual > m.budget) m.status = '초과';
+      else if (m.budget > 0 && m.actual < m.budget) m.status = '미달';
       else m.status = '정상';
     });
   });
@@ -408,6 +412,8 @@ export function aggregateByDept(params: {
         } else {
           existing.monthlyDetails[idx].budget += m.budget;
           existing.monthlyDetails[idx].actual += m.actual;
+          existing.monthlyDetails[idx].overrunAmount += m.overrunAmount;
+          existing.monthlyDetails[idx].shortfallAmount += m.shortfallAmount;
         }
       });
     }
@@ -419,9 +425,11 @@ export function aggregateByDept(params: {
     d.overrunRate = d.qBudget > 0 ? (d.qActual / d.qBudget) * 100 : null;
     d.monthlyDetails.forEach(m => {
       m.overrunAmount = Math.max(m.actual - m.budget, 0);
+      m.shortfallAmount = Math.max(m.budget - m.actual, 0);
       m.balance = m.budget - m.actual;
       if (m.budget === 0 && m.actual > 0) m.status = '무예산 집행';
       else if (m.actual > m.budget) m.status = '초과';
+      else if (m.budget > 0 && m.actual < m.budget) m.status = '미달';
       else m.status = '정상';
     });
   });

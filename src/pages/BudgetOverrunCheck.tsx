@@ -110,7 +110,7 @@ export default function BudgetOverrunCheck() {
       if (accountCategory === '일반비용' && isInvest) return false;
 
       // 2. Filter by overrun status
-      if (overrunFilter === '초과 항목만' && row.status !== '초과' && row.status !== '무예산 집행') return false;
+      if (overrunFilter === '초과 항목만' && row.status !== '초과') return false;
       if (overrunFilter === '미달 항목만' && row.status !== '미달') return false;
       if (overrunFilter === '무예산 집행만' && row.status !== '무예산 집행') return false;
       if (overrunFilter === '정상 항목만' && row.status !== '정상') return false;
@@ -312,26 +312,13 @@ export default function BudgetOverrunCheck() {
       
       {searched && results.length > 0 && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <MetricCard 
-              title="초과 계정 수" 
-              value={`${results.filter(r => r.status === '초과').length}건`}
-              variant="warning"
-            />
-             <MetricCard 
-              title="초과 금액 합계" 
-              value={<BudgetAmount value={results.reduce((sum, r) => sum + r.overrunAmount, 0)} />}
-              variant="warning"
-            />
-            <MetricCard 
-              title="무예산 집행 건수" 
-              value={`${results.filter(r => r.status === '무예산 집행').length}건`}
-              variant="warning"
-            />
-            <MetricCard 
-              title="조회 대상 부서 수" 
-              value={`${new Set(results.map(r => r.deptCode)).size}개 부서`}
-            />
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            <MetricCard title="초과 계정 수" value={`${results.filter(r => r.status === '초과').length}건`} variant="warning" />
+            <MetricCard title="초과 금액 합계" value={<BudgetAmount value={results.reduce((sum, r) => sum + r.overrunAmount, 0)} />} variant="warning" />
+            <MetricCard title="미달 계정 수" value={`${results.filter(r => r.status === '미달').length}건`} variant="success" />
+            <MetricCard title="미달 금액 합계" value={<BudgetAmount value={results.reduce((sum, r) => sum + r.shortfallAmount, 0)} />} variant="success" />
+            <MetricCard title="무예산 집행 건수" value={`${results.filter(r => r.status === '무예산 집행').length}건`} />
+            <MetricCard title="조회 대상 부서 수" value={`${new Set(results.map(r => r.deptCode)).size}개 부서`} />
           </div>
           
           <AppCard className="overflow-hidden">
