@@ -44,8 +44,7 @@ export default function HomeDashboard() {
         { title: '총 예산', value: `${totalBudget.toLocaleString()}원`, icon: Calculator },
         { title: '집행 금액', value: `${totalCompleted.toLocaleString()}원`, icon: FileSpreadsheet },
         { title: '잔여 예산', value: `${(totalBudget - totalCompleted).toLocaleString()}원`, icon: AlertTriangle, variant: 'warning' },
-        { title: '집행률', value: `${totalBudget > 0 ? ((totalCompleted / totalBudget) * 100).toFixed(1) : 0}%`, icon: BarChart3 },
-        { title: '초과 건수', value: `${overrunCount}건`, icon: AlertTriangle }
+        { title: '집행률', value: `${totalBudget > 0 ? ((totalCompleted / totalBudget) * 100).toFixed(1) : 0}%`, icon: BarChart3 }
       ]);
     }
   }, []);

@@ -767,43 +767,34 @@ export default function PlanActualUpload() {
 
       {/* Modals */}
       {alertModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold text-[#191f28] mb-4">알림</h3>
-            <p className="text-[#4e5968] mb-6">{alertModal.message}</p>
+        <AppModal
+          isOpen={alertModal.isOpen}
+          title="알림"
+          onClose={() => setAlertModal(null)}
+          footer={
             <div className="flex justify-end">
-              <button
-                onClick={() => setAlertModal(null)}
-                className="px-4 py-2 bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600"
-              >
-                확인
-              </button>
+              <AppButton onClick={() => setAlertModal(null)}>확인</AppButton>
             </div>
-          </div>
-        </div>
+          }
+        >
+          <p className="text-[#4e5968]">{alertModal.message}</p>
+        </AppModal>
       )}
 
       {confirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold text-[#191f28] mb-4">확인</h3>
-            <p className="text-[#4e5968] mb-6">{confirmModal.message}</p>
+        <AppModal
+          isOpen={confirmModal.isOpen}
+          title="확인"
+          onClose={() => setConfirmModal(null)}
+          footer={
             <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirmModal(null)}
-                className="px-4 py-2 bg-[#f2f4f6] text-[#4e5968] rounded-xl text-sm font-semibold hover:bg-[#e5e8eb]"
-              >
-                취소
-              </button>
-              <button
-                onClick={confirmModal.onConfirm}
-                className="px-4 py-2 bg-[#f04452] text-white rounded-xl text-sm font-semibold hover:bg-[#d93d4a]"
-              >
-                삭제
-              </button>
+              <AppButton variant="secondary" onClick={() => setConfirmModal(null)}>취소</AppButton>
+              <AppButton onClick={confirmModal.onConfirm}>삭제</AppButton>
             </div>
-          </div>
-        </div>
+          }
+        >
+          <p className="text-[#4e5968]">{confirmModal.message}</p>
+        </AppModal>
       )}
 
       {/* Header Actions */}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { Download, Save, Send, Trash2, Plus, Building2, FileDown, Divide, Copy } from 'lucide-react';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, isBudgetLocked } from '../lib/storageKeys';
@@ -98,6 +99,65 @@ export default function BusinessActivityBudget() {
     sourcePlanType: '경영계획'
   });
   const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+
+  const handleExcelDownload = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1 Data
+    const sheet1Data = [['업무활동경비_인원']];
+    sheet1Data.push(['연도', '계획구분', '구분', '부서코드', '부서명', '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', '연평균', '합계']);
+    
+    Object.keys(headcounts).sort((a,b) => a.localeCompare(b)).forEach(deptCode => {
+      const dept = allDepts.find(d => d.code === deptCode);
+      const data = headcounts[deptCode].data;
+      const sum = data.reduce((a, b) => a + b, 0);
+      sheet1Data.push([
+        year, planType, headcounts[deptCode].category, deptCode, dept?.name || '',
+        ...data, sum / 12, sum
+      ]);
+    });
+
+    const ws1 = XLSX.utils.aoa_to_sheet(sheet1Data);
+    XLSX.utils.book_append_sheet(wb, ws1, '업무활동경비_인원');
+
+    // Sheet 2 Data
+    const sheet2Data = [['업무활동경비_산출금액']];
+    sheet2Data.push(['연도', '계획구분', '부서코드', '부서명', '계정과목코드', '계정과목', '산출기준', '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', '연간금액']);
+
+    Object.keys(headcounts).sort((a,b) => a.localeCompare(b)).forEach(deptCode => {
+      const dept = allDepts.find(d => d.code === deptCode);
+      const data = headcounts[deptCode].data;
+      const category = headcounts[deptCode].category;
+
+      const accountMappings = {
+        '회의비': category === '제조' ? 'A60624102' : 'B52224102',
+        '간담회비': category === '제조' ? 'A60601123' : 'B52201123',
+        '부서별그룹활동지원비': category === '제조' ? 'A60601155' : 'B52201155',
+      };
+
+      Object.entries(accountMappings).forEach(([expenseName, accountCode]) => {
+        const expenseAmount = expenses[expenseName as keyof typeof expenses];
+        const budgetValues = data.map(h => h * expenseAmount);
+        const total = budgetValues.reduce((a, b) => a + b, 0);
+        
+        let accountName = '';
+        INITIAL_CATEGORIES.forEach(cat => {
+            const acc = cat.accounts.find(a => a.code === accountCode);
+            if (acc) accountName = acc.name;
+        });
+
+        sheet2Data.push([
+            year, planType, deptCode, dept?.name || '', accountCode, accountName, `인원수 * ${expenseAmount.toLocaleString()}`,
+            ...budgetValues, total
+        ]);
+      });
+    });
+
+    const ws2 = XLSX.utils.aoa_to_sheet(sheet2Data);
+    XLSX.utils.book_append_sheet(wb, ws2, '업무활동경비_산출금액');
+
+    XLSX.writeFile(wb, `업무활동경비_${year}_${planType}.xlsx`);
+  };
 
   const [modalConfig, setModalConfig] = useState<{isOpen: boolean, title: string, message: string, type: 'alert' | 'confirm', onConfirm?: () => void}>({
     isOpen: false, title: '', message: '', type: 'alert'
@@ -421,7 +481,7 @@ export default function BusinessActivityBudget() {
             <button onClick={save} className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm"><Save className="w-3.5 h-3.5 mr-1.5 text-brand-500" /> 임시저장</button>
             <button onClick={applyToBudget} className="flex items-center justify-center w-[120px] py-1.5 bg-brand-500 text-white rounded-xl text-xs font-bold hover:bg-brand-600 transition-all shadow-sm"><Send className="w-3.5 h-3.5 mr-1.5" /> 반영하기</button>
             <button onClick={reset} className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm"><Trash2 className="w-3.5 h-3.5 mr-1.5 text-red-500" /> 초기화</button>
-            <button onClick={() => showAlert('엑셀 다운로드')} className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm"><Download className="w-3.5 h-3.5 mr-1.5 text-brand-500" /> 엑셀 다운로드</button>
+            <button onClick={handleExcelDownload} className="flex items-center justify-center w-[120px] py-1.5 bg-white text-[#4e5968] border border-[#e5e8eb] rounded-xl text-xs font-bold hover:bg-[#f9fafb] transition-all shadow-sm"><Download className="w-3.5 h-3.5 mr-1.5 text-brand-500" /> 엑셀 다운로드</button>
           </div>
         </div>
       </div>
@@ -687,41 +747,28 @@ export default function BusinessActivityBudget() {
       )}
 
       {/* Modal */}
-      {modalConfig.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6">
-              <h3 className="text-lg font-bold text-[#191f28] mb-2">
-                {modalConfig.title}
-              </h3>
-              <p className="text-[#4e5968] text-sm leading-relaxed">
-                {modalConfig.message}
-              </p>
-            </div>
-            <div className="bg-[#f9fafb] px-6 py-4 flex justify-end gap-2 border-t border-[#e5e8eb]">
-              {modalConfig.type === 'confirm' && (
-                <button
-                  onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-[#4e5968] bg-white border border-[#d1d6db] rounded-xl hover:bg-[#f2f4f6] transition-colors"
-                >
-                  취소
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  closeModal();
-                  if (modalConfig.type === 'confirm' && modalConfig.onConfirm) {
+      <AppModal
+        isOpen={modalConfig.isOpen}
+        title={modalConfig.title}
+        onClose={closeModal}
+        footer={
+          <div className="flex justify-end gap-2">
+            {modalConfig.type === 'confirm' && (
+              <AppButton variant="secondary" onClick={closeModal}>취소</AppButton>
+            )}
+            <AppButton onClick={() => {
+                closeModal();
+                if (modalConfig.type === 'confirm' && modalConfig.onConfirm) {
                     modalConfig.onConfirm();
-                  }
-                }}
-                className="px-4 py-2 text-sm font-medium text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-colors shadow-sm"
-              >
-                확인
-              </button>
-            </div>
+                }
+            }}>
+              확인
+            </AppButton>
           </div>
-        </div>
-      )}
+        }
+      >
+        <p className="text-[#4e5968] text-sm leading-relaxed">{modalConfig.message}</p>
+      </AppModal>
     </div>
   );
 }
