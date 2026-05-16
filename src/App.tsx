@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import HomeDashboard from './pages/HomeDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import UserManagement from './pages/UserManagement';
 import AccountSelection from './pages/AccountSelection';
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="/" element={<Login />} />
         
         {/* Protected Routes wrapped in Layout */}
+        <Route path="/dashboard" element={<Layout><HomeDashboard /></Layout>} />
         <Route path="/user-management" element={<Layout><UserManagement /></Layout>} />
         <Route path="/account-selection" element={<Layout><AccountSelection /></Layout>} />
         <Route path="/budget-creation" element={<Layout><BudgetCreation /></Layout>} />
@@ -26,8 +28,7 @@ export default function App() {
         <Route path="/overrun-check" element={<Layout><BudgetOverrunCheck /></Layout>} />
         
         {/* Fallback */}
-        <Route path="/dashboard" element={<Navigate to="/user-management" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Router>
   );

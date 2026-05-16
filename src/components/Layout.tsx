@@ -23,6 +23,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   if (!currentUser) return null;
 
   const navigation = [
+    { name: '홈 대시보드', href: '/dashboard', icon: LayoutDashboard },
+    { name: '예산 계정 선택', href: '/account-selection', icon: Settings },
+    { name: '예산 작성', href: '/budget-creation', icon: FileSpreadsheet },
+    { name: '업무활동경비', href: '/business-activity-budget', icon: Briefcase },
+    { name: '계획/실적 업로드', href: '/actual-upload', icon: Upload },
+    { name: '예산 점검', href: '/overrun-check', icon: AlertTriangle },
+    { name: '비교 분석', href: '/variance-comparison', icon: BarChart3 },
     { 
       name: '사용자 및 부서관리', 
       href: '/user-management',
@@ -33,19 +40,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         return viewable.length > 0;
       }
     },
-    { name: '예산 계정 선택', href: '/account-selection', icon: Settings },
-    { name: '예산 작성', href: '/budget-creation', icon: FileSpreadsheet },
-    { name: '비교 분석', href: '/variance-comparison', icon: BarChart3 },
-    { name: '예산 초과 점검', href: '/overrun-check', icon: AlertTriangle },
-    { name: '업무활동경비예산', href: '/business-activity-budget', icon: Briefcase },
-    { name: '계획/실적 업로드', href: '/actual-upload', icon: Upload },
   ];
 
   const filteredNavigation = navigation.filter(item => {
     if (item.showIf) {
       return item.showIf(currentUser);
     }
-    if (item.name === '계획/실적 업로드' || item.name === '업무활동경비예산') {
+    if (item.name === '계획/실적 업로드' || item.name === '업무활동경비') {
       return currentUser.code === '99999' || currentUser.code === '32100';
     }
     return true;

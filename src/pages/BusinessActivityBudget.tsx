@@ -418,8 +418,8 @@ export default function BusinessActivityBudget() {
       </div>
 
       {importModal.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl w-96">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/10 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl w-96 shadow-popover border border-lithium-200">
             <h3 className="text-lg font-bold mb-4">데이터 가져오기</h3>
             <div className="mb-4">
               <label className="block text-sm font-bold mb-1">연도</label>
@@ -434,7 +434,6 @@ export default function BusinessActivityBudget() {
                 <option value="수정경영계획">수정경영계획</option>
                 <option value="1차RP">1차RP</option>
                 <option value="2차RP">2차RP</option>
-                <option value="실적">실적</option>
               </select>
             </div>
             <div className="flex justify-end gap-2">
@@ -446,8 +445,8 @@ export default function BusinessActivityBudget() {
       )}
 
       {deptModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl w-96 max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/10 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl w-96 max-h-[80vh] overflow-y-auto shadow-popover border border-lithium-200">
             <h3 className="text-lg font-bold mb-4">부서 추가</h3>
             <div className="space-y-2">
               {viewableDepts.filter(d => !headcounts[d.code]).map(dept => (
@@ -496,7 +495,7 @@ export default function BusinessActivityBudget() {
               <option value="수정경영계획">수정경영계획</option>
               <option value="1차RP">1차RP</option>
               <option value="2차RP">2차RP</option>
-              <option value="실적">실적</option>
+              {/* Removed 실적 */}
             </select>
           </div>
           <div>
