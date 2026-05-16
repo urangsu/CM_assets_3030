@@ -200,6 +200,11 @@ export default function BusinessActivityBudget() {
     showAlert('부서 추가 기능');
   };
 
+  const [deptSearch, setDeptSearch] = useState('');
+  const filteredViewableDepts = viewableDepts.filter(d => 
+    !headcounts[d.code] && (d.name.includes(deptSearch) || d.code.includes(deptSearch))
+  );
+
   const deleteSelectedDepts = () => {
     if (selectedDepts.length === 0) {
       showAlert('삭제할 부서를 선택해주세요.');
@@ -212,13 +217,14 @@ export default function BusinessActivityBudget() {
       selectedDepts.forEach(deptCode => {
         delete newHeadcounts[deptCode];
         
-        // Immediately remove from budget data
+        // Immediately remove from budget data - PROTECTING MANUAL ROWS
         const storageKey = getBudgetDataKey(deptCode, year, planType);
         const existingDataStr = localStorage.getItem(storageKey);
         if (existingDataStr) {
           let budgetData: any[] = JSON.parse(existingDataStr);
           const originalLength = budgetData.length;
-          budgetData = budgetData.filter(row => !targetAccountCodes.includes(row.code));
+          // Only remove AUTO type rows
+          budgetData = budgetData.filter(row => !(targetAccountCodes.includes(row.code) && row.sourceType === 'BUSINESS_ACTIVITY_AUTO'));
           if (budgetData.length !== originalLength) {
             localStorage.setItem(storageKey, JSON.stringify(budgetData));
           }
@@ -390,7 +396,8 @@ export default function BusinessActivityBudget() {
         if (existingDataStr) {
           let budgetData: any[] = JSON.parse(existingDataStr);
           const originalLength = budgetData.length;
-          budgetData = budgetData.filter(row => !targetAccountCodes.includes(row.code));
+          // Protect manual rows
+          budgetData = budgetData.filter(row => !(targetAccountCodes.includes(row.code) && row.sourceType === 'BUSINESS_ACTIVITY_AUTO'));
           if (budgetData.length !== originalLength) {
             localStorage.setItem(storageKey, JSON.stringify(budgetData));
           }
@@ -450,7 +457,7 @@ export default function BusinessActivityBudget() {
         <AppModal
           isOpen={deptModal}
           title="부서 추가"
-          description={`선택 가능 부서: ${viewableDepts.filter(d => !headcounts[d.code]).length}개`}
+          description={`선택 가능 부서: ${filteredViewableDepts.length}개`}
           onClose={() => { setSelectedDeptsToAdd([]); setDeptModal(false); }}
           footer={
             <div className="flex items-center justify-between w-full">
@@ -479,21 +486,40 @@ export default function BusinessActivityBudget() {
             </div>
           }
         >
-          <div className="space-y-2">
-            {viewableDepts.filter(d => !headcounts[d.code]).map(dept => (
-              <label key={dept.code} className="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
-                <input 
-                  type="checkbox"
-                  checked={selectedDeptsToAdd.includes(dept.code)}
-                  onChange={(e) => {
-                    if (e.target.checked) setSelectedDeptsToAdd([...selectedDeptsToAdd, dept.code]);
-                    else setSelectedDeptsToAdd(selectedDeptsToAdd.filter(c => c !== dept.code));
-                  }}
-                  className="mr-2"
-                />
-                {dept.name} ({dept.code})
-              </label>
-            ))}
+          <div className="space-y-4">
+            <input 
+              type="text"
+              placeholder="부서명 또는 코드 검색"
+              value={deptSearch}
+              onChange={(e) => setDeptSearch(e.target.value)}
+              className="w-full p-2 border rounded-xl text-sm"
+            />
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setSelectedDeptsToAdd(filteredViewableDepts.map(d => d.code))}
+                className="text-xs font-bold text-brand-600 hover:text-brand-700"
+              >전체 선택</button>
+              <button 
+                onClick={() => setSelectedDeptsToAdd([])}
+                className="text-xs font-bold text-brand-600 hover:text-brand-700"
+              >전체 해제</button>
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {filteredViewableDepts.map(dept => (
+                <label key={dept.code} className="flex items-center p-2 hover:bg-gray-100 rounded cursor-pointer">
+                  <input 
+                    type="checkbox"
+                    checked={selectedDeptsToAdd.includes(dept.code)}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedDeptsToAdd([...selectedDeptsToAdd, dept.code]);
+                      else setSelectedDeptsToAdd(selectedDeptsToAdd.filter(c => c !== dept.code));
+                    }}
+                    className="mr-2"
+                  />
+                  {dept.name} ({dept.code})
+                </label>
+              ))}
+            </div>
           </div>
         </AppModal>
       )}

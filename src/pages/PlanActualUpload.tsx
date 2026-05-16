@@ -295,36 +295,28 @@ export default function PlanActualUpload() {
     const headers = rows[0] || [];
     const bodyRows = rows.slice(1);
     
-    // Fallback detection
-    const format = detectUploadFormat(headers.map(String));
-
-    if (format === 'ACTUAL_WIDE_MONTHLY') {
-      const records = bodyRows.map(row => {
+    // Normalize headers for mapping
+    const records = bodyRows.map(row => {
         const record: Record<string, unknown> = {};
         headers.forEach((h, i) => record[normalizeHeader(h)] = row[i]);
         return record;
-      });
-      const result = parseActualWideMonthlyRows({
+    });
+
+    const result = parseUploadRecords({
+        headers: headers.map(String),
         records,
         year,
         existingCount: data.length,
         currentUser,
         viewableDeptCodes
-      });
-      setValidationResult(result);
-      return;
+    });
+
+    if (result.format === 'UNKNOWN') {
+        setAlertModal({ isOpen: true, message: '알 수 없는 업로드 형식입니다. 헤더를 확인해주세요.' });
+        return;
     }
 
-    // Fallback to existing flat logic for other formats or UNKNOWN
-    const validRows: ActualData[] = [];
-    const warningRows: ValidationIssue[] = [];
-    const errorRows: ValidationIssue[] = [];
-
-    rows.forEach((row, index) => {
-      // (This should include existing flat parsing logic...)
-      // ... I'll leave the existing logic here for flat format ...
-    });
-    setValidationResult({ format, sourceRowCount: rows.length, generatedRowCount: validRows.length, validRows, warningRows, errorRows });
+    setValidationResult(result);
   };
 
   const confirmImport = () => {
