@@ -20,23 +20,21 @@ export default function HomeDashboard() {
       const planType = '경영계획';
       const depts = u ? getViewableDepts(u.code) : [];
       let totalBudget = 0;
-      let totalActual = 0;
-      let totalPlanned = 0;
       let totalCompleted = 0;
-      let overrunCount = 0;
       
       depts.forEach(dept => {
         const budgetKey = getBudgetDataKey(dept.code, year, planType);
         const budgetRows = JSON.parse(localStorage.getItem(budgetKey) || '[]');
         budgetRows.forEach((row: any) => {
-           row.values.forEach((v: number) => totalBudget += v);
+           row.values.forEach((v: number) => {
+             totalBudget += (Number(v) || 0);
+           });
         });
         
         const actualKey = getActualDataKey(year);
         const actualRows = JSON.parse(localStorage.getItem(actualKey) || '[]');
         actualRows.filter((r: any) => r.usageCode === dept.code).forEach((r: any) => {
-            totalCompleted += r.completed;
-            if (r.planned + r.completed > (r.amount + r.additional + r.transferred + r.carriedOver)) overrunCount++;
+            totalCompleted += (Number(r.completed) || 0);
         });
       });
 

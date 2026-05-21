@@ -487,30 +487,47 @@ export default function BusinessActivityBudget() {
       </div>
 
       {importModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/10 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl w-96 shadow-popover border border-lithium-200">
-            <h3 className="text-lg font-bold mb-4">데이터 가져오기</h3>
-            <div className="mb-4">
-              <label className="block text-sm font-bold mb-1">연도</label>
-              <select value={importModal.sourceYear} onChange={(e) => setImportModal({...importModal, sourceYear: e.target.value})} className="w-full p-2 border rounded-xl">
+        <AppModal
+          isOpen={importModal.isOpen}
+          title="데이터 가져오기"
+          onClose={() => setImportModal({...importModal, isOpen: false})}
+          footer={
+            <div className="flex justify-end gap-2">
+              <AppButton variant="secondary" onClick={() => setImportModal({...importModal, isOpen: false})}>
+                취소
+              </AppButton>
+              <AppButton onClick={handleImportData}>
+                가져오기
+              </AppButton>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-[#4e5968] mb-1">연도</label>
+              <select 
+                value={importModal.sourceYear} 
+                onChange={(e) => setImportModal({...importModal, sourceYear: e.target.value})} 
+                className="w-full px-4 py-2 border border-[#d1d6db] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+              >
                 <option value="2026">2026년</option>
               </select>
             </div>
-            <div className="mb-4">
-              <label className="block text-sm font-bold mb-1">계획구분</label>
-              <select value={importModal.sourcePlanType} onChange={(e) => setImportModal({...importModal, sourcePlanType: e.target.value})} className="w-full p-2 border rounded-xl">
+            <div>
+              <label className="block text-sm font-semibold text-[#4e5968] mb-1">계획구분</label>
+              <select 
+                value={importModal.sourcePlanType} 
+                onChange={(e) => setImportModal({...importModal, sourcePlanType: e.target.value})} 
+                className="w-full px-4 py-2 border border-[#d1d6db] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+              >
                 <option value="경영계획">경영계획</option>
                 <option value="수정경영계획">수정경영계획</option>
                 <option value="1차RP">1차RP</option>
                 <option value="2차RP">2차RP</option>
               </select>
             </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setImportModal({...importModal, isOpen: false})} className="px-4 py-2 bg-gray-200 rounded-xl font-bold">취소</button>
-              <button onClick={handleImportData} className="px-4 py-2 bg-brand-500 text-white rounded-xl font-bold">가져오기</button>
-            </div>
           </div>
-        </div>
+        </AppModal>
       )}
 
       {deptModal && (
@@ -715,35 +732,35 @@ export default function BusinessActivityBudget() {
       </div>
 
       {previewApplyConfig?.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-xl font-bold text-[#191f28] mb-4">업무활동경비 자동산출 예산을 반영하시겠습니까?</h3>
-            <p className="text-sm text-[#4e5968] mb-4">수기 입력된 동일 계정 row는 삭제되지 않습니다.</p>
-            <div className="space-y-2 mb-6 text-sm text-[#191f28]">
-              <div className="flex justify-between"><span>반영 대상 부서 수:</span> <b>{previewApplyConfig.summary.deptCount}개</b></div>
-              <div className="flex justify-between"><span>반영 계정 수:</span> <b>{previewApplyConfig.summary.accountCount}개</b></div>
-              <div className="flex justify-between"><span>생성/갱신될 자동산출 row 수:</span> <b>{previewApplyConfig.summary.updatedAutoRows}개</b></div>
-              <div className="flex justify-between"><span>보존되는 수기 row 수:</span> <b>{previewApplyConfig.summary.preservedManualRows}개</b></div>
-              <div className="flex justify-between border-t border-[#e5e8eb] pt-2 mt-2">
-                <span>총 반영 금액:</span> <b className="text-brand-600">{previewApplyConfig.summary.totalAmount.toLocaleString()}원</b>
+        <AppModal
+          isOpen={previewApplyConfig.isOpen}
+          title="업무활동경비 예산 반영"
+          onClose={() => setPreviewApplyConfig(null)}
+          footer={
+            <div className="flex justify-end gap-2">
+              <AppButton variant="secondary" onClick={() => setPreviewApplyConfig(null)}>
+                취소
+              </AppButton>
+              <AppButton onClick={confirmApplyToBudget}>
+                반영
+              </AppButton>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm font-semibold text-[#191f28]">업무활동경비 자동산출 예산을 반영하시겠습니까?</p>
+            <p className="text-xs text-[#8b95a1]">수기 입력된 동일 계정 row는 삭제지 않 고 보존됩니다.</p>
+            <div className="p-4 bg-zinc-50 rounded-xl space-y-2 text-xs text-[#4e5968]">
+              <div className="flex justify-between"><span>반영 대상 부서 수:</span> <span className="font-semibold text-zinc-900">{previewApplyConfig.summary.deptCount}개</span></div>
+              <div className="flex justify-between"><span>반영 계정 수:</span> <span className="font-semibold text-zinc-900">{previewApplyConfig.summary.accountCount}개</span></div>
+              <div className="flex justify-between"><span>생성/갱신될 자동산출 row 수:</span> <span className="font-semibold text-zinc-900">{previewApplyConfig.summary.updatedAutoRows}개</span></div>
+              <div className="flex justify-between"><span>보존되는 수기 row 수:</span> <span className="font-semibold text-zinc-900">{previewApplyConfig.summary.preservedManualRows}개</span></div>
+              <div className="flex justify-between border-t border-zinc-200 pt-2 mt-2">
+                <span className="font-medium text-brand-600">총 반영 금액:</span> <span className="font-bold text-brand-600 text-sm">{previewApplyConfig.summary.totalAmount.toLocaleString()}원</span>
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <button
-                className="px-4 py-2 border rounded hover:bg-[#f2f4f6]"
-                onClick={() => setPreviewApplyConfig(null)}
-              >
-                취소
-              </button>
-              <button
-                className="px-4 py-2 bg-brand-500 text-white rounded hover:bg-brand-600 shadow-sm"
-                onClick={confirmApplyToBudget}
-              >
-                반영
-              </button>
-            </div>
           </div>
-        </div>
+        </AppModal>
       )}
 
       {/* Modal */}
