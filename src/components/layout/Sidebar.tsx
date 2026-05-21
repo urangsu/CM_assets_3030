@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getViewableDepts } from '../../constants';
 
-// Reusable Icon component from shell.jsx translated to TypeScript
 export function Ico({ id, size = 14 }: { id: string; size?: number }) {
   const p: Record<string, React.ReactNode> = {
     grid: (
@@ -137,7 +136,6 @@ export function Ico({ id, size = 14 }: { id: string; size?: number }) {
   );
 }
 
-// Navigation structure organized by actual business operational workflow
 interface NavItem {
   id: string;
   label: string;
@@ -154,38 +152,46 @@ interface NavGroup {
 
 const NAV_GROUPS_DEF: NavGroup[] = [
   {
-    group: null,
+    group: "1. 운영 현황 및 검토",
     items: [
-      { id: 'dashboard', label: '운영 관제 대시보드', icon: 'grid', href: '/dashboard' }
+      { id: 'dashboard', label: '운영 관제 대시보드', icon: 'grid', href: '/dashboard' },
+      { id: 'budget-status', label: '예산 계획 현황', icon: 'list', href: '/budget-status' },
+      { id: 'execution-ledger', label: '실제 집행 원장', icon: 'compare', href: '/execution-ledger' }
     ]
   },
   {
-    group: '1단계. 기초 실적 및 마스터 설정',
+    group: "2. 다차원 점검 및 통제",
+    items: [
+      { id: 'overrun', label: '예산 초과 통제', icon: 'alert', href: '/overrun-check' },
+      { id: 'underrun', label: '집행 미달 조정', icon: 'down', href: '/underrun-check' },
+      { id: 'unbudgeted', label: '무예산 집행 검증', icon: 'up', href: '/unbudgeted-check' }
+    ]
+  },
+  {
+    group: "3. 실적 업로드 및 예산편성",
     items: [
       { id: 'actual-upload', label: '실적 업로드 (Plan/Actual)', icon: 'upload', href: '/plan-actual-upload' },
-      { id: 'budget', label: '통제 대상 계정 지정', icon: 'wallet', href: '/account-selection' },
+      { id: 'budget-write', label: '부서 경비 예산 작성', icon: 'plus', href: '/budget-creation' },
+      { id: 'variance', label: '실적 및 예산 비교분석', icon: 'trend', href: '/variance-comparison' }
     ]
   },
   {
-    group: '2단계. 부서별 예산 수립',
+    group: "4. 마스터 정보 및 시스템 설정",
     items: [
-      { id: 'budget-write', label: '부서 경비 예산 작성', icon: 'list', href: '/budget-creation' },
-      { id: 'expense-report', label: '업무활동경비 산출', icon: 'convert', href: '/business-activity-budget' },
+      { id: 'account-master', label: '계정 마스터 관리', icon: 'tag', href: '/account-management' },
+      { id: 'department-master', label: '부서 마스터 관리', icon: 'org', href: '/department-management' },
+      { id: 'settings', label: '사용자 권한 관리', icon: 'user', href: '/user-management' }
     ]
   },
   {
-    group: '3단계. 다차원 통제 및 분석',
+    group: "5. 비즈니스 운영 모듈",
     items: [
-      { id: 'overrun', label: '실시간 예산 한도 통제', icon: 'alert', href: '/overrun-check' },
-      { id: 'variance', label: '부서별 Plan vs Actual', icon: 'compare', href: '/variance-comparison' },
+      { id: 'sales-status', label: '제품 판매 현황', icon: 'bar', href: '/sales-status' },
+      { id: 'purchase-status', label: '원료 글로벌 구매', icon: 'cube', href: '/purchase-status' },
+      { id: 'production-status', label: '공장 생산 실적', icon: 'trend', href: '/production-status' },
+      { id: 'raw-material-status', label: '원자재 입고 검수', icon: 'cube', href: '/raw-material-status' }
     ]
-  },
-  {
-    group: '시스템 설정',
-    items: [
-      { id: 'settings', label: '권한 및 포털 계정 설정', icon: 'settings', href: '/user-management' },
-    ]
-  },
+  }
 ];
 
 export default function Sidebar() {
@@ -201,7 +207,6 @@ export default function Sidebar() {
       setCurrentUser(JSON.parse(savedUser));
     }
 
-    // Check if actuals are uploaded
     const rawActuals = localStorage.getItem('cleanmetal_actual_data_2026');
     if (rawActuals) {
       try {
@@ -213,30 +218,30 @@ export default function Sidebar() {
     }
   }, [location.pathname]);
 
-  // Determine current active page key based on URL path
   const currentPath = location.pathname;
   let activePageKey = 'dashboard';
   if (currentPath.includes('/dashboard')) activePageKey = 'dashboard';
-  else if (currentPath.includes('/account-selection')) activePageKey = 'budget';
-  else if (currentPath.includes('/variance-comparison')) activePageKey = 'variance';
-  else if (currentPath.includes('/overrun-check')) activePageKey = 'overrun';
-  else if (currentPath.includes('/budget-creation')) activePageKey = 'budget-write';
-  else if (currentPath.includes('/business-activity-budget')) activePageKey = 'expense-report';
-  else if (currentPath.includes('/plan-actual-upload')) activePageKey = 'actual-upload';
+  else if (currentPath.includes('/budget-status')) activePageKey = 'budget-status';
+  else if (currentPath.includes('/execution-ledger')) activePageKey = 'execution-ledger';
+  else if (currentPath.includes('/overrun-check') || currentPath.includes('/overrun')) activePageKey = 'overrun';
+  else if (currentPath.includes('/underrun-check') || currentPath.includes('/underrun')) activePageKey = 'underrun';
+  else if (currentPath.includes('/unbudgeted-check') || currentPath.includes('/unbudgeted')) activePageKey = 'unbudgeted';
+  else if (currentPath.includes('/plan-actual-upload') || currentPath.includes('/actual-upload') || currentPath.includes('/upload')) activePageKey = 'actual-upload';
+  else if (currentPath.includes('/budget-creation') || currentPath.includes('/plan-create')) activePageKey = 'budget-write';
+  else if (currentPath.includes('/variance-comparison') || currentPath.includes('/comparison')) activePageKey = 'variance';
+  else if (currentPath.includes('/account-management') || currentPath.includes('/account-master')) activePageKey = 'account-master';
+  else if (currentPath.includes('/department-management') || currentPath.includes('/department-master')) activePageKey = 'department-master';
   else if (currentPath.includes('/user-management')) activePageKey = 'settings';
+  else if (currentPath.includes('/sales-status')) activePageKey = 'sales-status';
+  else if (currentPath.includes('/purchase-status')) activePageKey = 'purchase-status';
+  else if (currentPath.includes('/production-status')) activePageKey = 'production-status';
+  else if (currentPath.includes('/raw-material-status')) activePageKey = 'raw-material-status';
 
-  // Filter groups and items depending on user permissions
   const filteredNavGroups = NAV_GROUPS_DEF.map(groupDef => {
     const filteredItems = groupDef.items.filter(item => {
-      // Permission checks for admin-like roles (System Admin, Finance Team)
-      if (item.href === '/plan-actual-upload' || item.href === '/business-activity-budget') {
+      // Basic protection limits for raw uploads and system profiles
+      if (item.href === '/plan-actual-upload' || item.href === '/user-management') {
         return currentUser && (currentUser.code === '99999' || currentUser.code === '32100');
-      }
-      if (item.href === '/user-management') {
-        if (!currentUser) return false;
-        if (currentUser.code === '99999' || currentUser.code === '32100') return true;
-        const viewable = getViewableDepts(currentUser.code);
-        return viewable.length > 0;
       }
       return true;
     });
@@ -247,18 +252,16 @@ export default function Sidebar() {
     };
   }).filter(groupDef => groupDef.items.length > 0);
 
-  // Find active group name
   const activeGroupName = filteredNavGroups.find(g => g.items.some(i => i.id === activePageKey))?.group || null;
 
-  // Track accordion expand/collapse state
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const s = new Set<string>();
+    s.add("1. 운영 현황 및 검토");
+    s.add("2. 다차원 점검 및 통제");
     if (activeGroupName) s.add(activeGroupName);
-    if (!hasData) s.add('1단계. 기초 실적 및 마스터 설정'); // Default open actual upload if no data
     return s;
   });
 
-  // Auto-expand group of active page
   useEffect(() => {
     if (activeGroupName) {
       setOpenGroups(prev => {
@@ -288,18 +291,17 @@ export default function Sidebar() {
 
   return (
     <aside className="sb cb">
-      <span className="cbl">Sidebar</span>
-      <nav className="flex-1">
+      <span className="cbl">Navigation Console</span>
+      <nav className="flex-1 mt-4">
         {filteredNavGroups.map(({ group, items }) => {
           const isGroupOpen = !group || openGroups.has(group);
           const hasActiveItem = items.some(i => i.id === activePageKey);
 
           return (
             <div key={group || '__home'} className="nav-group">
-              {/* Group Header */}
               {group && (
                 <div
-                  className={`nav-group-hdr${hasActiveItem ? ' has-active' : ''}`}
+                  className={`nav-group-hdr${hasActiveItem ? ' has-active text-[#008f83]' : ''} hover:text-[#008f83]`}
                   onClick={() => toggleGroup(group)}
                 >
                   <span className="nav-group-label">{group}</span>
@@ -309,9 +311,8 @@ export default function Sidebar() {
                 </div>
               )}
 
-              {/* Group Nav Items */}
               {isGroupOpen && (
-                <div className="flex flex-col">
+                <div className="flex flex-col mb-2.5">
                   {items.map(item => {
                     const isActive = activePageKey === item.id;
                     const needsAttention = item.id === 'actual-upload' && !hasData;
@@ -334,7 +335,7 @@ export default function Sidebar() {
                               borderColor: 'var(--nickel-100)',
                             }}
                           >
-                            필요
+                            설정 필요
                           </span>
                         )}
                       </div>
@@ -347,8 +348,8 @@ export default function Sidebar() {
         })}
       </nav>
       <div className="sb-footer">
-        <div className="text-[10px] text-zinc-400 opacity-70 px-4 py-1 tracking-wide font-medium">
-          HYCM Portal v2.0
+        <div className="text-[10px] text-zinc-400 opacity-60 px-4 py-1.5 tracking-wider font-bold font-mono">
+          HYCM CONTROL CENTER v2.1
         </div>
       </div>
     </aside>

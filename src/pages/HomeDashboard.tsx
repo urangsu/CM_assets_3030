@@ -203,6 +203,7 @@ export default function HomeDashboard() {
     setDeptFeed(computedDeptList);
 
     // 2. Render Chart Data
+    let unassignedActualAmount = 0;
     if (hasRealActual && calculatedTotalBudget > 0) {
       // Compute monthly distribution from real data
       const monthlyPlan = Array(12).fill(0);
@@ -221,33 +222,38 @@ export default function HomeDashboard() {
         });
       });
 
-      // Distribute Actual completions month by month if month column is available
-      // Excel structures might have actual monthly columns or we estimate it
-      // Let's check completed row contents
+      // Distribute Actual completions month by month if month column or period is available
       realActualRows.forEach((r: any) => {
-        // Typically actualRows might have month-based records. Let's map usage or month field.
-        // If completed sum is total, distribute a trend or if specific month field exists use that.
-        const monthNum = Number(r.month) || (Math.floor(Math.random() * 5) + 1); // fallback to typical Jan-May
+        let monthNum = 0;
+        if (r.month) {
+          monthNum = Number(r.month);
+        } else if (r.period) {
+          const match = r.period.match(/(\d+)월/);
+          if (match) {
+            monthNum = parseInt(match[1]);
+          }
+        }
+
         if (monthNum >= 1 && monthNum <= 12) {
           monthlyAct[monthNum - 1] += (Number(r.completed) || 0);
         } else {
-          monthlyAct[0] += (Number(r.completed) || 0);
+          unassignedActualAmount += (Number(r.completed) || 0);
         }
       });
 
       // Build Monthly Trend
       const trendData = Array.from({ length: 12 }, (_, i) => ({
         month: `${i + 1}월`,
-        예산계획: monthlyPlan[i],
-        실적집행: monthlyAct[i],
+        '예산 계획': monthlyPlan[i],
+        '실제 집행': monthlyAct[i],
       }));
       setMonthlyTrendData(trendData);
 
       // Contrast top 6 departments
       const contrastData = computedDeptList.slice(0, 6).map(d => ({
         name: d.name,
-        예산한도: d.budgetSum,
-        인실집행: d.actualSum,
+        '편성 예산': d.budgetSum,
+        '실제 집행': d.actualSum,
       }));
       setDeptContrastData(contrastData);
 
@@ -263,28 +269,28 @@ export default function HomeDashboard() {
       // Fallback Seed Data (Demo Simulation for high UX)
       // Standard corporate budget trend & department stats for 2026
       const mockMonthlyTrend = [
-        { month: '1월', 예산계획: 85000000, 실적집행: 72400000 },
-        { month: '2월', 예산계획: 85000000, 실적집행: 79200000 },
-        { month: '3월', 예산계획: 90000000, 실적집행: 88400000 },
-        { month: '4월', 예산계획: 90000000, 실적집행: 92100000 },
-        { month: '5월', 예산계획: 95000000, 실적집행: 41200000 }, // Mid-year
-        { month: '6월', 예산계획: 95000000, 실적집행: 0 },
-        { month: '7월', 예산계획: 80000000, 실적집행: 0 },
-        { month: '8월', 예산계획: 80000000, 실적집행: 0 },
-        { month: '9월', 예산계획: 95000000, 실적집행: 0 },
-        { month: '10월', 예산계획: 100000000, 실적집행: 0 },
-        { month: '11월', 예산계획: 110000000, 실적집행: 0 },
-        { month: '12월', 예산계획: 120000000, 실적집행: 0 }
+        { month: '1월', '예산 계획': 85000000, '실제 집행': 72400000 },
+        { month: '2월', '예산 계획': 85000000, '실제 집행': 79200000 },
+        { month: '3월', '예산 계획': 90000000, '실제 집행': 88400000 },
+        { month: '4월', '예산 계획': 90000000, '실제 집행': 92100000 },
+        { month: '5월', '예산 계획': 95000000, '실제 집행': 41200000 }, // Mid-year
+        { month: '6월', '예산 계획': 95000000, '실제 집행': 0 },
+        { month: '7월', '예산 계획': 80000000, '실제 집행': 0 },
+        { month: '8월', '예산 계획': 80000000, '실제 집행': 0 },
+        { month: '9월', '예산 계획': 95000000, '실제 집행': 0 },
+        { month: '10월', '예산 계획': 100000000, '실제 집행': 0 },
+        { month: '11월', '예산 계획': 110000000, '실제 집행': 0 },
+        { month: '12월', '예산 계획': 120000000, '실제 집행': 0 }
       ];
       setMonthlyTrendData(mockMonthlyTrend);
 
       const mockDeptContrast = [
-        { name: '기획재무그룹', 예산한도: 145000000, 인실집행: 68400000 },
-        { name: '전략소싱그룹', 예산한도: 120000000, 인실집행: 74200000 },
-        { name: '1공장', 예산한도: 210000000, 인실집행: 104500000 },
-        { name: '인사행정그룹', 예산한도: 95000000, 인실집행: 42100000 },
-        { name: '품질기술부', 예산한도: 75000000, 인실집행: 34800000 },
-        { name: '안전환경센터', 예산한도: 62000000, 인실집행: 21400000 }
+        { name: '기획재무그룹', '편성 예산': 145000000, '실제 집행': 68400000 },
+        { name: '전략소싱그룹', '편성 예산': 120000000, '실제 집행': 74200000 },
+        { name: '1공장', '편성 예산': 210000000, '실제 집행': 104500000 },
+        { name: '인사행정그룹', '편성 예산': 95000000, '실제 집행': 42100000 },
+        { name: '품질기술부', '편성 예산': 75000000, '실제 집행': 34800000 },
+        { name: '안전환경센터', '편성 예산': 62000000, '실제 집행': 21400000 }
       ];
       setDeptContrastData(mockDeptContrast);
 
@@ -362,24 +368,24 @@ export default function HomeDashboard() {
 
       {/* 2. Demo Warning Card Banner */}
       {isDemoMode && (
-        <div className="bg-[#fff2e8] border border-[#ffe1c6] p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="bg-[#fdf6f0] border-2 border-[#F7A059] p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-amber-100 rounded-xl text-[#c96a1d] shrink-0">
+            <div className="p-2 bg-[#fdf0e2] rounded-xl text-[#F7A059] shrink-0">
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-sm font-bold text-[#111111] leading-snug">실적 원장 데이터가 등록되지 않았습니다</p>
+              <p className="text-sm font-bold text-[#111111] leading-snug">실적 원장 데이터가 없어 화면 확인용 샘플 데이터가 표시됩니다.</p>
               <p className="text-xs text-[#647067] mt-0.5 leading-relaxed">
-                현재 경영 통계 시뮬레이션용 가설 데이터가 렌더링 중입니다. 실적 시나리오 CSV 원본파일을 업로드하시면 자동 매칭 집계로 실시간 변경됩니다.
+                실적 시나리오 CSV 원본파일을 업로드하시면 자동 매칭 집계로 실시간 변경 및 검토가 가능합니다.
               </p>
             </div>
           </div>
           <button 
             onClick={() => navigate('/plan-actual-upload')}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#e98532] hover:bg-[#c96a1d] text-white rounded-xl text-xs font-semibold cursor-pointer transition-colors shadow-sm whitespace-nowrap"
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#008f83] hover:bg-[#007369] text-white rounded-xl text-xs font-semibold cursor-pointer transition-colors shadow-sm whitespace-nowrap"
           >
             <Upload className="w-3.5 h-3.5" />
-            실적 업로드 개시
+            실적 업로드하기
           </button>
         </div>
       )}
@@ -396,15 +402,15 @@ export default function HomeDashboard() {
         <MiniMetricCard 
           title="누적 실적 집행량" 
           value={`${stats.totalActual.toLocaleString()}원`} 
-          subValue={isDemoMode ? "가설 시뮬레이션 집행량" : "실제 누계 자동 추출액"}
+          subValue={isDemoMode ? "샘플 데이터 집행량" : "실제 누계 자동 추출액"}
           icon={FileSpreadsheet}
-          trend={isDemoMode ? "데모 모드" : "실집행"}
+          trend={isDemoMode ? "샘플 데이터" : "실제 집행"}
           trendType={isDemoMode ? 'neutral' : 'down'}
           colorClass="text-[#718872] bg-emerald-50"
         />
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col justify-between hover:shadow-md transition-all duration-200">
           <div className="flex justify-between items-start">
-            <span className="text-xs font-semibold text-[#647067] uppercase tracking-wider">전체 예산 소진 진척도</span>
+            <span className="text-xs font-semibold text-[#647067] uppercase tracking-wider">전체 예산 집행률</span>
             <div className={`p-2 rounded-xl text-brand-600 bg-brand-50`}>
               <BarChart3 className="w-4 h-4" />
             </div>
@@ -428,7 +434,7 @@ export default function HomeDashboard() {
           value={`${stats.overrunDeptsCount}건 검출`} 
           subValue={`조회 대상 부서 ${stats.viewableDeptsCount}개 중`}
           icon={AlertTriangle}
-          trend={stats.overrunDeptsCount > 0 ? "통제 권고" : "정상 통제"}
+          trend={stats.overrunDeptsCount > 0 ? "검토 필요" : "정상 통제"}
           trendType={stats.overrunDeptsCount > 0 ? 'up' : 'down'}
           colorClass={stats.overrunDeptsCount > 0 ? "text-amber-600 bg-amber-50" : "text-[#718872] bg-zinc-100"}
         />
@@ -441,7 +447,7 @@ export default function HomeDashboard() {
           <div>
             <div className="flex items-center justify-between border-b border-[#eef2ec] pb-3 mb-4">
               <div>
-                <h3 className="text-base font-bold text-[#111111]">전사 분기별 예산계획 vs 집행 추이</h3>
+                <h3 className="text-base font-bold text-[#111111]">전사 분기별 예산 계획 vs 실제 집행 추이</h3>
                 <p className="text-xs text-[#8b95a1] mt-0.5">2026 회계연도 기준 월간 통제 궤적</p>
               </div>
               <span className="text-[10px] font-mono bg-[#eef2ec] px-2 py-0.5 rounded text-[#647067] uppercase">Interactive</span>
@@ -473,8 +479,8 @@ export default function HomeDashboard() {
                     contentStyle={{ border: '1px solid #dde5de', borderRadius: '12px', fontSize: '12px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Area type="monotone" name="분기 예산계획" dataKey="예산계획" stroke="#8ca38d" strokeWidth={1.5} fillOpacity={1} fill="url(#colorPlan)" />
-                  <Area type="monotone" name="실적 집행누계" dataKey="실적집행" stroke="#008f83" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAct)" />
+                  <Area type="monotone" name="분기 예산 계획" dataKey="예산 계획" stroke="#8ca38d" strokeWidth={1.5} fillOpacity={1} fill="url(#colorPlan)" />
+                  <Area type="monotone" name="실제 집행 누계" dataKey="실제 집행" stroke="#008f83" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAct)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -486,8 +492,8 @@ export default function HomeDashboard() {
           <div>
             <div className="flex items-center justify-between border-b border-[#eef2ec] pb-3 mb-4">
               <div>
-                <h3 className="text-base font-bold text-[#111111]">집행 및 한도 순위 분석 (Top 6 부서)</h3>
-                <p className="text-xs text-[#8b95a1] mt-0.5">부서별 편성 한도금액 대비 집행비율 대비</p>
+                <h3 className="text-base font-bold text-[#111111]">집행 및 편성 예산 순위 분석 (Top 6 부서)</h3>
+                <p className="text-xs text-[#8b95a1] mt-0.5">부서별 편성 예산 대비 집행비율 대비</p>
               </div>
               <span className="text-[10px] font-mono bg-[#eef2ec] px-2 py-0.5 rounded text-[#647067] uppercase">Recharts Rendering</span>
             </div>
@@ -502,8 +508,8 @@ export default function HomeDashboard() {
                     contentStyle={{ border: '1px solid #dde5de', borderRadius: '12px', fontSize: '12px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Bar name="편성 예산" dataKey="예산한도" fill="#c4cfc5" radius={[0, 4, 4, 0]} barSize={8} />
-                  <Bar name="집행 실적" dataKey="인실집행" fill="#008f83" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar name="편성 예산" dataKey="편성 예산" fill="#c4cfc5" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar name="실제 집행" dataKey="실제 집행" fill="#008f83" radius={[0, 4, 4, 0]} barSize={8} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

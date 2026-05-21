@@ -19,6 +19,7 @@ import { BudgetRate } from '../components/budget/BudgetRate';
 import { OverrunBadge } from '../components/budget/OverrunBadge';
 import { ExportButtonGroup } from '../components/budget/ExportButtonGroup';
 import { EmptyState } from '../components/ui/EmptyState';
+import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
 
 const QUARTERS: Record<string, number[]> = {
   '1Q': [0, 1, 2],
@@ -41,6 +42,10 @@ export default function BudgetOverrunCheck() {
   const [results, setResults] = useState<any[]>([]);
   const [searched, setSearched] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+
+  // Drawer
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [activeReviewItem, setActiveReviewItem] = useState<ReviewItem | null>(null);
 
   const currentUser = JSON.parse(localStorage.getItem('current_user') || '{}');
 
@@ -137,7 +142,6 @@ export default function BudgetOverrunCheck() {
   };
 
   const exportToExcel = () => {
-    // 엑셀 다운로드 (권한 필터는 이미 results에 반영되어 있음)
     import('xlsx').then(XLSX => {
       const data = results.map(r => ({
         '부서코드': r.deptCode,
@@ -168,7 +172,6 @@ export default function BudgetOverrunCheck() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, '예산점검');
 
-      // Create detailed monthly sheet
       const detailsData: any[] = [];
       results.forEach(r => {
         const deptName = depts.find(d => d.code === r.deptCode)?.name || '';
@@ -202,8 +205,8 @@ export default function BudgetOverrunCheck() {
   return (
     <div className="p-6">
       <PageHeader 
-        title={<><AlertTriangle className="inline-block w-6 h-6 text-cobalt-500 mr-2 -mt-1"/>예산 초과 점검</>}
-        description="조직별/계정별 예산 집행 현황을 검토하고 초과 내역을 확인합니다."
+        title={<><AlertTriangle className="inline-block w-6 h-6 text-[#F7A059] mr-2 -mt-1"/>예산 초과 통제 보드</>}
+        description="조직별/계정별 실제 집행 대비 예산 소진 현황을 검토하고 비정상적 초과 및 불용 내역을 검증 통제합니다."
       />
       
       <FilterBar 
@@ -343,20 +346,21 @@ export default function BudgetOverrunCheck() {
                    <AppTableHead className="text-right">연도예산</AppTableHead>
                    <AppTableHead className="text-right">연도실적</AppTableHead>
                    <AppTableHead className="text-center">상태</AppTableHead>
+                   <AppTableHead className="text-center font-bold">의견/조치</AppTableHead>
                  </tr>
                </AppTableHeader>
                <AppTableBody>
                  {results.map((r, i) => (
                    <React.Fragment key={i}>
-                   <AppTableRow onClick={() => toggleRow(i)} className="cursor-pointer hover:bg-lithium-50/50">
-                     <AppTableCell>
-                        {expandedRows.has(i) ? <ChevronUp className="w-4 h-4 text-lithium-500" /> : <ChevronDown className="w-4 h-4 text-lithium-500" />}
+                   <AppTableRow onClick={() => toggleRow(i)} className="cursor-pointer hover:bg-zinc-50/50">
+                     <AppTableCell onClick={(e) => { e.stopPropagation(); toggleRow(i); }}>
+                        {expandedRows.has(i) ? <ChevronUp className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
                      </AppTableCell>
-                     <AppTableCell className="text-lithium-600">{r.deptCode}</AppTableCell>
+                     <AppTableCell className="text-zinc-600">{r.deptCode}</AppTableCell>
                      <AppTableCell>{depts.find(d => d.code === r.deptCode)?.name}</AppTableCell>
-                     <AppTableCell className="text-lithium-500">{r.accountCode}</AppTableCell>
+                     <AppTableCell className="text-zinc-500">{r.accountCode}</AppTableCell>
                      <AppTableCell>{r.accountName}</AppTableCell>
-                     <AppTableCell className={r.status === '미달' ? "text-emerald-600 font-bold" : "text-cobalt-600 font-bold"}>{r.status === '미달' ? formatListMonths(r.shortfallMonths) : formatListMonths(r.overrunMonths)}</AppTableCell>
+                     <AppTableCell className={r.status === '미달' ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>{r.status === '미달' ? formatListMonths(r.shortfallMonths) : formatListMonths(r.overrunMonths)}</AppTableCell>
                      <AppTableCell>{(r.status === '미달' ? r.shortfallMonths.length : r.overrunMonths.length) > 0 ? (r.status === '미달' ? r.shortfallMonths.length : r.overrunMonths.length) + '개월' : '-'}</AppTableCell>
                      <AppTableCell className="text-right"><BudgetAmount value={r.qBudget} /></AppTableCell>
                      <AppTableCell className="text-right"><BudgetAmount value={r.qActual} /></AppTableCell>
@@ -366,56 +370,86 @@ export default function BudgetOverrunCheck() {
                      <AppTableCell className="text-right">
                        <BudgetAmount value={r.shortfallAmount} tone={r.status === '미달' ? "success" : "default"} />
                      </AppTableCell>
-                     <AppTableCell className="text-right text-lithium-600"><BudgetAmount value={r.balance} /></AppTableCell>
+                     <AppTableCell className="text-right text-zinc-600"><BudgetAmount value={r.balance} /></AppTableCell>
                      <AppTableCell className="text-right">
-                       {r.qBudget > 0 ? <BudgetRate value={(r.qActual / r.qBudget) * 100} /> : <span className="text-lithium-400 text-xs">예산 없음</span>}
+                       {r.qBudget > 0 ? <BudgetRate value={(r.qActual / r.qBudget) * 100} /> : <span className="text-zinc-450 text-xs">예산 없음</span>}
                      </AppTableCell>
                      <AppTableCell>{r.status === '미달' ? (r.maxShortfallMonth ? `${r.maxShortfallMonth}월` : '-') : (r.maxOverrunMonth ? `${r.maxOverrunMonth}월` : '-')}</AppTableCell>
                      <AppTableCell className="text-right font-medium">
-                        {r.status === '미달' ? (r.maxShortfallAmount > 0 ? <span className="text-emerald-600"><BudgetAmount value={r.maxShortfallAmount} /></span> : '-') : (r.maxOverrunAmount > 0 ? <span className="text-cobalt-600"><BudgetAmount value={r.maxOverrunAmount} /></span> : '-')}
+                        {r.status === '미달' ? (r.maxShortfallAmount > 0 ? <span className="text-emerald-600"><BudgetAmount value={r.maxShortfallAmount} /></span> : '-') : (r.maxOverrunAmount > 0 ? <span className="text-rose-600"><BudgetAmount value={r.maxOverrunAmount} /></span> : '-')}
                      </AppTableCell>
-                     <AppTableCell className="text-right text-lithium-500"><BudgetAmount value={r.yBudget} /></AppTableCell>
-                     <AppTableCell className="text-right text-lithium-500"><BudgetAmount value={r.yActual} /></AppTableCell>
+                     <AppTableCell className="text-right text-zinc-500"><BudgetAmount value={r.yBudget} /></AppTableCell>
+                     <AppTableCell className="text-right text-zinc-500"><BudgetAmount value={r.yActual} /></AppTableCell>
                      <AppTableCell className="text-center">
                        <OverrunBadge status={r.status} />
                      </AppTableCell>
+                     <AppTableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           const subId = `overrun-${r.deptCode}-${r.accountCode}`;
+                           const localReviews = JSON.parse(localStorage.getItem('hycm_review_items') || '{}');
+                           const savedReview = localReviews[subId];
+
+                           setActiveReviewItem({
+                             id: subId,
+                             deptCode: r.deptCode,
+                             deptName: depts.find(d => d.code === r.deptCode)?.name || r.deptCode,
+                             accountCode: r.accountCode,
+                             accountName: r.accountName,
+                             budgetAmount: r.qBudget,
+                             actualAmount: r.qActual,
+                             differenceAmount: r.overrunAmount || r.shortfallAmount || 0,
+                             burnRate: r.qBudget > 0 ? Number(((r.qActual / r.qBudget) * 100).toFixed(1)) : 100,
+                             anomalyType: r.status === '초과' ? 'OVERRUN' : r.status === '무예산 집행' ? 'UNBUDGETED' : 'UNDERRUN',
+                             remarks: `최대발생월: ${r.maxOverrunMonth || r.maxShortfallMonth || '-'}월`,
+                             status: savedReview ? savedReview.status : 'DRAFT',
+                             statusLabel: savedReview ? (savedReview.status === 'APPROVED' ? '조정 최종 승인' : savedReview.status === 'ACTION_REQ' ? '부서 통보 조치' : '보류') : '검토 대기'
+                           });
+                           setIsDrawerOpen(true);
+                         }}
+                         className="px-2.5 py-1 bg-white hover:bg-zinc-100 border border-[#dde5de] text-zinc-700 hover:border-teal-500 hover:text-teal-600 font-semibold rounded cursor-pointer transition-all"
+                       >
+                         조치 상신
+                       </button>
+                     </AppTableCell>
                    </AppTableRow>
                    {expandedRows.has(i) && (
-                     <AppTableRow className="bg-lithium-50/30">
+                     <AppTableRow className="bg-zinc-50/10">
                        <AppTableCell></AppTableCell>
-                       <AppTableCell colSpan={17} className="p-0">
+                       <AppTableCell colSpan={18} className="p-0 font-sans">
                          <div className="py-2 pr-6">
-                           <table className="w-full text-xs ml-4 border border-lithium-200 bg-white rounded-lg overflow-hidden my-2 shadow-sm">
-                             <thead className="bg-lithium-50 font-bold text-lithium-600">
+                           <table className="w-full text-xs ml-4 border border-zinc-200 bg-white rounded-lg overflow-hidden my-2 shadow-sm">
+                             <thead className="bg-[#f7f9f7] font-bold text-zinc-600">
                                <tr>
-                                 <th className="px-3 py-2 text-left border-b border-lithium-200">월</th>
-                                 <th className="px-3 py-2 text-right border-b border-lithium-200">월예산</th>
-                                 <th className="px-3 py-2 text-right border-b border-lithium-200">월실적</th>
-                                 <th className="px-3 py-2 text-right border-b border-lithium-200">월초과금액</th>
-                                 <th className="px-3 py-2 text-right border-b border-lithium-200">월미달금액</th>
-                                 <th className="px-3 py-2 text-right border-b border-lithium-200">월잔액</th>
-                                 <th className="px-3 py-2 text-center border-b border-lithium-200">상태</th>
+                                 <th className="px-3 py-2 text-left border-b border-zinc-150">월</th>
+                                 <th className="px-3 py-2 text-right border-b border-zinc-150">월예산</th>
+                                 <th className="px-3 py-2 text-right border-b border-zinc-150">월실적</th>
+                                 <th className="px-3 py-2 text-right border-b border-zinc-150">월초과금액</th>
+                                 <th className="px-3 py-2 text-right border-b border-zinc-150">월미달금액</th>
+                                 <th className="px-3 py-2 text-right border-b border-zinc-150">월잔액</th>
+                                 <th className="px-3 py-2 text-center border-b border-zinc-150">상태</th>
                                </tr>
                              </thead>
-                             <tbody className="divide-y divide-lithium-100">
+                             <tbody className="divide-y divide-zinc-100">
                                {r.monthlyDetails.map((m: any) => (
-                                 <tr key={m.month} className="hover:bg-lithium-50/50">
-                                   <td className="px-3 py-2 text-eco-black font-medium">{m.month}월</td>
-                                   <td className="px-3 py-2 text-right text-lithium-600">{m.budget.toLocaleString()}원</td>
-                                   <td className="px-3 py-2 text-right text-eco-black">{m.actual.toLocaleString()}원</td>
-                                   <td className={`px-3 py-2 text-right font-medium ${m.overrunAmount > 0 ? 'text-cobalt-600' : 'text-lithium-400'}`}>
+                                 <tr key={m.month} className="hover:bg-zinc-50/30">
+                                   <td className="px-3 py-2 text-zinc-900 font-medium">{m.month}월</td>
+                                   <td className="px-3 py-2 text-right text-zinc-550">{m.budget.toLocaleString()}원</td>
+                                   <td className="px-3 py-2 text-right text-zinc-900">{m.actual.toLocaleString()}원</td>
+                                   <td className={`px-3 py-2 text-right font-medium ${m.overrunAmount > 0 ? 'text-rose-600' : 'text-zinc-400'}`}>
                                      {m.overrunAmount > 0 ? `+${m.overrunAmount.toLocaleString()}원` : '-'}
                                    </td>
-                                   <td className={`px-3 py-2 text-right font-medium ${m.shortfallAmount > 0 ? 'text-emerald-600' : 'text-lithium-400'}`}>
+                                   <td className={`px-3 py-2 text-right font-medium ${m.shortfallAmount > 0 ? 'text-emerald-600' : 'text-zinc-400'}`}>
                                      {m.shortfallAmount > 0 ? `${m.shortfallAmount.toLocaleString()}원` : '-'}
                                    </td>
-                                   <td className="px-3 py-2 text-right text-lithium-600">{m.balance.toLocaleString()}원</td>
+                                   <td className="px-3 py-2 text-right text-zinc-500">{m.balance.toLocaleString()}원</td>
                                    <td className="px-3 py-2 text-center">
                                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                       m.status === '정상' ? 'bg-lithium-100 text-lithium-600' :
+                                       m.status === '정상' ? 'bg-zinc-50 text-zinc-600' :
                                        m.status === '미달' ? 'bg-emerald-50 text-emerald-600' :
-                                       m.status === '무예산 집행' ? 'bg-cobalt-50 text-cobalt-600' :
-                                       'bg-cobalt-100 text-cobalt-700'
+                                       m.status === '무예산 집행' ? 'bg-rose-50 text-rose-600' :
+                                       'bg-rose-105 text-rose-700'
                                      }`}>{m.status}</span>
                                    </td>
                                  </tr>
@@ -433,6 +467,13 @@ export default function BudgetOverrunCheck() {
           </AppCard>
         </>
       )}
+
+      <ReviewDrawer 
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        item={activeReviewItem}
+        onSave={handleSearch}
+      />
     </div>
   );
 }
