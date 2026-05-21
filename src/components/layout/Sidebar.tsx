@@ -137,66 +137,53 @@ export function Ico({ id, size = 14 }: { id: string; size?: number }) {
   );
 }
 
-// Navigation structure matching /asset/shell.jsx perfectly
-const NAV_GROUPS_DEF = [
+// Navigation structure organized by actual business operational workflow
+interface NavItem {
+  id: string;
+  label: string;
+  icon: string;
+  href?: string;
+  badge?: string;
+  disabled?: boolean;
+}
+
+interface NavGroup {
+  group: string | null;
+  items: NavItem[];
+}
+
+const NAV_GROUPS_DEF: NavGroup[] = [
   {
     group: null,
     items: [
-      { id: 'dashboard', label: '대시보드', icon: 'grid', href: '/dashboard' }
+      { id: 'dashboard', label: '운영 관제 대시보드', icon: 'grid', href: '/dashboard' }
     ]
   },
   {
-    group: '예산 관리',
+    group: '1단계. 기초 실적 및 마스터 설정',
     items: [
-      { id: 'budget', label: '예산 계정 선택', icon: 'wallet', href: '/account-selection' },
-      { id: 'execution', label: '집행 내역', icon: 'list', badge: '준비 중', disabled: true },
-      { id: 'variance', label: '비교분석', icon: 'compare', href: '/variance-comparison' },
-      { id: 'overrun', label: '초과 항목', icon: 'up', href: '/overrun-check' },
-      { id: 'under', label: '미달 항목', icon: 'down', badge: '준비 중', disabled: true },
-      { id: 'unbudgeted', label: '무예산 집행', icon: 'alert', badge: '준비 중', disabled: true },
+      { id: 'actual-upload', label: '실적 업로드 (Plan/Actual)', icon: 'upload', href: '/plan-actual-upload' },
+      { id: 'budget', label: '통제 대상 계정 지정', icon: 'wallet', href: '/account-selection' },
     ]
   },
   {
-    group: '예산 작성',
+    group: '2단계. 부서별 예산 수립',
     items: [
-      { id: 'budget-request', label: '예산 신청', icon: 'plus', badge: '준비 중', disabled: true },
-      { id: 'approval-hist', label: '승인 내역', icon: 'check', badge: '준비 중', disabled: true },
-      { id: 'budget-write', label: '예산 작성', icon: 'list', href: '/budget-creation' },
-      { id: 'expense-report', label: '업무활동경비', icon: 'wallet', href: '/business-activity-budget' },
+      { id: 'budget-write', label: '부서 경비 예산 작성', icon: 'list', href: '/budget-creation' },
+      { id: 'expense-report', label: '업무활동경비 산출', icon: 'convert', href: '/business-activity-budget' },
     ]
   },
   {
-    group: '운영 모듈',
+    group: '3단계. 다차원 통제 및 분석',
     items: [
-      { id: 'purchase', label: '원료 구매', icon: 'cube', badge: '준비 중', disabled: true },
-      { id: 'sales', label: '판매 현황', icon: 'trend', badge: '준비 중', disabled: true },
-      { id: 'rawmat-in', label: '원료 입고', icon: 'upload', badge: '준비 중', disabled: true },
-      { id: 'production', label: '생산 실적', icon: 'bar', badge: '준비 중', disabled: true },
+      { id: 'overrun', label: '실시간 예산 한도 통제', icon: 'alert', href: '/overrun-check' },
+      { id: 'variance', label: '부서별 Plan vs Actual', icon: 'compare', href: '/variance-comparison' },
     ]
   },
   {
-    group: '기준정보',
+    group: '시스템 설정',
     items: [
-      { id: 'dept-codes', label: '부서 코드', icon: 'org', badge: '준비 중', disabled: true },
-      { id: 'account-codes', label: '계정 코드', icon: 'tag', badge: '준비 중', disabled: true },
-      { id: 'item-codes', label: '품목 코드', icon: 'cube', badge: '준비 중', disabled: true },
-      { id: 'partner-codes', label: '거래처 코드', icon: 'user', badge: '준비 중', disabled: true },
-      { id: 'country-codes', label: '국가 코드', icon: 'trend', badge: '준비 중', disabled: true },
-    ]
-  },
-  {
-    group: '데이터 관리',
-    items: [
-      { id: 'actual-upload', label: '실적 업로드', icon: 'upload', href: '/actual-upload' },
-      { id: 'actual-transform', label: '실적 변환', icon: 'convert', badge: '준비 중', disabled: true },
-      { id: 'actual-cleanup', label: '실적DB 정리', icon: 'clean', badge: '준비 중', disabled: true },
-    ]
-  },
-  {
-    group: '관리',
-    items: [
-      { id: 'user-perms', label: '사용자 권한', icon: 'user', badge: '준비 중', disabled: true },
-      { id: 'settings', label: '시스템 설정', icon: 'settings', href: '/user-management' },
+      { id: 'settings', label: '권한 및 포털 계정 설정', icon: 'settings', href: '/user-management' },
     ]
   },
 ];
@@ -235,14 +222,14 @@ export default function Sidebar() {
   else if (currentPath.includes('/overrun-check')) activePageKey = 'overrun';
   else if (currentPath.includes('/budget-creation')) activePageKey = 'budget-write';
   else if (currentPath.includes('/business-activity-budget')) activePageKey = 'expense-report';
-  else if (currentPath.includes('/actual-upload')) activePageKey = 'actual-upload';
+  else if (currentPath.includes('/plan-actual-upload')) activePageKey = 'actual-upload';
   else if (currentPath.includes('/user-management')) activePageKey = 'settings';
 
   // Filter groups and items depending on user permissions
   const filteredNavGroups = NAV_GROUPS_DEF.map(groupDef => {
     const filteredItems = groupDef.items.filter(item => {
-      // Permission checks:
-      if (item.href === '/actual-upload' || item.href === '/business-activity-budget') {
+      // Permission checks for admin-like roles (System Admin, Finance Team)
+      if (item.href === '/plan-actual-upload' || item.href === '/business-activity-budget') {
         return currentUser && (currentUser.code === '99999' || currentUser.code === '32100');
       }
       if (item.href === '/user-management') {
@@ -267,7 +254,7 @@ export default function Sidebar() {
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const s = new Set<string>();
     if (activeGroupName) s.add(activeGroupName);
-    if (!hasData) s.add('데이터 관리'); // Default open actual upload if no data, like shell.jsx
+    if (!hasData) s.add('1단계. 기초 실적 및 마스터 설정'); // Default open actual upload if no data
     return s;
   });
 

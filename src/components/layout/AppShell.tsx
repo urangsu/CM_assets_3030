@@ -33,7 +33,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="app">
-      <TopHeader dataState={dataState} isDemo={true} />
+      <TopHeader dataState={dataState} isDemo={dataState === 'no-upload'} />
       <Sidebar />
       <main className="main">
         {children}

@@ -23,7 +23,7 @@ export default function App() {
         <Route path="/account-selection" element={<Layout><AccountSelection /></Layout>} />
         <Route path="/budget-creation" element={<Layout><BudgetCreation /></Layout>} />
         <Route path="/business-activity-budget" element={<Layout><BusinessActivityBudget /></Layout>} />
-        <Route path="/actual-upload" element={<Layout><PlanActualUpload /></Layout>} />
+        <Route path="/plan-actual-upload" element={<Layout><PlanActualUpload /></Layout>} />
         <Route path="/variance-comparison" element={<Layout><VarianceComparison /></Layout>} />
         <Route path="/overrun-check" element={<Layout><BudgetOverrunCheck /></Layout>} />
         
