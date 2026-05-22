@@ -21,6 +21,7 @@ import SalesStatus from './pages/SalesStatus';
 import PurchaseStatus from './pages/PurchaseStatus';
 import ProductionStatus from './pages/ProductionStatus';
 import RawMaterialStatus from './pages/RawMaterialStatus';
+import DepartmentAssignment from './pages/DepartmentAssignment';
 
 export default function App() {
   return (
@@ -50,6 +51,7 @@ export default function App() {
         {/* 4. 마스터 정보 및 시스템 설정 */}
         <Route path="/account-management" element={<Layout><AccountManagement /></Layout>} />
         <Route path="/department-management" element={<Layout><DepartmentManagement /></Layout>} />
+        <Route path="/department-assignment" element={<Layout><DepartmentAssignment /></Layout>} />
 
         {/* 5. 비즈니스 운영 모듈 */}
         <Route path="/sales-status" element={<Layout><SalesStatus /></Layout>} />
@@ -59,6 +61,11 @@ export default function App() {
 
         {/* --- Route Alias Redirects (라우트 안정화) --- */}
         <Route path="/plan-actual" element={<Navigate to="/plan-actual-upload" replace />} />
+        <Route path="/actual-upload" element={<Navigate to="/plan-actual-upload" replace />} />
+        <Route path="/budget" element={<Navigate to="/budget-creation" replace />} />
+        <Route path="/account" element={<Navigate to="/account-selection" replace />} />
+        <Route path="/review" element={<Navigate to="/overrun-check" replace />} />
+        <Route path="/compare" element={<Navigate to="/variance-comparison" replace />} />
         <Route path="/overrun" element={<Navigate to="/overrun-check" replace />} />
         <Route path="/underrun" element={<Navigate to="/underrun-check" replace />} />
         <Route path="/unbudgeted" element={<Navigate to="/unbudgeted-check" replace />} />

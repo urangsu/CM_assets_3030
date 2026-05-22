@@ -550,16 +550,16 @@ export default function HomeDashboard() {
             <div>
               <div className="flex justify-between items-center">
                 <span className="font-mono text-xs text-[#008f83] font-bold">STEP 02</span>
-                <span className="text-[10px] bg-zinc-100 text-[#4e5968] font-bold px-1.5 py-0.5 rounded-md">상시 관리</span>
+                <span className="text-[10px] bg-zinc-100 text-[#4e5968] font-bold px-1.5 py-0.5 rounded-md">필수 전제</span>
               </div>
-              <h4 className="text-sm font-bold text-[#111111] mt-2 leading-tight">계정 마스터 등록</h4>
-              <p className="text-[11px] text-[#647067] mt-1 leading-normal">통제 대상 핵심 판관/제조 계정 체계 분류 지정</p>
+              <h4 className="text-sm font-bold text-[#111111] mt-2 leading-tight">계정 선택</h4>
+              <p className="text-[11px] text-[#647067] mt-1 leading-normal">부서별 예산 작성 전 기입/통제할 전사 핵심 계정 지정</p>
             </div>
             <button 
               onClick={() => navigate('/account-selection')}
               className="flex items-center text-[11px] text-[#008f83] font-bold mt-4 cursor-pointer hover:underline"
             >
-              마스터 구조 확인 <ChevronRight className="w-3 h-3 ml-0.5" />
+              계정 지정/할당 실행 <ChevronRight className="w-3 h-3 ml-0.5" />
             </button>
           </div>
 
@@ -570,8 +570,8 @@ export default function HomeDashboard() {
                 <span className="font-mono text-xs text-[#008f83] font-bold">STEP 03</span>
                 <span className="text-[10px] bg-zinc-100 text-[#4e5968] font-bold px-1.5 py-0.5 rounded-md">수립 기간</span>
               </div>
-              <h4 className="text-sm font-bold text-[#111111] mt-2 leading-tight">예산 수기 등록 및 산출</h4>
-              <p className="text-[11px] text-[#647067] mt-1 leading-normal">판공비 및 업무활동경비 인원수 연동 정합성 산출</p>
+              <h4 className="text-sm font-bold text-[#111111] mt-2 leading-tight">예산 작성</h4>
+              <p className="text-[11px] text-[#647067] mt-1 leading-normal">지정된 부서 계정과목 기반 수기 수립 및 연간 예산 확정</p>
             </div>
             <button 
               onClick={() => navigate('/budget-creation')}
@@ -588,14 +588,14 @@ export default function HomeDashboard() {
                 <span className="font-mono text-xs text-[#008f83] font-bold">STEP 04</span>
                 <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold border border-emerald-100 px-1.5 py-0.5 rounded-md">실시간 통제됨</span>
               </div>
-              <h4 className="text-sm font-bold text-[#111111] mt-2 leading-tight">실시간 통계 및 초과 점검</h4>
-              <p className="text-[11px] text-[#647067] mt-1 leading-normal">한도가 초과된 부서/항목 실시간 추적 및 감사</p>
+              <h4 className="text-sm font-bold text-[#111111] mt-2 leading-tight">예산 한도 점검</h4>
+              <p className="text-[11px] text-[#647067] mt-1 leading-normal">기결정 한도 대비 초과 및 집행 잔액 상태 실시간 감사</p>
             </div>
             <button 
               onClick={() => navigate('/overrun-check')}
               className="flex items-center text-[11px] text-[#008f83] font-bold mt-4 cursor-pointer hover:underline"
             >
-              경보 및 통계 검증 <ChevronRight className="w-3 h-3 ml-0.5" />
+              경보 및 한도 점검 <ChevronRight className="w-3 h-3 ml-0.5" />
             </button>
           </div>
         </div>

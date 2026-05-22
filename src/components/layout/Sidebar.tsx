@@ -152,44 +152,63 @@ interface NavGroup {
 
 const NAV_GROUPS_DEF: NavGroup[] = [
   {
-    group: "1. 운영 현황 및 검토",
+    group: "대시보드",
     items: [
-      { id: 'dashboard', label: '운영 관제 대시보드', icon: 'grid', href: '/dashboard' },
-      { id: 'budget-status', label: '예산 계획 현황', icon: 'list', href: '/budget-status' },
-      { id: 'execution-ledger', label: '실제 집행 원장', icon: 'compare', href: '/execution-ledger' }
+      { id: 'dashboard', label: '운영 관제 대시보드', icon: 'grid', href: '/dashboard' }
     ]
   },
   {
-    group: "2. 다차원 점검 및 통제",
+    group: "1단계. 예산 준비",
     items: [
-      { id: 'overrun', label: '예산 초과 통제', icon: 'alert', href: '/overrun-check' },
-      { id: 'underrun', label: '집행 미달 조정', icon: 'down', href: '/underrun-check' },
-      { id: 'unbudgeted', label: '무예산 집행 검증', icon: 'up', href: '/unbudgeted-check' }
+      { id: 'actual-upload', label: '실적 업로드', icon: 'upload', href: '/plan-actual-upload' },
+      { id: 'account-selection', label: '계정 선택', icon: 'tag', href: '/account-selection' },
+      { id: 'department-assignment', label: '부서 귀속 변경', icon: 'convert', href: '/department-assignment' },
+      { id: 'account-master-view', label: '계정/부서 기준 확인', icon: 'list', href: '/account-management' }
     ]
   },
   {
-    group: "3. 실적 업로드 및 예산편성",
+    group: "2단계. 예산 작성",
     items: [
-      { id: 'actual-upload', label: '실적 업로드 (Plan/Actual)', icon: 'upload', href: '/plan-actual-upload' },
-      { id: 'budget-write', label: '부서 경비 예산 작성', icon: 'plus', href: '/budget-creation' },
-      { id: 'variance', label: '실적 및 예산 비교분석', icon: 'trend', href: '/variance-comparison' }
+      { id: 'budget-write', label: '예산 작성', icon: 'plus', href: '/budget-creation' },
+      { id: 'business-activity', label: '업무활동경비 산출', icon: 'wallet', href: '/business-activity-budget' },
+      { id: 'budget-status', label: '예산 제출/승인 현황', icon: 'check', href: '/budget-status' }
     ]
   },
   {
-    group: "4. 마스터 정보 및 시스템 설정",
+    group: "3단계. 예산 검토",
     items: [
-      { id: 'account-master', label: '계정 마스터 관리', icon: 'tag', href: '/account-management' },
-      { id: 'department-master', label: '부서 마스터 관리', icon: 'org', href: '/department-management' },
-      { id: 'settings', label: '사용자 권한 관리', icon: 'user', href: '/user-management' }
+      { id: 'budget-status-review', label: '예산 현황', icon: 'list', href: '/budget-status' },
+      { id: 'execution-ledger', label: '예산 한도 점검', icon: 'compare', href: '/execution-ledger' },
+      { id: 'overrun', label: '초과 항목', icon: 'alert', href: '/overrun-check' },
+      { id: 'underrun', label: '미달 항목', icon: 'down', href: '/underrun-check' },
+      { id: 'unbudgeted', label: '무예산 집행', icon: 'up', href: '/unbudgeted-check' }
     ]
   },
   {
-    group: "5. 비즈니스 운영 모듈",
+    group: "4단계. 비교분석",
     items: [
-      { id: 'sales-status', label: '제품 판매 현황', icon: 'bar', href: '/sales-status' },
-      { id: 'purchase-status', label: '원료 글로벌 구매', icon: 'cube', href: '/purchase-status' },
-      { id: 'production-status', label: '공장 생산 실적', icon: 'trend', href: '/production-status' },
-      { id: 'raw-material-status', label: '원자재 입고 검수', icon: 'cube', href: '/raw-material-status' }
+      { id: 'variance', label: '비교분석', icon: 'trend', href: '/variance-comparison' },
+      { id: 'compare-time', label: '시점 vs 시점 비교', icon: 'compare', href: '/variance-comparison?tab=time' },
+      { id: 'compare-dept', label: '부서별 비교', icon: 'org', href: '/variance-comparison?tab=dept' },
+      { id: 'compare-account', label: '계정별 비교', icon: 'tag', href: '/variance-comparison?tab=account' }
+    ]
+  },
+  {
+    group: "5단계. 운영 모듈",
+    items: [
+      { id: 'purchase-status', label: '원료 구매', icon: 'cube', href: '/purchase-status' },
+      { id: 'sales-status', label: '판매 현황', icon: 'bar', href: '/sales-status' },
+      { id: 'production-status', label: '생산 실적', icon: 'trend', href: '/production-status' },
+      { id: 'raw-material-status', label: '원료 입고', icon: 'cube', href: '/raw-material-status' }
+    ]
+  },
+  {
+    group: "관리",
+    items: [
+      { id: 'settings', label: '사용자 권한', icon: 'user', href: '/user-management' },
+      { id: 'account-master-direct', label: '계정 코드 관리', icon: 'tag', href: '/account-management' },
+      { id: 'department-master', label: '부서 코드 관리', icon: 'org', href: '/department-management' },
+      { id: 'system-settings', label: '시스템 설정', icon: 'settings', href: '/user-management' }
     ]
   }
 ];
@@ -227,10 +246,13 @@ export default function Sidebar() {
   else if (currentPath.includes('/underrun-check') || currentPath.includes('/underrun')) activePageKey = 'underrun';
   else if (currentPath.includes('/unbudgeted-check') || currentPath.includes('/unbudgeted')) activePageKey = 'unbudgeted';
   else if (currentPath.includes('/plan-actual-upload') || currentPath.includes('/actual-upload') || currentPath.includes('/upload')) activePageKey = 'actual-upload';
-  else if (currentPath.includes('/budget-creation') || currentPath.includes('/plan-create')) activePageKey = 'budget-write';
-  else if (currentPath.includes('/variance-comparison') || currentPath.includes('/comparison')) activePageKey = 'variance';
-  else if (currentPath.includes('/account-management') || currentPath.includes('/account-master')) activePageKey = 'account-master';
+  else if (currentPath.includes('/budget-creation') || currentPath.includes('/plan-create') || currentPath.includes('/budget')) activePageKey = 'budget-write';
+  else if (currentPath.includes('/business-activity-budget') || currentPath.includes('/business-activity')) activePageKey = 'business-activity';
+  else if (currentPath.includes('/variance-comparison') || currentPath.includes('/comparison') || currentPath.includes('/compare')) activePageKey = 'variance';
+  else if (currentPath.includes('/account-selection') || currentPath.includes('/account')) activePageKey = 'account-selection';
+  else if (currentPath.includes('/account-management') || currentPath.includes('/account-master')) activePageKey = 'account-master-direct';
   else if (currentPath.includes('/department-management') || currentPath.includes('/department-master')) activePageKey = 'department-master';
+  else if (currentPath.includes('/department-assignment')) activePageKey = 'department-assignment';
   else if (currentPath.includes('/user-management')) activePageKey = 'settings';
   else if (currentPath.includes('/sales-status')) activePageKey = 'sales-status';
   else if (currentPath.includes('/purchase-status')) activePageKey = 'purchase-status';
@@ -240,7 +262,11 @@ export default function Sidebar() {
   const filteredNavGroups = NAV_GROUPS_DEF.map(groupDef => {
     const filteredItems = groupDef.items.filter(item => {
       // Basic protection limits for raw uploads and system profiles
-      if (item.href === '/plan-actual-upload' || item.href === '/user-management') {
+      const isRestricted = item.href?.startsWith('/plan-actual-upload') || 
+                           item.href?.startsWith('/user-management') || 
+                           item.href?.startsWith('/account-management') || 
+                           item.href?.startsWith('/department-management');
+      if (isRestricted) {
         return currentUser && (currentUser.code === '99999' || currentUser.code === '32100');
       }
       return true;
@@ -256,8 +282,8 @@ export default function Sidebar() {
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const s = new Set<string>();
-    s.add("1. 운영 현황 및 검토");
-    s.add("2. 다차원 점검 및 통제");
+    s.add("1단계. 예산 준비");
+    s.add("2단계. 예산 작성");
     if (activeGroupName) s.add(activeGroupName);
     return s;
   });

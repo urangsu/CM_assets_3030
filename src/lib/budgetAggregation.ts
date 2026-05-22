@@ -1,5 +1,5 @@
 import { getBudgetDataKey, getActualDataKey } from './storageKeys';
-import { SALARY_CATEGORIES } from '../constants';
+import { SALARY_CATEGORIES, DEPARTMENTS } from '../constants';
 import { INITIAL_CATEGORIES } from '../pages/AccountSelection';
 
 export interface BudgetRow {
@@ -65,15 +65,74 @@ export function parsePeriodMonth(period: string | number): number | null {
 }
 
 export const getBudgetRowsByDeptYearPlan = (deptCodes: string[], year: string, planType: string): any[] => {
-  let rows: any[] = [];
-  deptCodes.forEach(deptCode => {
-    const key = getBudgetDataKey(deptCode, year, planType);
+  let allDepts: any[] = [];
+  try {
+    const savedCustomUsers = localStorage.getItem('cleanmetal_custom_users');
+    const customUsers = savedCustomUsers ? JSON.parse(savedCustomUsers) : [];
+    const customDepts = customUsers.map((u: any) => ({ code: u.code }));
+    allDepts = [...DEPARTMENTS, ...customDepts];
+  } catch (e) {
+    allDepts = DEPARTMENTS;
+  }
+  const uniqueDeptCodes = Array.from(new Set(allDepts.map(item => item.code)));
+
+  // Load rows from all departments to support cross-department assignments
+  let allRawRows: any[] = [];
+  uniqueDeptCodes.forEach(dc => {
+    const key = getBudgetDataKey(dc, year, planType);
     const savedData = localStorage.getItem(key);
     if (savedData) {
-      rows = [...rows, ...JSON.parse(savedData)];
+      try {
+        const rows = JSON.parse(savedData);
+        rows.forEach((r: any) => {
+          if (!r.writerDeptCode) {
+            r.writerDeptCode = dc;
+          }
+        });
+        allRawRows = [...allRawRows, ...rows];
+      } catch (e) {
+         // Silently fail or track
+      }
     }
   });
-  return rows;
+
+  // Apply overrides
+  let overrides: any[] = [];
+  try {
+    const ovs = localStorage.getItem('hycm_department_assignment_overrides');
+    if (ovs) {
+      overrides = JSON.parse(ovs);
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  const overrideMap = new Map<string, any>();
+  overrides.forEach(ov => {
+    const oKey = `${ov.year}_${ov.planType}_${ov.sourceDeptCode}_${ov.accountCode}_${ov.originalAssignedDeptCode}`;
+    overrideMap.set(oKey, ov);
+  });
+
+  const processedRows = allRawRows.map(row => {
+    const sDeptCode = row.writerDeptCode || row.attributedDeptCode;
+    const aCode = row.code || row.accountCode;
+    const oAssignedDept = row.attributedDeptCode;
+
+    const oKey = `${year}_${planType}_${sDeptCode}_${aCode}_${oAssignedDept}`;
+    const matchedOverride = overrideMap.get(oKey);
+
+    if (matchedOverride) {
+      return {
+        ...row,
+        attributedDeptCode: matchedOverride.newAssignedDeptCode,
+        attributedDeptName: matchedOverride.newAssignedDeptName,
+        isCustomAssigned: true
+      };
+    }
+    return row;
+  });
+
+  return processedRows.filter(row => deptCodes.includes(row.attributedDeptCode));
 };
 
 export const getActualRowsByYear = (year: string): ActualData[] => {

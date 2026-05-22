@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Check, Search, Upload, ClipboardPaste, Building2, Save, Plus, Minus, ArrowRightLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
@@ -589,6 +590,7 @@ export const INITIAL_CATEGORIES = [
 ];
 
 export default function AccountSelection() {
+  const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<any>(null);
   
   useEffect(() => {
@@ -1729,6 +1731,42 @@ export default function AccountSelection() {
           </div>
         </div>
       )}
+      
+      {/* Spacer to prevent content overlapping with sticky footer */}
+      <div className="h-24"></div>
+
+      {/* 하단 Sticky Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-zinc-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] px-6 py-4 animate-in slide-in-from-bottom duration-300">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
+          <div className="text-zinc-650 text-xs md:text-sm font-medium">
+            선택 계정: <span className="text-[#008f83] font-black text-lg font-mono">{currentSelected.size}</span>개 항목이 <span className="bg-zinc-100 text-zinc-800 font-bold px-2 py-0.5 rounded text-xs">{currentDept?.name || selectedDeptCode}</span> 부서에 선택되었습니다.
+          </div>
+          <div className="flex gap-2.5 w-full sm:w-auto">
+            <button
+              onClick={handleSave}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-700 rounded-xl text-xs md:text-sm font-semibold transition shadow-sm"
+            >
+              <Save className="w-4 h-4 text-zinc-500" />
+              선택 저장
+            </button>
+            <button
+              onClick={() => {
+                handleSave();
+                // We add a tiny delay to give the browser time to save selections
+                setTimeout(() => {
+                  navigate('/budget-creation');
+                }, 100);
+              }}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-6 py-2 bg-[#008f83] hover:bg-[#00786f] text-white rounded-xl text-xs md:text-sm font-bold border border-[#008f83] transition shadow-md"
+            >
+              예산 작성으로 이동
+              <svg className="w-4 h-4 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

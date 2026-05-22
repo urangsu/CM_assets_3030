@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, MouseEvent } from 'react';
-import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X, ArrowRightLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked, getSubmissionStatus } from '../lib/storageKeys';
@@ -57,6 +58,7 @@ const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, 
 };
 
 export default function BudgetCreation() {
+  const navigate = useNavigate();
   const [reloadTrigger, setReloadTrigger] = useState(0);
   
   // 전사 계정 맵 생성 (필터링 및 데이터 로드 시 사용)
@@ -1695,20 +1697,32 @@ export default function BudgetCreation() {
                         {allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '부서오류'}
                       </td>
                       <td className="bg-white p-0 border border-[#e5e8eb] text-center align-top">
-                        {selectedDeptCode !== 'all' ? (
-                          <select
-                            value={row.attributedDeptCode}
-                            onChange={(e) => handleAttributedDeptChange(row.id, e.target.value)}
-                            disabled={(row.isReadOnly && planType !== '실적') || isLocked}
-                            className={`w-full h-full min-h-[44px] px-3 py-2 text-sm text-[#191f28] bg-transparent outline-none focus:ring-2 focus:ring-brand-500 appearance-none font-medium text-center ${((row.isReadOnly && planType !== '실적') || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
+                        <div className="relative group/dept min-h-[44px] flex items-center justify-center">
+                          {selectedDeptCode !== 'all' ? (
+                            <select
+                              value={row.attributedDeptCode}
+                              onChange={(e) => handleAttributedDeptChange(row.id, e.target.value)}
+                              disabled={(row.isReadOnly && planType !== '실적') || isLocked}
+                              className={`w-full h-full min-h-[44px] pl-3 pr-8 py-2 text-sm text-[#191f28] bg-transparent outline-none focus:ring-2 focus:ring-brand-500 appearance-none font-medium text-center ${((row.isReadOnly && planType !== '실적') || isLocked) ? 'bg-[#f9fafb] cursor-not-allowed' : ''}`}
+                            >
+                              {allDepts.filter((d: any) => d.code !== '99999').map((dept: any) => (
+                                <option key={dept.code} value={dept.code}>{dept.name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="px-4 py-2 whitespace-nowrap">{deptName}</div>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/department-assignment');
+                            }}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/dept:opacity-100 p-0.5 text-[#008f83] hover:bg-[#008f83]/10 rounded bg-white border border-zinc-200 transition-opacity z-10 shadow-sm cursor-pointer"
+                            title="부서 귀속 변경 포털 화면으로 즉시 이동"
                           >
-                            {allDepts.filter((d: any) => d.code !== '99999').map((dept: any) => (
-                              <option key={dept.code} value={dept.code}>{dept.name}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div className="px-4 py-2 whitespace-nowrap">{deptName}</div>
-                        )}
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                       <td className={`sticky left-12 z-10 ${selectedRows.has(row.id) ? 'bg-brand-50' : (isHandedOver ? 'bg-red-50 text-red-700 font-bold' : (isReceived ? 'bg-[#FFFFCC] text-amber-700 font-bold' : 'bg-white text-[#4e5968]'))} px-4 py-2 text-sm border border-[#e5e8eb] text-center font-mono align-top`}>{row.code}</td>
                       <td className={`sticky left-36 z-10 ${selectedRows.has(row.id) ? 'bg-brand-50' : (isHandedOver ? 'bg-red-50' : (isReceived ? 'bg-[#FFFFCC]' : 'bg-white'))} px-4 py-2 text-sm font-bold text-[#191f28] border border-[#e5e8eb] text-center align-top`}>
