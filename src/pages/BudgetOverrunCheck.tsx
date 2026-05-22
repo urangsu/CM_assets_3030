@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Download, Search, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
@@ -46,6 +47,8 @@ export default function BudgetOverrunCheck() {
   // Drawer
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [activeReviewItem, setActiveReviewItem] = useState<ReviewItem | null>(null);
+
+  const navigate = useNavigate();
 
   const currentUser = JSON.parse(localStorage.getItem('current_user') || '{}');
 
@@ -474,6 +477,25 @@ export default function BudgetOverrunCheck() {
         item={activeReviewItem}
         onSave={handleSearch}
       />
+
+      {/* Flow Assist Bridge Panel */}
+      <div className="bg-[#fcfdfe] p-6 rounded-2xl border border-teal-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-6">
+        <div>
+          <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+            <span className="flex h-2 w-2 rounded-full bg-teal-500 animate-pulse"></span>
+            비즈니스 중요 플로우 연속성 가이드
+          </h4>
+          <p className="text-xs text-[#647067] mt-1">
+            조직의 한도 오버런 및 무예산 항목 조사가 끝났습니까? 마지막 대미를 장식할 단계는 전사 계획과 실적을 부서/월/계정 단위로 정밀 비교 시각화하는 <strong className="text-teal-700">실적 및 계획 대비 비교분석</strong> 페이지입니다.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/variance-comparison')}
+          className="px-5 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shrink-0"
+        >
+          실적-계획 비교분석 단계로 이동 →
+        </button>
+      </div>
     </div>
   );
 }

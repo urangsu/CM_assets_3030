@@ -2101,6 +2101,33 @@ export default function BudgetCreation() {
         </div>
       )}
 
+      {/* Flow Assist Bridge Panel */}
+      <div className="bg-[#fcfdfe] p-6 rounded-2xl border border-teal-100 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mt-6">
+        <div>
+          <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+            <span className="flex h-2 w-2 rounded-full bg-teal-500 animate-pulse"></span>
+            비즈니스 중요 플로우 연속성 가이드
+          </h4>
+          <p className="text-xs text-[#647067] mt-1">
+            부서 지정 경비 편성이 완료되었습니까? 다음 권장 흐름은 실적 세목의 부서 귀속을 변경하는 <strong className="text-teal-700">부서 귀속 변경</strong> 단계나 인원별 활동경비를 자동 산정하는 <strong className="text-teal-700">업무활동경비 산출</strong> 단계입니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <button
+            onClick={() => navigate('/department-assignment')}
+            className="px-4 py-2 bg-white hover:bg-zinc-50 text-gray-700 border border-[#d1d6db] rounded-xl font-bold text-xs transition-all flex items-center gap-1"
+          >
+            부서 귀속 변경 ↩
+          </button>
+          <button
+            onClick={() => navigate('/business-activity-budget')}
+            className="px-5 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5"
+          >
+            업무활동경비 산출 단계로 이동 →
+          </button>
+        </div>
+      </div>
+
       {/* Custom Modal */}
       {modalConfig.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">

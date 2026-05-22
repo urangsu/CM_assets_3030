@@ -786,6 +786,25 @@ export default function BusinessActivityBudget() {
       >
         <p className="text-[#4e5968] text-sm leading-relaxed">{modalConfig.message}</p>
       </AppModal>
+
+      {/* 5. Flow Assist Bridge Panel */}
+      <div className="bg-[#fcfdfe] p-6 rounded-2xl border border-teal-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-6">
+        <div>
+          <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+            <span className="flex h-2 w-2 rounded-full bg-teal-500 animate-pulse"></span>
+            비즈니스 중요 플로우 연속성 가이드
+          </h4>
+          <p className="text-xs text-[#647067] mt-1">
+            인원 투입에 근거한 활동경비 산출 및 예산 반영이 완결되었습니까? 다음 권장 흐름은 편성된 예산의 한도 규정을 대조하고 모니터링하는 <strong className="text-teal-700">예산 한도 점검(오버런)</strong> 단계입니다.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/overrun-check')}
+          className="px-5 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shrink-0"
+        >
+          예산 한도 점검(오버런) 단계로 이동 →
+        </button>
+      </div>
     </div>
   );
 }

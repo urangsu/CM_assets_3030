@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Minus, Download, FileSpreadsheet, Presentation, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -37,19 +37,28 @@ export default function VarianceComparison() {
   const [selectedDept, setSelectedDept] = useState(() => localStorage.getItem('variance_dept') || getUserInitDept());
   const [selectedAccountCategory, setSelectedAccountCategory] = useState(() => localStorage.getItem('variance_accountCategory') || 'all');
 
+  const navigate = useNavigate();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
-  const tab = queryParams.get('tab') || '';
+  const tab = queryParams.get('tab') || 'default';
 
   useEffect(() => {
     if (tab === 'time') {
       setSelectedDept('all');
+      setBasePlanType('경영계획');
+      setTargetPlanType('실적');
     } else if (tab === 'dept') {
       setSelectedDept('by_dept');
     } else if (tab === 'account') {
+      setSelectedDept('all');
       setSelectedAccountCategory('all');
+    } else if (tab === 'default') {
+      const initDept = getUserInitDept();
+      setSelectedDept(initDept);
+      setBasePlanType('경영계획');
+      setTargetPlanType('실적');
     }
-  }, [tab]);
+  }, [tab, currentUser]);
 
   // Persist filters
   useEffect(() => {
@@ -808,6 +817,74 @@ export default function VarianceComparison() {
 
   return (
     <div className="space-y-6">
+      {/* Dynamic Header with metadata context */}
+      <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs bg-nickel-50 text-nickel-600 px-2 py-0.5 rounded font-bold font-mono">
+            {tab === 'default' && 'Plan vs Actual Analysis'}
+            {tab === 'time' && 'Time Horizon Sync'}
+            {tab === 'dept' && 'Cross-departmental Analysis'}
+            {tab === 'account' && 'Chart of Accounts Audit'}
+          </span>
+        </div>
+        <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
+          {tab === 'default' && '다차원 예산 대비 실적 비교분석 관판'}
+          {tab === 'time' && '다기 시점별 예산 추이 대조 분석반'}
+          {tab === 'dept' && '부서별 예산 집행 편차 일괄 대조반'}
+          {tab === 'account' && '계정 과목별 정기 지출 감사 분석반'}
+        </h2>
+        <p className="text-xs text-[#647067] mt-1">
+          {tab === 'default' && '편성 예산과 실제 집행 실적 데이터 간의 고해상도 분산 추정 및 증감 궤적을 렌더링합니다.'}
+          {tab === 'time' && '서로 다른 연도, 분기, 계획 단계 간의 시계열 추이 및 총 지출 궤적 편차를 격자화합니다.'}
+          {tab === 'dept' && '전사 조직 하위 부서 간의 예산 소진 속도 및 오버런 임계값 한도 편차를 대조합니다.'}
+          {tab === 'account' && '제조원가 및 판관비 세목별 누계 증감 한도를 관판하고 이상 징후 분석을 가이드합니다.'}
+        </p>
+      </div>
+
+      {/* Elegant Nav Tabs */}
+      <div className="flex border-b border-lithium-200 gap-2">
+        <button
+          onClick={() => navigate('/variance-comparison?tab=default')}
+          className={`px-4 py-2.5 font-semibold text-xs transition-all border-b-2 -mb-px rounded-t-lg ${
+            tab === 'default'
+              ? 'border-nickel-500 text-nickel-600 font-bold bg-nickel-50/50'
+              : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
+          }`}
+        >
+          Plan vs Actual (계획 대비 실적)
+        </button>
+        <button
+          onClick={() => navigate('/variance-comparison?tab=time')}
+          className={`px-4 py-2.5 font-semibold text-xs transition-all border-b-2 -mb-px rounded-t-lg ${
+            tab === 'time'
+              ? 'border-nickel-500 text-nickel-600 font-bold bg-nickel-50/50'
+              : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
+          }`}
+        >
+          시점 비교분석 (시기 타임프레임)
+        </button>
+        <button
+          onClick={() => navigate('/variance-comparison?tab=dept')}
+          className={`px-4 py-2.5 font-semibold text-xs transition-all border-b-2 -mb-px rounded-t-lg ${
+            tab === 'dept'
+              ? 'border-nickel-500 text-nickel-600 font-bold bg-nickel-50/50'
+              : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
+          }`}
+        >
+          부서별 편차분석 (Cross-sectional)
+        </button>
+        <button
+          onClick={() => navigate('/variance-comparison?tab=account')}
+          className={`px-4 py-2.5 font-semibold text-xs transition-all border-b-2 -mb-px rounded-t-lg ${
+            tab === 'account'
+              ? 'border-nickel-500 text-nickel-600 font-bold bg-nickel-50/50'
+              : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
+          }`}
+        >
+          계정별 감사 추적 (세목 디테일)
+        </button>
+      </div>
+
       {/* Filters */}
       <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm flex flex-col gap-4">
         <div className="flex items-center gap-4">

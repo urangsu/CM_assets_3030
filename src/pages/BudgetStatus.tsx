@@ -80,6 +80,14 @@ export default function BudgetStatus() {
     }
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'approval') {
+      setSelectedApproval('SUBMITTED');
+    } else {
+      setSelectedApproval('all');
+    }
+  }, [activeTab]);
+
   const loadData = () => {
     if (!currentUser) return;
     setIsLoading(true);
@@ -418,14 +426,19 @@ export default function BudgetStatus() {
       <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs bg-teal-50 text-[#008f83] px-2 py-0.5 rounded font-bold font-mono">2026 Audit Board</span>
+            <span className="text-xs bg-teal-50 text-[#008f83] px-2 py-0.5 rounded font-bold font-mono">
+              {activeTab === 'overview' ? '2026 Audit Board' : '2026 Approval Portal'}
+            </span>
             {isDemoMode && <span className="text-[10px] bg-[#fdf0e2] text-[#F7A059] border border-[#fbd6b4] px-1.5 py-0.5 rounded-md font-bold">SAMPLE DATA ACTIVE</span>}
           </div>
           <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
-            부서별 예산 편성 대비 실적 현황 관제실
+            {activeTab === 'overview' ? '부서별 예산 편성 대비 실적 현황 관제실' : '예산 조정 제출 및 심사 승인 관제판'}
           </h2>
           <p className="text-xs text-[#647067] mt-1">
-            부서 지정 경비 및 현장 제조 예산의 한도, 누적 실적, 실시간 잔액 및 통제 소진율을 통합 전도합니다.
+            {activeTab === 'overview' 
+              ? '부서 지정 경비 및 현장 제조 예산의 한도, 누적 실적, 실시간 잔액 및 통제 소진율을 통합 전도합니다.' 
+              : '각 부서에서 신청한 월별 세목의 편성 예산을 조정하고 최종 승인 가결 또는 보류/조치 요구 처리를 수행합니다.'
+            }
           </p>
         </div>
         
@@ -622,62 +635,74 @@ export default function BudgetStatus() {
       </div>
 
       {/* 4. Double Visualizer Charts panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Month Cumulative Sparklines */}
-        <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs lg:col-span-2">
-          <h3 className="text-sm font-bold text-[#111111] mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-[#008f83]" /> 월간 누적 집행 동기화 궤적
-          </h3>
-          <div className="h-[230px] w-full font-mono text-xs">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartMonthly} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gPlan" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#c4cfc5" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#c4cfc5" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="gAct" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#008f83" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#008f83" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2ec" />
-                <XAxis dataKey="month" stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
-                <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
-                <Tooltip formatter={(value: any) => [`${Number(value).toLocaleString()}원`, '']} />
-                <Legend iconType="circle" />
-                <Area type="monotone" name="예산 계획" dataKey="예산 계획" stroke="#c4cfc5" strokeWidth={1.5} fill="url(#gPlan)" />
-                <Area type="monotone" name="실제 집행" dataKey="실제 집행" stroke="#008f83" strokeWidth={2.5} fill="url(#gAct)" />
-              </AreaChart>
-            </ResponsiveContainer>
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Month Cumulative Sparklines */}
+          <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs lg:col-span-2">
+            <h3 className="text-sm font-bold text-[#111111] mb-4 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-[#008f83]" /> 월간 누적 집행 동기화 궤적
+            </h3>
+            <div className="h-[230px] w-full font-mono text-xs">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartMonthly} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gPlan" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#c4cfc5" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#c4cfc5" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="gAct" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#008f83" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#008f83" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2ec" />
+                  <XAxis dataKey="month" stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
+                  <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
+                  <Tooltip formatter={(value: any) => [`${Number(value).toLocaleString()}원`, '']} />
+                  <Legend iconType="circle" />
+                  <Area type="monotone" name="예산 계획" dataKey="예산 계획" stroke="#c4cfc5" strokeWidth={1.5} fill="url(#gPlan)" />
+                  <Area type="monotone" name="실제 집행" dataKey="실제 집행" stroke="#008f83" strokeWidth={2.5} fill="url(#gAct)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
 
-        {/* Top Accounts breakdown */}
-        <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
-          <h3 className="text-sm font-bold text-[#111111] mb-4 flex items-center gap-2">
-            <Award className="w-4 h-4 text-[#008f83]" /> 소진액 TOP 계정 (누계)
-          </h3>
-          <div className="h-[230px] w-full font-mono text-xs">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartAccount} layout="vertical" margin={{ left: 5, right: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2ec" />
-                <XAxis type="number" fontSize={9} stroke="#8b95a1" axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
-                <YAxis dataKey="name" type="category" fontSize={9} stroke="#111111" axisLine={false} tickLine={false} width={65} />
-                <Tooltip formatter={(v: any) => [`${Number(v).toLocaleString()}원`, '']} />
-                <Bar name="실제 집행" dataKey="집행액" fill="#008f83" radius={[0, 4, 4, 0]} barSize={12} />
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Top Accounts breakdown */}
+          <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
+            <h3 className="text-sm font-bold text-[#111111] mb-4 flex items-center gap-2">
+              <Award className="w-4 h-4 text-[#008f83]" /> 소진액 TOP 계정 (누계)
+            </h3>
+            <div className="h-[230px] w-full font-mono text-xs">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartAccount} layout="vertical" margin={{ left: 5, right: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2ec" />
+                  <XAxis type="number" fontSize={9} stroke="#8b95a1" axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
+                  <YAxis dataKey="name" type="category" fontSize={9} stroke="#111111" axisLine={false} tickLine={false} width={65} />
+                  <Tooltip formatter={(v: any) => [`${Number(v).toLocaleString()}원`, '']} />
+                  <Bar name="실제 집행" dataKey="집행액" fill="#008f83" radius={[0, 4, 4, 0]} barSize={12} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 5. Main Audit Grid Table */}
       <div className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden">
         <div className="p-5 border-b border-[#eef2ec] flex justify-between items-center bg-[#fcfdfe]">
           <div>
-            <h3 className="text-sm font-bold text-[#111111]">예산 집행 상세 감사 정보판 ({tableRows.length}건 정기 검증)</h3>
-            <p className="text-[11px] text-[#647067] mt-0.5">편성 예산 대비 누계 지출액 대조 상세 테이블</p>
+            <h3 className="text-sm font-bold text-[#111111]">
+              {activeTab === 'overview' 
+                ? `예산 집행 상세 감사 정보판 (${tableRows.length}건 정기 검증)` 
+                : `부서별 예산 조정안 결제 승인판 (${tableRows.length}건 대기)`
+              }
+            </h3>
+            <p className="text-[11px] text-[#647067] mt-0.5">
+              {activeTab === 'overview' 
+                ? '편성 예산 대비 누계 지출액 대조 상세 테이블' 
+                : '각 세목 우측의 검증 버튼을 클릭하여 최종 결재액 승인과 반려, 조치 요구 처리를 진행하십시오.'
+              }
+            </p>
           </div>
         </div>
 
