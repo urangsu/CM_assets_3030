@@ -178,18 +178,39 @@ body {
   --gap: 20px;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
 .app {
   display: grid;
   grid-template-columns: var(--sw) minmax(0, 1fr);
   grid-template-rows: var(--hh) minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
+  background: var(--bg);
+}
+
+.hdr {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  z-index: 50;
 }
 
 .sb {
   grid-column: 1;
   grid-row: 2;
-  height: calc(100vh - var(--hh));
+  height: 100%;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -226,15 +247,13 @@ body {
   background-color: var(--bg);
 }
 
-.hdr {
-  grid-column: 1/-1;
-  background: var(--white);
-  border-bottom: 1px solid var(--border);
+.page-container {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  min-height: 100%;
   display: flex;
-  align-items: center;
-  padding: 0 20px;
-  gap: 12px;
-  z-index: 50;
+  flex-direction: column;
 }
 
 /* Claude debug indicators "cb" / "cbl" */

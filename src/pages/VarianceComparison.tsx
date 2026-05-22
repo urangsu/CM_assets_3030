@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Minus, Download, FileSpreadsheet, Presentation, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -35,6 +36,20 @@ export default function VarianceComparison() {
   
   const [selectedDept, setSelectedDept] = useState(() => localStorage.getItem('variance_dept') || getUserInitDept());
   const [selectedAccountCategory, setSelectedAccountCategory] = useState(() => localStorage.getItem('variance_accountCategory') || 'all');
+
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const tab = queryParams.get('tab') || '';
+
+  useEffect(() => {
+    if (tab === 'time') {
+      setSelectedDept('all');
+    } else if (tab === 'dept') {
+      setSelectedDept('by_dept');
+    } else if (tab === 'account') {
+      setSelectedAccountCategory('all');
+    }
+  }, [tab]);
 
   // Persist filters
   useEffect(() => {

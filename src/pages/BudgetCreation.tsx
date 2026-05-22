@@ -1263,6 +1263,29 @@ export default function BudgetCreation() {
 
   return (
     <div className="space-y-6">
+      {/* 2026 Navigation Flow Assist Card */}
+      <div className="bg-[#fcfaf2] border border-[#f5ead2] p-4.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3.5 shadow-xs">
+        <div>
+          <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded font-bold font-mono">FLOW CONSOLE</span>
+          <h4 className="text-sm font-bold text-zinc-900 mt-1.5">📂 예산 작성 업무 흐름 제어판</h4>
+          <p className="text-xs text-zinc-500 mt-0.5">예산 작성 전, 계정 체크 상태 및 실적 부서 귀속 설정을 먼저 완료하여 유기적으로 배포하십시오.</p>
+        </div>
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <button
+            onClick={() => navigate('/account-selection')}
+            className="flex-1 sm:flex-none px-4 py-2 border border-zinc-300 hover:border-zinc-400 text-zinc-700 bg-white font-bold rounded-xl text-xs transition-all cursor-pointer shadow-xs"
+          >
+            &larr; 계정 선택 (전 단계)
+          </button>
+          <button
+            onClick={() => navigate('/department-assignment')}
+            className="flex-1 sm:flex-none px-4 py-2 bg-[#008f83] hover:bg-[#00746b] text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1 cursor-pointer shadow-sm"
+          >
+            실적 부서 귀속 설정 &rarr;
+          </button>
+        </div>
+      </div>
+
       {/* Filters & Actions */}
       <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex flex-wrap gap-4">

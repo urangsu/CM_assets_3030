@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Filter, Search, RotateCcw, Save, Trash2, ArrowRight, Check, AlertCircle, Edit, List, RefreshCw } from 'lucide-react';
 import { DEPARTMENTS, getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
@@ -27,6 +28,7 @@ interface DepartmentAssignmentOverride {
 }
 
 export default function DepartmentAssignment() {
+  const navigate = useNavigate();
   const { currentUser, isAdmin, viewableDepts, viewableDeptCodes } = usePermission();
 
   // Filters state
@@ -372,6 +374,29 @@ export default function DepartmentAssignment() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded transition border border-zinc-200 font-medium"
           >
             <RefreshCw className="w-3 h-3" /> 새로고침
+          </button>
+        </div>
+      </div>
+
+      {/* 2026 Navigation Flow Assist Card */}
+      <div className="bg-[#f2faf7] border border-[#ddeae5] p-4.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3.5 shadow-xs">
+        <div>
+          <span className="text-xs bg-[#008f83] text-white px-2 py-0.5 rounded font-bold font-mono font-sans shadow-xs">FLOW CONSOLE</span>
+          <h4 className="text-sm font-bold text-zinc-900 mt-1.5 font-sans">📂 실적 부서 귀속 관계 조정 제어판</h4>
+          <p className="text-xs text-zinc-500 mt-0.5 font-sans">수정된 계정 및 부서 귀속 관계를 점검하시고, 다음 단계인 [예산 작성]으로 즉시 이동하여 예산을 기재하십시오.</p>
+        </div>
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <button
+            onClick={() => navigate('/account-selection')}
+            className="flex-1 sm:flex-none px-4 py-2 border border-zinc-250 hover:border-zinc-350 text-zinc-700 bg-white font-bold rounded-xl text-xs transition-all cursor-pointer shadow-xs font-sans"
+          >
+            &larr; 계정 선택 (전 단계)
+          </button>
+          <button
+            onClick={() => navigate('/budget-creation')}
+            className="flex-1 sm:flex-none px-4 py-2 bg-[#008f83] hover:bg-[#00746b] text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1 cursor-pointer shadow-sm font-sans"
+          >
+            예산 작성하기 &rarr;
           </button>
         </div>
       </div>

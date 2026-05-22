@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from './layout/AppShell';
-import Footer from './Footer';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -20,10 +19,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell>
-      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col min-h-0">
+      <div className="page-container bg-transparent">
         {children}
       </div>
-      <Footer isLoggedIn={true} />
     </AppShell>
   );
 }

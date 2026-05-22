@@ -1173,6 +1173,21 @@ export default function AccountSelection() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* Top Flow Assist Card */}
+      <div className="bg-[#f0faf7] border border-[#d2efe5] p-5.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4.5 shadow-xs">
+        <div>
+          <span className="text-xs bg-[#008f83] text-white px-2 py-0.5 rounded font-bold font-mono">FLOW ASSIST</span>
+          <h4 className="text-sm font-bold text-zinc-900 mt-1.5">💡 예산 계정 선택 완료 후, 다음 단계인 [예산 작성] 업무로 이동하세요.</h4>
+          <p className="text-xs text-zinc-500 mt-0.5">해당 부서에서 편성할 비용 계정을 체크하고 저장한 후 작성할 수 있습니다.</p>
+        </div>
+        <button
+          onClick={() => navigate('/budget-creation')}
+          className="w-full sm:w-auto px-5 py-2.5 bg-[#008f83] hover:bg-[#00746b] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+        >
+          예산 작성으로 이동 &rarr;
+        </button>
+      </div>
+
       <div className="bg-white p-8 rounded-2xl border border-lithium-200 shadow-sm">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
@@ -1404,6 +1419,20 @@ export default function AccountSelection() {
           )}
         </div>
 
+      </div>
+
+      {/* Bottom Flow Assist Card */}
+      <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4.5">
+        <div>
+          <h4 className="text-sm font-bold text-zinc-900">부서별 예산 대상 임의 계정 설정 완료</h4>
+          <p className="text-xs text-zinc-500 mt-1">부서 예산 수립에 필요한 모든 계정이 선정 및 체크 완료되었다면, 다음 단계로 이동하십시오.</p>
+        </div>
+        <button
+          onClick={() => navigate('/budget-creation')}
+          className="w-full sm:w-auto px-6 py-3 bg-[#008f83] hover:bg-[#00746b] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+        >
+          예산 작성(Budget Creation)으로 이동 &rarr;
+        </button>
       </div>
 
       {/* Add Account Modal */}

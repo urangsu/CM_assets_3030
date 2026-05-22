@@ -59,8 +59,7 @@ export default function TopHeader({ dataState, isDemo = true }: TopHeaderProps) 
   const firstLetter = currentUser?.name ? currentUser.name.charAt(0) : '관';
 
   return (
-    <header className="hdr cb">
-      <span className="cbl">AppHeader</span>
+    <header className="hdr">
       <span className="logo">HY<em>CM</em></span>
       <div className="vr" />
       <span className="portal-name">운영 관제 포털</span>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getViewableDepts } from '../../constants';
+import { X, BookOpen, Info, Mail } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export function Ico({ id, size = 14 }: { id: string; size?: number }) {
   const p: Record<string, React.ReactNode> = {
@@ -163,7 +165,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
       { id: 'actual-upload', label: '실적 업로드', icon: 'upload', href: '/plan-actual-upload' },
       { id: 'account-selection', label: '계정 선택', icon: 'tag', href: '/account-selection' },
       { id: 'department-assignment', label: '부서 귀속 변경', icon: 'convert', href: '/department-assignment' },
-      { id: 'account-master-view', label: '계정/부서 기준 확인', icon: 'list', href: '/account-management' }
+      { id: 'account-management', label: '계정/부서 기준 확인', icon: 'list', href: '/account-management' }
     ]
   },
   {
@@ -171,15 +173,15 @@ const NAV_GROUPS_DEF: NavGroup[] = [
     items: [
       { id: 'budget-write', label: '예산 작성', icon: 'plus', href: '/budget-creation' },
       { id: 'business-activity', label: '업무활동경비 산출', icon: 'wallet', href: '/business-activity-budget' },
-      { id: 'budget-status', label: '예산 제출/승인 현황', icon: 'check', href: '/budget-status' }
+      { id: 'budget-status', label: '예산 제출/승인 현황', icon: 'check', href: '/budget-status?tab=approval' }
     ]
   },
   {
     group: "3단계. 예산 검토",
     items: [
-      { id: 'budget-status-review', label: '예산 현황', icon: 'list', href: '/budget-status' },
-      { id: 'execution-ledger', label: '예산 한도 점검', icon: 'compare', href: '/execution-ledger' },
-      { id: 'overrun', label: '초과 항목', icon: 'alert', href: '/overrun-check' },
+      { id: 'budget-status-review', label: '예산 현황', icon: 'list', href: '/budget-status?tab=overview' },
+      { id: 'execution-ledger', label: '집행 내역', icon: 'list', href: '/execution-ledger' },
+      { id: 'overrun', label: '예산 한도 점검', icon: 'alert', href: '/overrun-check' },
       { id: 'underrun', label: '미달 항목', icon: 'down', href: '/underrun-check' },
       { id: 'unbudgeted', label: '무예산 집행', icon: 'up', href: '/unbudgeted-check' }
     ]
@@ -208,7 +210,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
       { id: 'settings', label: '사용자 권한', icon: 'user', href: '/user-management' },
       { id: 'account-master-direct', label: '계정 코드 관리', icon: 'tag', href: '/account-management' },
       { id: 'department-master', label: '부서 코드 관리', icon: 'org', href: '/department-management' },
-      { id: 'system-settings', label: '시스템 설정', icon: 'settings', href: '/user-management' }
+      { id: 'system-settings', label: '시스템 설정', icon: 'settings', href: '/user-management?tab=settings' }
     ]
   }
 ];
@@ -237,35 +239,92 @@ export default function Sidebar() {
     }
   }, [location.pathname]);
 
-  const currentPath = location.pathname;
+  const [activeModal, setActiveModal] = useState<'guide' | 'privacy' | null>(null);
+  const closeModal = () => setActiveModal(null);
+
+  const privacyContent = (
+    <div className="space-y-6 text-[#4e5968] text-sm leading-relaxed text-left">
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">1. 수집하는 개인정보 항목</h4>
+        <p>• 필수항목: 사번(ID), 비밀번호(암호화 저장)</p>
+        <p>• 선택항목: 성명, 소속 부서, 회사 이메일, 연락처</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">2. 개인정보의 수집 및 이용 목적</h4>
+        <p>• 사내 예산 편성 및 관리 시스템 이용 권한 확인</p>
+        <p>• 예산 제출/반려 시 알림 메일 발송 및 담당자 확인</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">3. 개인정보의 보유 및 이용 기간</h4>
+        <p>• 퇴사 시 또는 시스템 운영 종료 시까지 (또는 사내 규정에 따름)</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">4. 개인정보의 파기 절차 및 방법</h4>
+        <p>• 계정 삭제 시 시스템 내 저장된 데이터 즉시 파기</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">5. 보안 조치 사항</h4>
+        <p>• 모든 비밀번호는 암호화되어 저장됩니다.</p>
+        <p>• 사용자 관리 메뉴는 운영자 및 기획재무그룹 등 지정된 관리자만 이용가능합니다.</p>
+        <p className="text-red-500 font-bold mt-2">※ 당사의 지정 사용자외 사용을 엄금한다.</p>
+      </section>
+    </div>
+  );
+
+  const guideContent = (
+    <div className="space-y-6 text-[#4e5968] text-sm leading-relaxed text-left">
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">1. 로그인 및 계정 관리</h4>
+        <p>• 부여받은 사번과 비밀번호로 로그인합니다. 보안을 위해 최초 로그인 후 \'내 정보 관리\'에서 비밀번호를 변경하시기 바랍니다.</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">2. 예산 계정 선택</h4>
+        <p>• [예산 계정 선택] 메뉴에서 해당 부서에서 사용할 계정들을 체크하여 저장합니다. 선택된 계정만 예산 작성 화면에 나타납니다.</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">3. 예산 작성 및 제출</h4>
+        <p>• [예산 작성] 메뉴에서 월별 예산 금액을 입력합니다. 작성이 완료되면 우측 상단의 \'제출\' 버튼을 눌러 확정합니다.</p>
+        <p className="text-red-500 font-medium mt-1">※ 제출 후에는 수정이 불가능하므로 관리자에게 반려 요청을 해야 합니다.</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">4. 비교 분석</h4>
+        <p>• [비교 분석] 메뉴를 통해 계획 대비 실적 현황을 그래프와 표로 한눈에 파악할 수 있습니다.</p>
+      </section>
+      <section>
+        <h4 className="font-bold text-[#191f28] mb-2">5. 기타 문의</h4>
+        <p>• 시스템 오류나 계정 관련 문의는 하단의 Feedback 링크를 통해 담당자에게 메일을 보내주시기 바랍니다.</p>
+      </section>
+    </div>
+  );
+
+  const fullPath = location.pathname + location.search;
   let activePageKey = 'dashboard';
-  if (currentPath.includes('/dashboard')) activePageKey = 'dashboard';
-  else if (currentPath.includes('/budget-status')) activePageKey = 'budget-status';
-  else if (currentPath.includes('/execution-ledger')) activePageKey = 'execution-ledger';
-  else if (currentPath.includes('/overrun-check') || currentPath.includes('/overrun')) activePageKey = 'overrun';
-  else if (currentPath.includes('/underrun-check') || currentPath.includes('/underrun')) activePageKey = 'underrun';
-  else if (currentPath.includes('/unbudgeted-check') || currentPath.includes('/unbudgeted')) activePageKey = 'unbudgeted';
-  else if (currentPath.includes('/plan-actual-upload') || currentPath.includes('/actual-upload') || currentPath.includes('/upload')) activePageKey = 'actual-upload';
-  else if (currentPath.includes('/budget-creation') || currentPath.includes('/plan-create') || currentPath.includes('/budget')) activePageKey = 'budget-write';
-  else if (currentPath.includes('/business-activity-budget') || currentPath.includes('/business-activity')) activePageKey = 'business-activity';
-  else if (currentPath.includes('/variance-comparison') || currentPath.includes('/comparison') || currentPath.includes('/compare')) activePageKey = 'variance';
-  else if (currentPath.includes('/account-selection') || currentPath.includes('/account')) activePageKey = 'account-selection';
-  else if (currentPath.includes('/account-management') || currentPath.includes('/account-master')) activePageKey = 'account-master-direct';
-  else if (currentPath.includes('/department-management') || currentPath.includes('/department-master')) activePageKey = 'department-master';
-  else if (currentPath.includes('/department-assignment')) activePageKey = 'department-assignment';
-  else if (currentPath.includes('/user-management')) activePageKey = 'settings';
-  else if (currentPath.includes('/sales-status')) activePageKey = 'sales-status';
-  else if (currentPath.includes('/purchase-status')) activePageKey = 'purchase-status';
-  else if (currentPath.includes('/production-status')) activePageKey = 'production-status';
-  else if (currentPath.includes('/raw-material-status')) activePageKey = 'raw-material-status';
+  let bestMatchScore = -1;
+
+  NAV_GROUPS_DEF.forEach(group => {
+    group.items.forEach(item => {
+      if (!item.href) return;
+      if (item.href === fullPath) {
+        activePageKey = item.id;
+        bestMatchScore = 10;
+      } else if (item.href === location.pathname && bestMatchScore < 5) {
+        activePageKey = item.id;
+        bestMatchScore = 5;
+      } else if (location.pathname.startsWith(item.href.split('?')[0]) && bestMatchScore < 2) {
+        activePageKey = item.id;
+        bestMatchScore = 2;
+      }
+    });
+  });
 
   const filteredNavGroups = NAV_GROUPS_DEF.map(groupDef => {
     const filteredItems = groupDef.items.filter(item => {
-      // Basic protection limits for raw uploads and system profiles
+      // Basic protection limits for raw uploads and administrative profile managers
       const isRestricted = item.href?.startsWith('/plan-actual-upload') || 
                            item.href?.startsWith('/user-management') || 
-                           item.href?.startsWith('/account-management') || 
-                           item.href?.startsWith('/department-management');
+                           item.href?.startsWith('/department-management') ||
+                           item.href?.startsWith('/department-assignment') ||
+                           item.id === 'account-master-direct';
       if (isRestricted) {
         return currentUser && (currentUser.code === '99999' || currentUser.code === '32100');
       }
@@ -316,8 +375,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="sb cb">
-      <span className="cbl">Navigation Console</span>
+    <aside className="sb">
       <nav className="flex-1 mt-4">
         {filteredNavGroups.map(({ group, items }) => {
           const isGroupOpen = !group || openGroups.has(group);
@@ -373,11 +431,80 @@ export default function Sidebar() {
           );
         })}
       </nav>
-      <div className="sb-footer">
-        <div className="text-[10px] text-zinc-400 opacity-60 px-4 py-1.5 tracking-wider font-bold font-mono">
+      <div className="sb-footer flex flex-col gap-1 px-4 py-3 border-t border-zinc-250">
+        <div className="text-[9px] text-zinc-400 opacity-60 tracking-wider font-bold font-mono">
           HYCM CONTROL CENTER v2.1
         </div>
+        <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-zinc-500">
+          <button 
+            onClick={() => setActiveModal('guide')}
+            className="hover:text-[#008f83] transition-colors cursor-pointer"
+          >
+            Guide
+          </button>
+          <span className="text-zinc-300">·</span>
+          <a 
+            href="mailto:su@poscohycm.com"
+            className="hover:text-[#008f83] transition-colors"
+          >
+            Feedback
+          </a>
+          <span className="text-zinc-300">·</span>
+          <button 
+            onClick={() => setActiveModal('privacy')}
+            className="hover:text-[#008f83] transition-colors cursor-pointer"
+          >
+            Privacy
+          </button>
+        </div>
       </div>
+
+      <AnimatePresence>
+        {activeModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeModal}
+              className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] text-left"
+            >
+              <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-[#f9fafb]">
+                <h3 className="text-lg font-bold text-[#191f28] flex items-center gap-2">
+                  {activeModal === 'guide' ? (
+                    <><BookOpen className="w-5 h-5 text-[#008f83]" /> 사용 가이드라인</>
+                  ) : (
+                    <><Info className="w-5 h-5 text-[#008f83]" /> 개인정보 처리방침</>
+                  )}
+                </h3>
+                <button 
+                  onClick={closeModal}
+                  className="p-2 text-[#8b95a1] hover:text-[#191f28] hover:bg-[#f2f4f6] rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto">
+                {activeModal === 'guide' ? guideContent : privacyContent}
+              </div>
+              <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-end">
+                <button 
+                  onClick={closeModal}
+                  className="px-5 py-2.5 bg-[#008f83] hover:bg-[#00786f] text-white font-bold rounded-xl transition-colors shadow-lg"
+                >
+                  확인
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </aside>
   );
 }

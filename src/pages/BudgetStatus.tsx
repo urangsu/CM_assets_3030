@@ -31,8 +31,14 @@ import {
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function BudgetStatus() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const searchParams = new URLSearchParams(location.search);
+  const activeTab = searchParams.get('tab') || 'overview';
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -376,7 +382,7 @@ export default function BudgetStatus() {
 
   useEffect(() => {
     loadData();
-  }, [currentUser, year, planType, month, selectedDept, selectedCategory, selectedAnomaly, selectedApproval]);
+  }, [currentUser, year, planType, month, selectedDept, selectedCategory, selectedAnomaly, selectedApproval, activeTab]);
 
   const handleOpenReview = (row: any) => {
     setActiveReviewItem({
@@ -428,6 +434,42 @@ export default function BudgetStatus() {
           <span>권한: {currentUser.role} {currentUser.department}</span>
         </div>
       </div>
+
+      {/* Tab Selector */}
+      <div className="flex border-b border-[#dde5de] gap-1.5">
+        <button
+          onClick={() => navigate('/budget-status?tab=overview')}
+          className={`px-5 py-3 text-xs font-bold transition border-b-2 -mb-[2px] cursor-pointer flex items-center gap-2 ${
+            activeTab === 'overview'
+              ? 'border-[#008f83] text-[#008f83] bg-white rounded-t-xl border-t border-x border-[#dde5de]'
+              : 'border-transparent text-zinc-500 hover:text-zinc-800 hover:border-[#dde5de]'
+          }`}
+        >
+          <Award className="w-3.5 h-3.5" />
+          예산 현황 (Overview)
+        </button>
+        <button
+          onClick={() => navigate('/budget-status?tab=approval')}
+          className={`px-5 py-3 text-xs font-bold transition border-b-2 -mb-[2px] cursor-pointer flex items-center gap-2 ${
+            activeTab === 'approval'
+              ? 'border-[#008f83] text-[#008f83] bg-white rounded-t-xl border-t border-x border-[#dde5de]'
+              : 'border-transparent text-zinc-500 hover:text-zinc-800 hover:border-[#dde5de]'
+          }`}
+        >
+          <CheckCircle className="w-3.5 h-3.5" />
+          예산 제출/승인 현황 (Approval Status)
+        </button>
+      </div>
+
+      {/* Dynamic Tab Context notice */}
+      {activeTab === 'approval' && (
+        <div className="bg-[#fcf8f2] border border-[#fbd6b4] text-zinc-700 p-4.5 rounded-2xl text-xs flex items-center gap-3 shadow-xs">
+          <AlertTriangle className="w-4.5 h-4.5 text-[#F7A059] flex-shrink-0" />
+          <div>
+            <b>[결재 승인 관제 모드]</b> 현재 제출된 예산 조정안을 심사하고 승인 및 반려 처리하는 전용 관제 보기입니다. 아래 목록에서 각 세목 우측의 <b>\'검증\'</b> 버튼을 클릭하여 결재를 수행하십시오.
+          </div>
+        </div>
+      )}
 
       {/* 2. Controls and Multi-Filters */}
       <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs space-y-4">
