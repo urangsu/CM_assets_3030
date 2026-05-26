@@ -28,8 +28,14 @@ import {
   Pie, 
   Cell 
 } from 'recharts';
+import { 
+  formatMillionWon, 
+  formatWon, 
+  formatMillionWonWithFull 
+} from '../lib/formatters';
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
+import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -46,7 +52,8 @@ export default function BudgetStatus() {
   // Filters
   const [year, setYear] = useState('2026');
   const [planType, setPlanType] = useState('경영계획');
-  const [month, setMonth] = useState('all');
+  const [monthMode, setMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedDept, setSelectedDept] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -190,11 +197,17 @@ export default function BudgetStatus() {
         // Track budget accounts
         const deptAccountBudgets = new Map<string, any>();
         budgetRows.forEach((brow: any) => {
-          const totalBudgetSum = (brow.values || []).reduce((a: number, b: number) => a + Number(b || 0), 0);
+          let budgetSum = 0;
+          if (monthMode === 'MONTH') {
+            budgetSum = Number((brow.values || [])[selectedMonth - 1] || 0);
+          } else {
+            budgetSum = (brow.values || []).slice(0, selectedMonth).reduce((a: number, b: number) => a + Number(b || 0), 0);
+          }
+
           deptAccountBudgets.set(brow.code, {
             accountCode: brow.code,
             accountName: brow.name,
-            budgetAmount: totalBudgetSum,
+            budgetAmount: budgetSum,
             detail: brow.detail || ''
           });
         });
@@ -202,8 +215,11 @@ export default function BudgetStatus() {
         // Track actual accounts
         const deptAccountActuals = new Map<string, number>();
         deptActuals.forEach((arow: any) => {
-          const completedSum = Number(arow.completed || 0);
-          deptAccountActuals.set(arow.accountCode, (deptAccountActuals.get(arow.accountCode) || 0) + completedSum);
+          const monthIdx = parseMonthIndex(arow.period ?? arow.month);
+          if (shouldIncludeMonth(monthIdx, monthMode, selectedMonth)) {
+            const completedSum = Number(arow.completed || 0);
+            deptAccountActuals.set(arow.accountCode, (deptAccountActuals.get(arow.accountCode) || 0) + completedSum);
+          }
         });
 
         // Merge all Account Codes
@@ -390,7 +406,7 @@ export default function BudgetStatus() {
 
   useEffect(() => {
     loadData();
-  }, [currentUser, year, planType, month, selectedDept, selectedCategory, selectedAnomaly, selectedApproval, activeTab]);
+  }, [currentUser, year, planType, monthMode, selectedMonth, selectedDept, selectedCategory, selectedAnomaly, selectedApproval, activeTab]);
 
   const handleOpenReview = (row: any) => {
     setActiveReviewItem({
@@ -399,7 +415,7 @@ export default function BudgetStatus() {
       deptName: row.deptName,
       accountCode: row.accountCode,
       accountName: row.accountName,
-      month: month === 'all' ? undefined : `${month}월`,
+      month: getMonthModeLabel(monthMode, selectedMonth),
       budgetAmount: row.budgetAmount,
       actualAmount: row.actualAmount,
       differenceAmount: row.budgetAmount - row.actualAmount,
@@ -491,7 +507,7 @@ export default function BudgetStatus() {
           <span>다차원 관제 필터링 엔진</span>
         </div>
         
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           {/* Year */}
           <div>
             <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">연도</label>
@@ -502,6 +518,33 @@ export default function BudgetStatus() {
             >
               <option value="2026">2026년 회계</option>
               <option value="2025">2025년 회계</option>
+            </select>
+          </div>
+
+          {/* Month Mode */}
+          <div>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">조회 기준</label>
+            <select 
+              value={monthMode}
+              onChange={(e) => setMonthMode(e.target.value as MonthMode)}
+              className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
+            >
+              <option value="YTD">누계</option>
+              <option value="MONTH">단월</option>
+            </select>
+          </div>
+
+          {/* Selected Month */}
+          <div>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">기준 월</label>
+            <select 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                <option key={m} value={m}>{m}월</option>
+              ))}
             </select>
           </div>
 
@@ -603,19 +646,19 @@ export default function BudgetStatus() {
       {/* 3. Operational KPIs Header Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3.5">
         <div className="bg-white border border-[#dde5de] p-4.5 rounded-2xl shadow-xs text-center">
-          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">전체 편성 예산</span>
-          <span className="text-lg font-bold text-[#111111] mt-2 font-mono block">{kpis.totalBudget.toLocaleString()}원</span>
+          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">{monthMode === 'MONTH' ? `${selectedMonth}월` : `1월~${selectedMonth}월`} 편성 예산</span>
+          <span className="text-lg font-bold text-[#111111] mt-2 font-mono block" title={formatWon(kpis.totalBudget)}>{formatMillionWon(kpis.totalBudget)}</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4.5 rounded-2xl shadow-xs text-center">
-          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">누적 집행 총액</span>
-          <span className="text-lg font-bold text-[#008f83] mt-2 font-mono block">{kpis.totalActual.toLocaleString()}원</span>
+          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">{monthMode === 'MONTH' ? `${selectedMonth}월` : `1월~${selectedMonth}월`} 집행 금액</span>
+          <span className="text-lg font-bold text-[#008f83] mt-2 font-mono block" title={formatWon(kpis.totalActual)}>{formatMillionWon(kpis.totalActual)}</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4.5 rounded-2xl shadow-xs text-center">
-          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">가용 잔여 한도</span>
-          <span className="text-lg font-bold text-zinc-700 mt-2 font-mono block">{kpis.remaining.toLocaleString()}원</span>
+          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">{monthMode === 'MONTH' ? `${selectedMonth}월` : `1월~${selectedMonth}월`} 잔여 한도</span>
+          <span className="text-lg font-bold text-zinc-700 mt-2 font-mono block" title={formatWon(kpis.remaining)}>{formatMillionWon(kpis.remaining)}</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4.5 rounded-2xl shadow-xs text-center">
-          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">총합 집행률</span>
+          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">{monthMode === 'MONTH' ? `${selectedMonth}월` : `1월~${selectedMonth}월`} 집행률</span>
           <span className="text-lg font-bold text-[#008f83] mt-2 font-mono block">{kpis.burnRate}%</span>
         </div>
         
@@ -657,8 +700,8 @@ export default function BudgetStatus() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2ec" />
                   <XAxis dataKey="month" stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
-                  <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
-                  <Tooltip formatter={(value: any) => [`${Number(value).toLocaleString()}원`, '']} />
+                  <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1_000_000).toLocaleString('ko-KR')}`} />
+                  <Tooltip formatter={(value: any) => [formatMillionWonWithFull(Number(value)), '']} />
                   <Legend iconType="circle" />
                   <Area type="monotone" name="예산 계획" dataKey="예산 계획" stroke="#c4cfc5" strokeWidth={1.5} fill="url(#gPlan)" />
                   <Area type="monotone" name="실제 집행" dataKey="실제 집행" stroke="#008f83" strokeWidth={2.5} fill="url(#gAct)" />
@@ -676,9 +719,9 @@ export default function BudgetStatus() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartAccount} layout="vertical" margin={{ left: 5, right: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2ec" />
-                  <XAxis type="number" fontSize={9} stroke="#8b95a1" axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
+                  <XAxis type="number" fontSize={9} stroke="#8b95a1" axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1_000_000).toLocaleString('ko-KR')}`} />
                   <YAxis dataKey="name" type="category" fontSize={9} stroke="#111111" axisLine={false} tickLine={false} width={65} />
-                  <Tooltip formatter={(v: any) => [`${Number(v).toLocaleString()}원`, '']} />
+                  <Tooltip formatter={(v: any) => [formatMillionWonWithFull(Number(v)), '']} />
                   <Bar name="실제 집행" dataKey="집행액" fill="#008f83" radius={[0, 4, 4, 0]} barSize={12} />
                 </BarChart>
               </ResponsiveContainer>
@@ -713,6 +756,7 @@ export default function BudgetStatus() {
                 <th className="px-5 py-3">부서명 (코드)</th>
                 <th className="px-5 py-3">계정명 (코드)</th>
                 <th className="px-5 py-3">계정구분</th>
+                <th className="px-5 py-3">조회 기준</th>
                 <th className="px-5 py-3 text-right">예산</th>
                 <th className="px-5 py-3 text-right">실제 집행</th>
                 <th className="px-5 py-3 text-right">잔여 한도</th>
@@ -725,7 +769,7 @@ export default function BudgetStatus() {
             <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
               {tableRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-12 text-center text-zinc-400 font-medium">
+                  <td colSpan={11} className="px-5 py-12 text-center text-zinc-400 font-medium">
                     해당 세목 조건에 매칭되는 예산 감사 데이터가 존재하지 않습니다.
                   </td>
                 </tr>
@@ -747,14 +791,17 @@ export default function BudgetStatus() {
                       <td className="px-5 py-3.5 whitespace-nowrap text-zinc-500">
                         {row.accountCategory}
                       </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-right font-mono text-zinc-500">
-                        {row.budgetAmount.toLocaleString()}원
+                      <td className="px-5 py-3.5 whitespace-nowrap text-zinc-500 font-medium">
+                        {monthMode === 'MONTH' ? `${selectedMonth}월` : `1월~${selectedMonth}월`}
                       </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-right font-mono font-medium text-[#111111]">
-                        {row.actualAmount.toLocaleString()}원
+                      <td className="px-5 py-3.5 whitespace-nowrap text-right font-mono text-zinc-500" title={formatWon(row.budgetAmount)}>
+                        {formatMillionWon(row.budgetAmount)}
                       </td>
-                      <td className={`px-5 py-3.5 whitespace-nowrap text-right font-mono ${row.differenceAmount > 0 && isOver ? 'text-rose-500' : 'text-emerald-600'}`}>
-                        {row.differenceAmount > 0 && isOver ? `+${row.differenceAmount.toLocaleString()}` : row.differenceAmount.toLocaleString()}원
+                      <td className="px-5 py-3.5 whitespace-nowrap text-right font-mono font-medium text-[#111111]" title={formatWon(row.actualAmount)}>
+                        {formatMillionWon(row.actualAmount)}
+                      </td>
+                      <td className={`px-5 py-3.5 whitespace-nowrap text-right font-mono ${row.differenceAmount > 0 && isOver ? 'text-rose-500' : 'text-emerald-600'}`} title={formatWon(row.differenceAmount)}>
+                        {row.differenceAmount > 0 && isOver ? `+${formatMillionWon(row.differenceAmount)}` : formatMillionWon(row.differenceAmount)}
                       </td>
                       <td className="px-5 py-3.5 whitespace-nowrap text-center font-mono font-bold text-zinc-800">
                         {row.burnRate}%

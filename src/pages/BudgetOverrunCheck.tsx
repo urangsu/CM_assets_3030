@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Download, Search, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
+import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth, aggregateByDeptAccount } from '../lib/budgetAggregation';
 import { canViewSalaryAccounts, getViewableDeptCodes } from '../lib/permissions';
 import { isInvestmentAccount } from '../lib/accountMaster';
@@ -34,9 +35,8 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => i);
 export default function BudgetOverrunCheck() {
   const [year, setYear] = useState('2026');
   const [planType, setPlanType] = useState('경영계획');
-  const [periodType, setPeriodType] = useState<'전체' | '분기' | '월'>('분기');
-  const [quarter, setQuarter] = useState<'1Q' | '2Q' | '3Q' | '4Q'>('1Q');
-  const [month, setMonth] = useState<number>(1);
+  const [monthMode, setMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedDeptCode, setSelectedDeptCode] = useState('전체');
   const [accountCategory, setAccountCategory] = useState('전체');
   const [overrunFilter, setOverrunFilter] = useState('초과 항목만');
@@ -89,13 +89,11 @@ export default function BudgetOverrunCheck() {
     const budgetRows = getBudgetRowsByDeptYearPlan(deptCodes, year, planType);
     const actualRows = getActualRowsByYear(year);
     
-    let qMonths = MONTHS;
-    if (periodType === '전체') {
-      qMonths = MONTHS;
-    } else if (periodType === '분기') {
-      qMonths = QUARTERS[quarter];
-    } else if (periodType === '월') {
-      qMonths = [month - 1];
+    let qMonths: number[] = [];
+    if (monthMode === 'MONTH') {
+      qMonths = [selectedMonth - 1];
+    } else {
+      qMonths = Array.from({ length: selectedMonth }, (_, i) => i);
     }
 
     const rawData = aggregateByDeptAccount({
@@ -198,9 +196,7 @@ export default function BudgetOverrunCheck() {
       XLSX.utils.book_append_sheet(wb, wsDetails, '월별상세');
       
       const deptName = selectedDeptCode === '전체' ? '전체부서' : (depts.find(d => d.code === selectedDeptCode)?.name || selectedDeptCode);
-      let periodName = '전체';
-      if (periodType === '분기') periodName = quarter;
-      if (periodType === '월') periodName = `${month}월`;
+      const periodName = getMonthModeLabel(monthMode, selectedMonth);
       XLSX.writeFile(wb, `예산점검_${year}_${planType}_${periodName}_${deptName}.xlsx`);
     });
   };
@@ -240,32 +236,19 @@ export default function BudgetOverrunCheck() {
             <option value="2차RP">2차RP</option>
           </AppSelect>
         </FilterItem>
-        <FilterItem label="기간구분">
-          <AppSelect value={periodType} onChange={(e) => setPeriodType(e.target.value as any)}>
-            <option value="전체">전체 요약</option>
-            <option value="분기">분기 지정</option>
-            <option value="월">월 지정</option>
+        <FilterItem label="조회 기준">
+          <AppSelect value={monthMode} onChange={(e) => setMonthMode(e.target.value as MonthMode)}>
+            <option value="YTD">누계</option>
+            <option value="MONTH">단월</option>
           </AppSelect>
         </FilterItem>
-        {periodType === '분기' && (
-          <FilterItem label="조회분기">
-            <AppSelect value={quarter} onChange={(e) => setQuarter(e.target.value as any)}>
-              <option value="1Q">1분기</option>
-              <option value="2Q">2분기</option>
-              <option value="3Q">3분기</option>
-              <option value="4Q">4분기</option>
-            </AppSelect>
-          </FilterItem>
-        )}
-        {periodType === '월' && (
-          <FilterItem label="조회월">
-            <AppSelect value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-              {MONTHS.map((m) => (
-                <option key={m+1} value={m+1}>{m+1}월</option>
-              ))}
-            </AppSelect>
-          </FilterItem>
-        )}
+        <FilterItem label="기준 월">
+          <AppSelect value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))}>
+            {MONTHS.map((m) => (
+              <option key={m+1} value={m+1}>{m+1}월</option>
+            ))}
+          </AppSelect>
+        </FilterItem>
         <FilterItem label="부서">
           <AppSelect value={selectedDeptCode} onChange={(e) => setSelectedDeptCode(e.target.value)}>
             <option value="전체">전체 조회 부서</option>

@@ -13,6 +13,7 @@ import { INITIAL_CATEGORIES } from './AccountSelection';
 import { isInvestmentAccount } from '../lib/accountMaster';
 import { ChartCard } from '../components/charts/ChartCard';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
+import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 
 export default function VarianceComparison() {
   const { currentUser, isAdmin, isPlanningTeam, hasSalaryAccess, viewableDeptCodes, viewableDepts } = usePermission();
@@ -28,11 +29,13 @@ export default function VarianceComparison() {
 
   const [baseYear, setBaseYear] = useState(() => localStorage.getItem('variance_baseYear') || '2026');
   const [basePlanType, setBasePlanType] = useState(() => localStorage.getItem('variance_basePlanType') || '경영계획');
-  const [baseMonth, setBaseMonth] = useState(() => localStorage.getItem('variance_baseMonth') || 'all');
+  const [baseMonthMode, setBaseMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
+  const [baseSelectedMonth, setBaseSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   
   const [targetYear, setTargetYear] = useState(() => localStorage.getItem('variance_targetYear') || '2026');
   const [targetPlanType, setTargetPlanType] = useState(() => localStorage.getItem('variance_targetPlanType') || '실적');
-  const [targetMonth, setTargetMonth] = useState(() => localStorage.getItem('variance_targetMonth') || 'all');
+  const [targetMonthMode, setTargetMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
+  const [targetSelectedMonth, setTargetSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   
   const [selectedDept, setSelectedDept] = useState(() => localStorage.getItem('variance_dept') || getUserInitDept());
   const [selectedAccountCategory, setSelectedAccountCategory] = useState(() => localStorage.getItem('variance_accountCategory') || 'all');
@@ -64,13 +67,12 @@ export default function VarianceComparison() {
   useEffect(() => {
     localStorage.setItem('variance_baseYear', baseYear);
     localStorage.setItem('variance_basePlanType', basePlanType);
-    localStorage.setItem('variance_baseMonth', baseMonth);
     localStorage.setItem('variance_targetYear', targetYear);
     localStorage.setItem('variance_targetPlanType', targetPlanType);
-    localStorage.setItem('variance_targetMonth', targetMonth);
     localStorage.setItem('variance_dept', selectedDept);
     localStorage.setItem('variance_accountCategory', selectedAccountCategory);
-  }, [baseYear, basePlanType, baseMonth, targetYear, targetPlanType, targetMonth, selectedDept, selectedAccountCategory]);
+  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, selectedDept, selectedAccountCategory]);
+  
   const [chartData, setChartData] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>(INITIAL_CATEGORIES);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -82,8 +84,8 @@ export default function VarianceComparison() {
     targetSga: 0
   });
 
-  const baseName = `${baseYear} ${basePlanType} ${baseMonth === 'all' ? '(전체)' : baseMonth.includes('Q') ? `(${baseMonth})` : `(${baseMonth}월)`}`;
-  const targetName = `${targetYear} ${targetPlanType} ${targetMonth === 'all' ? '(전체)' : targetMonth.includes('Q') ? `(${targetMonth})` : `(${targetMonth}월)`}`;
+  const baseName = `${baseYear} ${basePlanType} (${getMonthModeLabel(baseMonthMode, baseSelectedMonth)})`;
+  const targetName = `${targetYear} ${targetPlanType} (${getMonthModeLabel(targetMonthMode, targetSelectedMonth)})`;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 }).format(value);
@@ -102,15 +104,9 @@ export default function VarianceComparison() {
     return allDepts.find(d => d.code === selectedDept)?.name || selectedDept;
   };
 
-  const formatPeriodForFilename = (period: string) => {
-    if (period === 'all') return '전체';
-    if (period.includes('Q')) return period;
-    return `${period}월`;
-  };
-
   const getDownloadFileName = (ext: string) => {
-    const baseStr = `${baseYear}_${basePlanType}_${formatPeriodForFilename(baseMonth)}`;
-    const targetStr = `${targetYear}_${targetPlanType}_${formatPeriodForFilename(targetMonth)}`;
+    const baseStr = `${baseYear}_${basePlanType}_${baseMonthMode}_${baseSelectedMonth}`;
+    const targetStr = `${targetYear}_${targetPlanType}_${targetMonthMode}_${targetSelectedMonth}`;
     const deptStr = getDeptName();
     return `${baseStr}vs${targetStr}_${deptStr}.${ext}`;
   };
@@ -532,7 +528,7 @@ export default function VarianceComparison() {
 
   useEffect(() => {
     // Helper function to get aggregated data for a specific year and plan type
-    const getAggregatedData = (year: string, planType: string, period: string) => {
+    const getAggregatedData = (year: string, planType: string, periodMode: MonthMode, periodSelectedMonth: number) => {
       const aggregated = new Map<string, { name: string, total: number }>();
       let mfgTotal = 0;
       let sgaTotal = 0;
@@ -592,20 +588,10 @@ export default function VarianceComparison() {
 
             // Period filter
             const periodStr = String(item.period || '');
-            const monthIndex = parsePeriodMonth(periodStr);
-            if (monthIndex === null) return;
-            const itemMonth = monthIndex + 1;
+            const monthIndex = parseMonthIndex(periodStr);
+            if (!shouldIncludeMonth(monthIndex, periodMode, periodSelectedMonth)) return;
 
-            let match = false;
-            if (period === 'all') match = true;
-            else if (period === '1Q') match = itemMonth >= 1 && itemMonth <= 3;
-            else if (period === '2Q') match = itemMonth >= 4 && itemMonth <= 6;
-            else if (period === '3Q') match = itemMonth >= 7 && itemMonth <= 9;
-            else if (period === '4Q') match = itemMonth >= 10 && itemMonth <= 12;
-            else match = itemMonth === parseInt(period, 10);
-
-            if (match) {
-              const catName = accountToCategoryNameMap.get(item.accountCode);
+            const catName = accountToCategoryNameMap.get(item.accountCode);
               
               // Salary access check
               if (!hasSalaryAccess) {
@@ -639,7 +625,6 @@ export default function VarianceComparison() {
                   amount 
                 });
               }
-            }
           });
 
           // Final aggregation based on selected view
@@ -695,12 +680,11 @@ export default function VarianceComparison() {
               }
 
               let amount = 0;
-              if (period === 'all') amount = row.values.reduce((sum: number, val: number) => sum + val, 0);
-              else if (period === '1Q') amount = row.values.slice(0, 3).reduce((sum: number, val: number) => sum + val, 0);
-              else if (period === '2Q') amount = row.values.slice(3, 6).reduce((sum: number, val: number) => sum + val, 0);
-              else if (period === '3Q') amount = row.values.slice(6, 9).reduce((sum: number, val: number) => sum + val, 0);
-              else if (period === '4Q') amount = row.values.slice(9, 12).reduce((sum: number, val: number) => sum + val, 0);
-              else amount = row.values[parseInt(period, 10) - 1] || 0;
+              if (periodMode === 'MONTH') {
+                amount = row.values[periodSelectedMonth - 1] || 0;
+              } else {
+                amount = row.values.slice(0, periodSelectedMonth).reduce((sum: number, val: number) => sum + val, 0);
+              }
 
               if (accType === '제조') mfgTotal += amount;
               if (accType === '판관') sgaTotal += amount;
@@ -736,8 +720,8 @@ export default function VarianceComparison() {
       return { aggregated, mfgTotal, sgaTotal };
     };
 
-    const baseData = getAggregatedData(baseYear, basePlanType, baseMonth);
-    const targetData = getAggregatedData(targetYear, targetPlanType, targetMonth);
+    const baseData = getAggregatedData(baseYear, basePlanType, baseMonthMode, baseSelectedMonth);
+    const targetData = getAggregatedData(targetYear, targetPlanType, targetMonthMode, targetSelectedMonth);
 
     const baseDataMap = baseData.aggregated;
     const targetDataMap = targetData.aggregated;
@@ -799,21 +783,12 @@ export default function VarianceComparison() {
       setChartData(newChartData);
     }
 
-  }, [baseYear, basePlanType, baseMonth, targetYear, targetPlanType, targetMonth, baseName, targetName, selectedDept, selectedAccountCategory, currentUser]);
+  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, baseName, targetName, selectedDept, selectedAccountCategory, currentUser]);
 
   const totalBase = chartData.reduce((sum, item) => sum + item[baseName], 0);
   const totalTarget = chartData.reduce((sum, item) => sum + item[targetName], 0);
   const totalVariance = totalTarget - totalBase;
   const totalVariancePercent = totalBase === 0 ? 0 : (totalVariance / totalBase) * 100;
-
-  const PERIOD_OPTIONS = [
-    { value: 'all', label: '전체 (누적)' },
-    { value: '1Q', label: '1Q (1~3월)' },
-    { value: '2Q', label: '2Q (4~6월)' },
-    { value: '3Q', label: '3Q (7~9월)' },
-    { value: '4Q', label: '4Q (10~12월)' },
-    ...Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}월` }))
-  ];
 
   return (
     <div className="space-y-6">
@@ -912,12 +887,20 @@ export default function VarianceComparison() {
               <option value="2차 RP">2차 RP</option>
             </select>
             <select 
-              value={baseMonth} 
-              onChange={(e) => setBaseMonth(e.target.value)}
+              value={baseMonthMode} 
+              onChange={(e) => setBaseMonthMode(e.target.value as MonthMode)}
               className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
-              {PERIOD_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="YTD">누계</option>
+              <option value="MONTH">단월</option>
+            </select>
+            <select 
+              value={baseSelectedMonth} 
+              onChange={(e) => setBaseSelectedMonth(Number(e.target.value))}
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                <option key={m} value={m}>{m}월</option>
               ))}
             </select>
           </div>
@@ -946,12 +929,20 @@ export default function VarianceComparison() {
               <option value="2차 RP">2차 RP</option>
             </select>
             <select 
-              value={targetMonth} 
-              onChange={(e) => setTargetMonth(e.target.value)}
+              value={targetMonthMode} 
+              onChange={(e) => setTargetMonthMode(e.target.value as MonthMode)}
               className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
-              {PERIOD_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="YTD">누계</option>
+              <option value="MONTH">단월</option>
+            </select>
+            <select 
+              value={targetSelectedMonth} 
+              onChange={(e) => setTargetSelectedMonth(Number(e.target.value))}
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                <option key={m} value={m}>{m}월</option>
               ))}
             </select>
           </div>
@@ -1076,11 +1067,11 @@ export default function VarianceComparison() {
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2f4f6" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}M`} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}`} />
               <Tooltip 
                 cursor={{ fill: 'rgba(0,0,0,0.02)' }}
                 contentStyle={{ borderRadius: '16px', border: '1px solid #dde5de', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                formatter={(value: number) => [`${formatCurrency(value)}원`, '']}
+                formatter={(value: number) => [`${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}백만원 (${formatCurrency(value)}원)`, '']}
               />
               <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
               <Bar dataKey={baseName} fill="#e5e8eb" radius={[6, 6, 0, 0]} maxBarSize={32} />

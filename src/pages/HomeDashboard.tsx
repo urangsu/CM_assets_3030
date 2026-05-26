@@ -29,6 +29,11 @@ import {
   ResponsiveContainer, 
   Legend 
 } from 'recharts';
+import { 
+  formatMillionWon, 
+  formatWon, 
+  formatMillionWonWithFull 
+} from '../lib/formatters';
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
 
@@ -394,15 +399,15 @@ export default function HomeDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MiniMetricCard 
           title="2026 전사 편성 예산" 
-          value={`${stats.totalBudget.toLocaleString()}원`} 
-          subValue="경영계획 세목 집계 기준"
+          value={formatMillionWon(stats.totalBudget)} 
+          subValue={formatWon(stats.totalBudget)}
           icon={Calculator}
           colorClass="text-[#008f83] bg-teal-50"
         />
         <MiniMetricCard 
           title="누적 실적 집행량" 
-          value={`${stats.totalActual.toLocaleString()}원`} 
-          subValue={isDemoMode ? "샘플 데이터 집행량" : "실제 누계 자동 추출액"}
+          value={formatMillionWon(stats.totalActual)} 
+          subValue={formatWon(stats.totalActual)}
           icon={FileSpreadsheet}
           trend={isDemoMode ? "샘플 데이터" : "실제 집행"}
           trendType={isDemoMode ? 'neutral' : 'down'}
@@ -472,10 +477,10 @@ export default function HomeDashboard() {
                     fontSize={10} 
                     axisLine={false} 
                     tickLine={false} 
-                    tickFormatter={(value) => `${(value / 1000000).toLocaleString()}M`}
+                    tickFormatter={(value) => `${Math.round(Number(value) / 1_000_000).toLocaleString('ko-KR')}`}
                   />
                   <Tooltip 
-                    formatter={(value: any) => [`${Number(value).toLocaleString()}원`, '']} 
+                    formatter={(value: any) => [formatMillionWonWithFull(Number(value)), '']} 
                     contentStyle={{ border: '1px solid #dde5de', borderRadius: '12px', fontSize: '12px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -501,10 +506,10 @@ export default function HomeDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={deptContrastData} layout="vertical" margin={{ top: 5, right: 5, left: 15, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2ec" />
-                  <XAxis type="number" stroke="#8b95a1" fontSize={9} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
+                  <XAxis type="number" stroke="#8b95a1" fontSize={9} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1_000_000).toLocaleString('ko-KR')}`} />
                   <YAxis dataKey="name" type="category" stroke="#111111" fontSize={10} axisLine={false} tickLine={false} width={80} />
                   <Tooltip 
-                    formatter={(v: any) => [`${Number(v).toLocaleString()}원`, '']}
+                    formatter={(v: any) => [formatMillionWonWithFull(Number(v)), '']}
                     contentStyle={{ border: '1px solid #dde5de', borderRadius: '12px', fontSize: '12px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -634,11 +639,11 @@ export default function HomeDashboard() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-[#4e5968]">{dept.manager}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-medium text-[#111111]">
-                      {dept.budgetSum.toLocaleString()}원
+                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-medium text-[#111111]" title={formatWon(dept.budgetSum)}>
+                      {formatMillionWon(dept.budgetSum)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-[#4e5968]">
-                      {dept.actualSum.toLocaleString()}원
+                    <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-[#4e5968]" title={formatWon(dept.actualSum)}>
+                      {formatMillionWon(dept.actualSum)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${

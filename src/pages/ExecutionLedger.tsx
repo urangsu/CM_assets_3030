@@ -23,8 +23,14 @@ import {
   LineChart, 
   Line 
 } from 'recharts';
+import { 
+  formatMillionWon, 
+  formatWon, 
+  formatMillionWonWithFull 
+} from '../lib/formatters';
 import { getViewableDepts } from '../constants';
 import { getActualDataKey } from '../lib/storageKeys';
+import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
 
 export default function ExecutionLedger() {
@@ -34,7 +40,8 @@ export default function ExecutionLedger() {
 
   // Filters
   const [year, setYear] = useState('2026');
-  const [month, setMonth] = useState('all');
+  const [monthMode, setMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedDept, setSelectedDept] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -180,7 +187,9 @@ export default function ExecutionLedger() {
 
     // Apply Filter Logic
     const filtered = processedRows.filter(row => {
-      if (month !== 'all' && row.month !== `${month}월`) return false;
+      const monthIdx = parseMonthIndex(row.month);
+      if (!shouldIncludeMonth(monthIdx, monthMode, selectedMonth)) return false;
+
       if (selectedDept !== 'all' && row.usageCode !== selectedDept) return false;
       if (selectedCategory !== 'all' && row.controlType !== selectedCategory) return false;
       if (selectedStatus !== 'all' && row.status !== selectedStatus) return false;
@@ -237,7 +246,7 @@ export default function ExecutionLedger() {
 
   useEffect(() => {
     loadData();
-  }, [currentUser, year, month, selectedDept, selectedCategory, selectedStatus, searchTerm]);
+  }, [currentUser, year, monthMode, selectedMonth, selectedDept, selectedCategory, selectedStatus, searchTerm]);
 
   const handleOpenReview = (row: any) => {
     setActiveReviewItem({
@@ -292,7 +301,7 @@ export default function ExecutionLedger() {
           <span>집행 원장 검색 관제실</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
           {/* Year selection */}
           <div>
             <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">회계 연도</label>
@@ -306,16 +315,28 @@ export default function ExecutionLedger() {
             </select>
           </div>
 
-          {/* Month selective */}
+          {/* Month Mode */}
           <div>
-            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">발생월 선택</label>
-            <select
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none font-mono"
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">조회 기준</label>
+            <select 
+              value={monthMode}
+              onChange={(e) => setMonthMode(e.target.value as MonthMode)}
+              className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
             >
-              <option value="all">전체 발생월 [All]</option>
-              {Array.from({ length: 12 }, (_, i) => String(i + 1)).map(m => (
+              <option value="YTD">누계</option>
+              <option value="MONTH">단월</option>
+            </select>
+          </div>
+
+          {/* Selected Month */}
+          <div>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">기준 월</label>
+            <select 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
                 <option key={m} value={m}>{m}월</option>
               ))}
             </select>
@@ -390,11 +411,11 @@ export default function ExecutionLedger() {
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
           <span className="text-[10px] font-bold text-[#008f83] uppercase block tracking-wider">총 거래 누계 집행액</span>
-          <span className="text-xl font-bold text-[#008f83] mt-2 font-mono block">{kpis.totalAmount.toLocaleString()}원</span>
+          <span className="text-xl font-bold text-[#008f83] mt-2 font-mono block" title={formatWon(kpis.totalAmount)}>{formatMillionWon(kpis.totalAmount)}</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
           <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">건별 평균 집행 고정비</span>
-          <span className="text-xl font-bold text-[#111111] mt-2 font-mono block">{kpis.averageAmount.toLocaleString()}원</span>
+          <span className="text-xl font-bold text-[#111111] mt-2 font-mono block" title={formatWon(kpis.averageAmount)}>{formatMillionWon(kpis.averageAmount)}</span>
         </div>
         <div className="bg-amber-50/50 border border-[#fbd6b4] p-5 rounded-2xl shadow-xs">
           <span className="text-[10px] font-bold text-[#F7A059] uppercase block tracking-wider">500만 이상 주요 지출건</span>
@@ -414,8 +435,8 @@ export default function ExecutionLedger() {
               <LineChart data={monthlyTrend} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2ec" />
                 <XAxis dataKey="month" stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
-                <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
-                <Tooltip formatter={(value: any) => [`${Number(value).toLocaleString()}원`, '']} />
+                <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1_000_000).toLocaleString('ko-KR')}`} />
+                <Tooltip formatter={(value: any) => [formatMillionWonWithFull(Number(value)), '']} />
                 <Legend iconType="circle" />
                 <Line type="monotone" name="실제 집행" dataKey="실제 집행" stroke="#008f83" strokeWidth={2.5} activeDot={{ r: 8 }} />
               </LineChart>
@@ -432,9 +453,9 @@ export default function ExecutionLedger() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={accountBreakdown} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2ec" />
-                <XAxis type="number" fontSize={9} stroke="#8b95a1" axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000000).toLocaleString()}M`} />
+                <XAxis type="number" fontSize={9} stroke="#8b95a1" axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1_000_000).toLocaleString('ko-KR')}`} />
                 <YAxis dataKey="name" type="category" fontSize={9} stroke="#111111" axisLine={false} tickLine={false} width={65} />
-                <Tooltip formatter={(v: any) => [`${Number(v).toLocaleString()}원`, '']} />
+                <Tooltip formatter={(v: any) => [formatMillionWonWithFull(Number(v)), '']} />
                 <Bar name="소진액" dataKey="집행총액" fill="#718872" radius={[0, 4, 4, 0]} barSize={11} />
               </BarChart>
             </ResponsiveContainer>

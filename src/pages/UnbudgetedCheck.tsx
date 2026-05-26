@@ -9,8 +9,13 @@ import {
   ShieldAlert,
   CornerDownRight
 } from 'lucide-react';
+import { 
+  formatMillionWon, 
+  formatWon
+} from '../lib/formatters';
 import { getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
+import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
 
 export default function UnbudgetedCheck() {
@@ -19,6 +24,8 @@ export default function UnbudgetedCheck() {
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState('all');
+  const [monthMode, setMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
 
   const [unbudgetedRows, setUnbudgetedRows] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -98,12 +105,20 @@ export default function UnbudgetedCheck() {
 
         const deptAccountBudgets = new Map<string, number>();
         budgetRows.forEach((brow: any) => {
-          const totalBudgetSum = (brow.values || []).reduce((a: number, b: number) => a + Number(b || 0), 0);
+          let totalBudgetSum = 0;
+          if (monthMode === 'MONTH') {
+            totalBudgetSum = Number(brow.values[selectedMonth - 1] || 0);
+          } else {
+            totalBudgetSum = (brow.values || []).slice(0, selectedMonth).reduce((a: number, b: number) => a + Number(b || 0), 0);
+          }
           deptAccountBudgets.set(brow.code, totalBudgetSum);
         });
 
         const actualAccounts = new Map<string, { name: string, amount: number, remarks: string }>();
         deptActuals.forEach((arow: any) => {
+          const mIndex = parseMonthIndex(arow.period);
+          if (!shouldIncludeMonth(mIndex, monthMode, selectedMonth)) return;
+
           const completedSum = Number(arow.completed || 0);
           const existing = actualAccounts.get(arow.accountCode) || { name: arow.accountName, amount: 0, remarks: arow.remarks || '' };
           actualAccounts.set(arow.accountCode, {
@@ -174,7 +189,7 @@ export default function UnbudgetedCheck() {
 
   useEffect(() => {
     loadData();
-  }, [currentUser, selectedDept, searchTerm]);
+  }, [currentUser, selectedDept, searchTerm, monthMode, selectedMonth]);
 
   const handleOpenReview = (row: any) => {
     setActiveReviewItem(row);
@@ -214,7 +229,7 @@ export default function UnbudgetedCheck() {
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
           <span className="text-xs text-zinc-500 block">무예산 실제 누적 방출액</span>
-          <span className="text-xl font-bold text-[#111111] font-mono mt-1.5 block">{totalLeakAmount.toLocaleString()}원</span>
+          <span className="text-xl font-bold text-[#111111] font-mono mt-1.5 block" title={formatWon(totalLeakAmount)}>{formatMillionWon(totalLeakAmount)}</span>
         </div>
         <div className="bg-[#f0f9f8] border border-teal-100 p-5 rounded-2xl shadow-xs">
           <span className="text-xs text-[#008f83] block">감사 및 소명 처리율</span>
@@ -226,6 +241,25 @@ export default function UnbudgetedCheck() {
 
       {/* Filtering */}
       <div className="bg-white p-4.5 rounded-2xl border border-[#dde5de] shadow-xs flex flex-col sm:flex-row gap-3">
+        <select
+          value={monthMode}
+          onChange={(e) => setMonthMode(e.target.value as MonthMode)}
+          className="text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none w-full sm:w-32"
+        >
+          <option value="YTD">누계</option>
+          <option value="MONTH">단월</option>
+        </select>
+
+        <select
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          className="text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none w-full sm:w-32"
+        >
+          {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+            <option key={m} value={m}>{m}월</option>
+          ))}
+        </select>
+
         <select
           value={selectedDept}
           onChange={(e) => setSelectedDept(e.target.value)}
