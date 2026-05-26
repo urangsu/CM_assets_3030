@@ -6,7 +6,10 @@ import {
   PlanBudgetUploadRow,
   UploadParseResult,
   parseUploadRecords, 
-  normalizeHeader 
+  normalizeHeader,
+  findHeaderRowIndex,
+  parsePastedText,
+  detectUploadFormat
 } from '../lib/actualUploadParser';
 import { AppModal } from '../components/ui/AppModal';
 import { AppButton } from '../components/ui/AppButton';
@@ -278,7 +281,7 @@ export default function PlanActualUpload() {
     }
     if (!pasteText.trim()) return;
     
-    const rows = pasteText.split(/\r?\n/).filter(row => row.trim() !== '').map(row => row.split('\t'));
+    const rows = parsePastedText(pasteText);
     processImportedData(rows);
     setPasteText(''); // Clear after processing
   };
@@ -290,7 +293,7 @@ export default function PlanActualUpload() {
     const pasteData = e.clipboardData.getData('text');
     if (!pasteData) return;
     
-    const rows = pasteData.split(/\r?\n/).filter(row => row.trim() !== '').map(row => row.split('\t'));
+    const rows = parsePastedText(pasteData);
     processImportedData(rows);
   };
 
@@ -309,8 +312,9 @@ export default function PlanActualUpload() {
        setLockedDeptsOnUpload([]);
     }
 
-    const headers = rows[0] || [];
-    const bodyRows = rows.slice(1);
+    const headerRowIndex = findHeaderRowIndex(rows);
+    const headers = rows[headerRowIndex] || [];
+    const bodyRows = rows.slice(headerRowIndex + 1);
     
     const records = bodyRows.map(row => {
         const record: Record<string, unknown> = {};
@@ -329,7 +333,11 @@ export default function PlanActualUpload() {
     });
 
     if (result.format === 'UNKNOWN') {
-        setAlertModal({ isOpen: true, message: '알 수 없는 업로드 형식입니다. 헤더를 확인해주세요.' });
+        const rawHeaders = headers.map(String).join(', ');
+        setAlertModal({ 
+          isOpen: true, 
+          message: `알 수 없는 업로드 형식입니다.\n\n감지된 헤더:\n${rawHeaders}\n\n지원 형식 예시:\n귀속부서코드 | 계정과목코드 | 계정과목 | 1월 | ... | 12월` 
+        });
         return;
     }
 
@@ -779,8 +787,24 @@ export default function PlanActualUpload() {
         >
             <div className="space-y-4 text-sm">
               <div className="bg-[#fcfdfe] p-4 rounded-xl border border-[#e5e8eb]">
-                 <p className="font-bold text-gray-900 mb-2">업로드 대상: <span className="text-brand-600">{uploadTarget}</span></p>
-                 <p className="text-gray-700">생성 예정 행: <strong>{validationResult.actualRows.length}건</strong></p>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">감지된 포맷</p>
+                     <p className="text-sm font-bold text-gray-900">{validationResult.format}</p>
+                   </div>
+                   <div>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">업로드 대상</p>
+                     <p className="text-sm font-bold text-brand-600">{uploadTarget}</p>
+                   </div>
+                   <div>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">생성 예정 행 수</p>
+                     <p className="text-sm font-bold text-gray-900">{validationResult.actualRows.length}건</p>
+                   </div>
+                   <div>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">저장 예정 위치</p>
+                     <p className="text-sm font-bold text-gray-900">{uploadTarget === '실적' ? `실적DB ${year}` : `예산DB ${year} (${uploadTarget})`}</p>
+                   </div>
+                 </div>
               </div>
 
               {lockedDeptsOnUpload.length > 0 && (
@@ -832,7 +856,7 @@ export default function PlanActualUpload() {
             </div>
           }
         >
-          <p className="text-[#4e5968]">{alertModal.message}</p>
+          <p className="text-[#4e5968] whitespace-pre-wrap">{alertModal.message}</p>
         </AppModal>
       )}
 
