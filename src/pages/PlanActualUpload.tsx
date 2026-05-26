@@ -298,7 +298,8 @@ export default function PlanActualUpload() {
         year,
         existingCount: data.length,
         currentUser,
-        viewableDeptCodes
+        viewableDeptCodes,
+        planType
     });
 
     if (result.format === 'UNKNOWN') {

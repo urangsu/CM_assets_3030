@@ -125,15 +125,16 @@ export function parseActualWideMonthlyRows(params: {
   records: Record<string, unknown>[];
   year: string;
   existingCount: number;
+  planType?: string;
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
   
   params.records.forEach((record, index) => {
     const rowNum = index + 2;
-    const usageCode = String(record[normalizeHeader('귀속부서코드')] || '');
-    const accountCode = String(record[normalizeHeader('계정코드')] || '');
-    const usageDept = String(record[normalizeHeader('귀속부서')] || '');
+    const usageCode = String(record[normalizeHeader('귀속부서코드')] || record[normalizeHeader('부서코드')] || record[normalizeHeader('사용처코드')] || '');
+    const accountCode = String(record[normalizeHeader('계정과목코드')] || record[normalizeHeader('계정코드')] || '');
+    const usageDept = String(record[normalizeHeader('귀속부서')] || record[normalizeHeader('부서명')] || record[normalizeHeader('부서')] || '');
 
     if (!usageCode || !accountCode) {
       errorRows.push({ rowNum, message: '부서코드 또는 계정코드가 없습니다.', severity: 'error' });
@@ -142,26 +143,27 @@ export function parseActualWideMonthlyRows(params: {
 
     for (let i = 1; i <= 12; i++) {
         const val = getMonthActualValue(record, i);
-        const completed = Number(val) || 0;
+        const numericVal = Number(val) || 0;
         
-        if (completed !== 0) {
+        if (numericVal !== 0) {
+            const isActual = params.planType === '실적';
             actualRows.push({
                 id: params.existingCount + actualRows.length + 1,
                 year: params.year,
                 period: `${i}월`,
                 accountCode,
-                accountName: String(record[normalizeHeader('계정명')] || ''),
+                accountName: String(record[normalizeHeader('계정명')] || record[normalizeHeader('계정과목')] || ''),
                 controlType: '',
                 usageCode,
                 usageDept,
-                amount: 0,
+                amount: isActual ? 0 : numericVal,
                 additional: 0,
                 transferred: 0,
                 carriedOver: 0,
                 planned: 0,
-                completed,
-                balance: -completed,
-                remarks: '실적DB wide upload'
+                completed: isActual ? numericVal : 0,
+                balance: isActual ? -numericVal : numericVal,
+                remarks: isActual ? '실적DB wide upload' : '계획 upload'
             });
         }
     }
@@ -284,7 +286,15 @@ function getMonthBudgetValue(record: Record<string, unknown>, month: number) {
     return getRecordValue(record, aliases);
 }
 
-export function parseUploadRecords(params: any): UploadParseResult {
+export function parseUploadRecords(params: {
+  headers: string[];
+  records: Record<string, unknown>[];
+  year: string;
+  existingCount: number;
+  currentUser?: any;
+  viewableDeptCodes?: string[];
+  planType: string;
+}): UploadParseResult {
     const format = detectUploadFormat(params.headers);
     if (format === 'ACTUAL_WIDE_MONTHLY') return parseActualWideMonthlyRows(params);
     if (format === 'ACTUAL_FLAT') return parseActualFlatRows(params);
