@@ -31,6 +31,7 @@ import {
 import { getViewableDepts } from '../constants';
 import { getActualDataKey } from '../lib/storageKeys';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
+import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
 
 export default function ExecutionLedger() {
@@ -127,7 +128,7 @@ export default function ExecutionLedger() {
               month: `${parseInt(m)}월`,
               accountCode: account.code,
               accountName: account.name,
-              controlType: account.cat,
+              controlType: classifyAccount(account.code, account.name),
               usageCode: dept.code,
               usageDept: dept.name,
               amount: isAbnormal ? amount * 2.5 : amount,
@@ -160,7 +161,7 @@ export default function ExecutionLedger() {
           month: rowMonth,
           accountCode: r.accountCode,
           accountName: r.accountName,
-          controlType: r.controlType || '판관경비',
+          controlType: classifyAccount(r.accountCode, r.accountName),
           usageCode: r.usageCode,
           usageDept: matchDept ? matchDept.name : (r.usageDept || '외부 위탁부서'),
           amount: Number(r.completed || r.amount || 0),
@@ -366,9 +367,9 @@ export default function ExecutionLedger() {
               className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
             >
               <option value="all">전체 성질군</option>
-              <option value="판관경비">판관경비 대분류</option>
-              <option value="제조경비">제조 가공 경비</option>
-              <option value="투자예산">투자 안전 부문</option>
+              {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </div>
 

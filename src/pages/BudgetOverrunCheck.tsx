@@ -4,6 +4,7 @@ import { AlertTriangle, Download, Search, AlertCircle, ChevronDown, ChevronUp } 
 import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
+import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth, aggregateByDeptAccount } from '../lib/budgetAggregation';
 import { canViewSalaryAccounts, getViewableDeptCodes } from '../lib/permissions';
 import { isInvestmentAccount } from '../lib/accountMaster';
@@ -106,14 +107,10 @@ export default function BudgetOverrunCheck() {
 
     const overrunData = rawData.filter(row => {
       // 1. Filter by category
-      if (accountCategory === '제조' && !row.accountCode.startsWith('A')) return false;
-      if (accountCategory === '판관' && !row.accountCode.startsWith('B')) return false;
-      if (accountCategory === '인건비 제외' && isSalaryAccountCode(row.accountCode)) return false;
-      if (accountCategory === '인건비만 보기' && !isSalaryAccountCode(row.accountCode)) return false;
-      
-      const isInvest = typeof isInvestmentAccount !== 'undefined' ? isInvestmentAccount(row.accountCode) : false;
-      if (accountCategory === '투자예산' && !isInvest) return false;
-      if (accountCategory === '일반비용' && isInvest) return false;
+      if (accountCategory !== '전체') {
+        const rowClass = classifyAccount(row.accountCode, row.accountName);
+        if (rowClass !== accountCategory) return false;
+      }
 
       // 2. Filter by overrun status
       if (overrunFilter === '초과 항목만' && row.status !== '초과') return false;
@@ -259,13 +256,10 @@ export default function BudgetOverrunCheck() {
         </FilterItem>
         <FilterItem label="계정구분">
           <AppSelect value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)}>
-            <option value="전체">전체</option>
-            <option value="일반비용">일반비용</option>
-            <option value="투자예산">투자예산</option>
-            <option value="제조">제조</option>
-            <option value="판관">판관</option>
-            <option value="인건비 제외">인건비 제외</option>
-            {salaryAccess && <option value="인건비만 보기">인건비만 보기</option>}
+            <option value="전체">전체 계정군</option>
+            {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
           </AppSelect>
         </FilterItem>
         <FilterItem label="상태 보기">

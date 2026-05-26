@@ -10,6 +10,7 @@ import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } 
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
+import { classifyAccount, ACCOUNT_CLASS_OPTIONS, ACCOUNTING_TYPE_OPTIONS, AccountClass, AccountingType, getAccountingType } from '../lib/accountClassification';
 import { isInvestmentAccount } from '../lib/accountMaster';
 import { ChartCard } from '../components/charts/ChartCard';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
@@ -38,7 +39,19 @@ export default function VarianceComparison() {
   const [targetSelectedMonth, setTargetSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   
   const [selectedDept, setSelectedDept] = useState(() => localStorage.getItem('variance_dept') || getUserInitDept());
-  const [selectedAccountCategory, setSelectedAccountCategory] = useState(() => localStorage.getItem('variance_accountCategory') || 'all');
+  
+  const [selectedAccountingType, setSelectedAccountingType] = useState<AccountingType>(() => {
+    const old = localStorage.getItem('variance_accountCategory');
+    if (old === '투자예산') return '투자';
+    return (localStorage.getItem('variance_accountingType') as AccountingType) || '전체';
+  });
+
+  const [selectedAccountClass, setSelectedAccountClass] = useState<AccountClass>(() => {
+    const old = localStorage.getItem('variance_accountCategory');
+    if (old === '투자예산' || old === '일반비용') return '전체';
+    if (old && ACCOUNT_CLASS_OPTIONS.includes(old as AccountClass)) return old as AccountClass;
+    return (localStorage.getItem('variance_accountClass') as AccountClass) || '전체';
+  });
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,7 +67,8 @@ export default function VarianceComparison() {
       setSelectedDept('by_dept');
     } else if (tab === 'account') {
       setSelectedDept('all');
-      setSelectedAccountCategory('all');
+      setSelectedAccountingType('전체');
+      setSelectedAccountClass('전체');
     } else if (tab === 'default') {
       const initDept = getUserInitDept();
       setSelectedDept(initDept);
@@ -70,10 +84,13 @@ export default function VarianceComparison() {
     localStorage.setItem('variance_targetYear', targetYear);
     localStorage.setItem('variance_targetPlanType', targetPlanType);
     localStorage.setItem('variance_dept', selectedDept);
-    localStorage.setItem('variance_accountCategory', selectedAccountCategory);
-  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, selectedDept, selectedAccountCategory]);
+    localStorage.setItem('variance_accountingType', selectedAccountingType);
+    localStorage.setItem('variance_accountClass', selectedAccountClass);
+    localStorage.removeItem('variance_accountCategory');
+  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, selectedDept, selectedAccountingType, selectedAccountClass]);
   
   const [chartData, setChartData] = useState<any[]>([]);
+  const [comparisonRows, setComparisonRows] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>(INITIAL_CATEGORIES);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
@@ -116,88 +133,31 @@ export default function VarianceComparison() {
     
     const excelData: any[] = [];
     
-    if (selectedDept === 'by_dept') {
+    excelData.push([
+      '비용 성격',
+      '회계 구분',
+      '계정코드',
+      '계정명',
+      '기준 금액',
+      '비교 금액',
+      '차액',
+      '증감률(%)',
+      '상태'
+    ]);
+    
+    comparisonRows.forEach(row => {
       excelData.push([
-        '부서명',
-        baseName,
-        targetName,
-        '차액',
-        '증감률(%)'
+        row.accountClass,
+        row.accountingType,
+        row.accountCode || '',
+        row.accountName,
+        row.baseAmount,
+        row.targetAmount,
+        row.variance,
+        typeof row.variancePercent === 'number' ? row.variancePercent.toFixed(2) + '%' : row.variancePercent,
+        row.status
       ]);
-      chartData.forEach(row => {
-        excelData.push([
-          row.name,
-          row[baseName],
-          row[targetName],
-          row.variance,
-          typeof row.variancePercent === 'number' ? row.variancePercent.toFixed(2) + '%' : row.variancePercent
-        ]);
-      });
-    } else {
-      excelData.push([
-        '계정코드',
-        '계정명',
-        baseName,
-        targetName,
-        '차액',
-        '증감률(%)'
-      ]);
-
-      const accountsMap = new Map();
-      categories.forEach(cat => {
-        cat.accounts.forEach((acc: any) => {
-          accountsMap.set(acc.code, cat.name);
-        });
-      });
-
-      const groupedData = new Map<string, any[]>();
-      const categoryTotals = new Map<string, any>();
-
-      chartData.forEach(row => {
-        const catName = accountsMap.get(row.code) || '기타';
-        if (!groupedData.has(catName)) {
-          groupedData.set(catName, []);
-          categoryTotals.set(catName, {
-            name: catName,
-            [baseName]: 0,
-            [targetName]: 0,
-            variance: 0,
-          });
-        }
-        groupedData.get(catName)!.push(row);
-        
-        const totals = categoryTotals.get(catName)!;
-        totals[baseName] += row[baseName];
-        totals[targetName] += row[targetName];
-        totals.variance += row.variance;
-      });
-
-      categoryTotals.forEach(totals => {
-        totals.variancePercent = totals[baseName] === 0 ? 0 : (totals.variance / totals[baseName]) * 100;
-      });
-
-      Array.from(groupedData.entries()).forEach(([catName, rows]) => {
-        const totals = categoryTotals.get(catName)!;
-        excelData.push([
-          '',
-          `[${catName} 합계]`,
-          totals[baseName],
-          totals[targetName],
-          totals.variance,
-          typeof totals.variancePercent === 'number' ? totals.variancePercent.toFixed(2) + '%' : totals.variancePercent
-        ]);
-        rows.forEach(row => {
-          excelData.push([
-            row.code,
-            `  ${row.name}`,
-            row[baseName],
-            row[targetName],
-            row.variance,
-            typeof row.variancePercent === 'number' ? row.variancePercent.toFixed(2) + '%' : row.variancePercent
-          ]);
-        });
-      });
-    }
+    });
 
     // Requirement 1: Add summary totals (Mfg, SGA, Total) to the end of Excel
     const mfgVar = summaryTotals.targetMfg - summaryTotals.baseMfg;
@@ -213,16 +173,9 @@ export default function VarianceComparison() {
     const totalVarPct = excelTotalBase === 0 ? 0 : (totalVar / excelTotalBase) * 100;
 
     excelData.push([]); // Empty row for spacing
-    
-    if (selectedDept === 'by_dept') {
-      excelData.push(['제조 합계', summaryTotals.baseMfg, summaryTotals.targetMfg, mfgVar, mfgVarPct.toFixed(2) + '%']);
-      excelData.push(['판관 합계', summaryTotals.baseSga, summaryTotals.targetSga, sgaVar, sgaVarPct.toFixed(2) + '%']);
-      excelData.push(['총 합계', excelTotalBase, excelTotalTarget, totalVar, totalVarPct.toFixed(2) + '%']);
-    } else {
-      excelData.push(['', '제조 합계', summaryTotals.baseMfg, summaryTotals.targetMfg, mfgVar, mfgVarPct.toFixed(2) + '%']);
-      excelData.push(['', '판관 합계', summaryTotals.baseSga, summaryTotals.targetSga, sgaVar, sgaVarPct.toFixed(2) + '%']);
-      excelData.push(['', '총 합계', excelTotalBase, excelTotalTarget, totalVar, totalVarPct.toFixed(2) + '%']);
-    }
+    excelData.push(['', '', '', '제조 합계', summaryTotals.baseMfg, summaryTotals.targetMfg, mfgVar, mfgVarPct.toFixed(2) + '%', '']);
+    excelData.push(['', '', '', '판관 합계', summaryTotals.baseSga, summaryTotals.targetSga, sgaVar, sgaVarPct.toFixed(2) + '%', '']);
+    excelData.push(['', '', '', '총 합계', excelTotalBase, excelTotalTarget, totalVar, totalVarPct.toFixed(2) + '%', '']);
 
     const ws = XLSX.utils.aoa_to_sheet(excelData);
     
@@ -234,24 +187,17 @@ export default function VarianceComparison() {
       }
     });
     
-    if (selectedDept === 'by_dept') {
-      ws['!cols'] = [
-        { wch: 20 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 10 }
-      ];
-    } else {
-      ws['!cols'] = [
-        { wch: 15 },
-        { wch: 20 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 15 },
-        { wch: 10 }
-      ];
-    }
+    ws['!cols'] = [
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 10 }
+    ];
 
     XLSX.utils.book_append_sheet(wb, ws, '비교분석');
     XLSX.writeFile(wb, getDownloadFileName('xlsx'));
@@ -309,60 +255,17 @@ export default function VarianceComparison() {
         { text: '증감률(%)', options: { fill: 'f9fafb', bold: true } }
       ];
 
-      const accountsMap = new Map();
-      categories.forEach(cat => {
-        cat.accounts.forEach((acc: any) => {
-          accountsMap.set(acc.code, cat.name);
-        });
-      });
-
-      const groupedData = new Map<string, any[]>();
-      const categoryTotals = new Map<string, any>();
-
-      chartData.forEach(row => {
-        const catName = accountsMap.get(row.code) || '기타';
-        if (!groupedData.has(catName)) {
-          groupedData.set(catName, []);
-          categoryTotals.set(catName, {
-            name: catName,
-            [baseName]: 0,
-            [targetName]: 0,
-            variance: 0,
-          });
-        }
-        groupedData.get(catName)!.push(row);
-        
-        const totals = categoryTotals.get(catName)!;
-        totals[baseName] += row[baseName];
-        totals[targetName] += row[targetName];
-        totals.variance += row.variance;
-      });
-
-      categoryTotals.forEach(totals => {
-        totals.variancePercent = totals[baseName] === 0 ? 0 : (totals.variance / totals[baseName]) * 100;
-      });
-
-      Array.from(groupedData.entries()).forEach(([catName, rows]) => {
-        const totals = categoryTotals.get(catName)!;
+      comparisonRows.forEach(row => {
         tableRows.push([
-          '',
-          `[${totals.name}]`,
-          formatCurrency(totals[baseName]),
-          formatCurrency(totals[targetName]),
-          `${totals.variance > 0 ? '+' : ''}${formatCurrency(totals.variance)}`,
-          `${totals.variancePercent > 0 ? '+' : ''}${totals.variancePercent.toFixed(1)}%`
+          row.accountCode || '',
+          row.accountName,
+          formatCurrency(row.baseAmount),
+          formatCurrency(row.targetAmount),
+          `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
+          `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
         ]);
-        rows.forEach(row => {
-          tableRows.push([
-            row.code,
-            `  ${row.name}`,
-            formatCurrency(row[baseName]),
-            formatCurrency(row[targetName]),
-            `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
-            `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
-          ]);
-        });
       });
+      
       // Limit to 15 rows for PPT to avoid overflow
       tableRows = tableRows.slice(0, 15);
     }
@@ -429,59 +332,15 @@ export default function VarianceComparison() {
     } else {
       head = [['계정코드', '계정명', baseName, targetName, '차액', '증감률(%)']];
       
-      const accountsMap = new Map();
-      categories.forEach(cat => {
-        cat.accounts.forEach((acc: any) => {
-          accountsMap.set(acc.code, cat.name);
-        });
-      });
-
-      const groupedData = new Map<string, any[]>();
-      const categoryTotals = new Map<string, any>();
-
-      chartData.forEach(row => {
-        const catName = accountsMap.get(row.code) || '기타';
-        if (!groupedData.has(catName)) {
-          groupedData.set(catName, []);
-          categoryTotals.set(catName, {
-            name: catName,
-            [baseName]: 0,
-            [targetName]: 0,
-            variance: 0,
-          });
-        }
-        groupedData.get(catName)!.push(row);
-        
-        const totals = categoryTotals.get(catName)!;
-        totals[baseName] += row[baseName];
-        totals[targetName] += row[targetName];
-        totals.variance += row.variance;
-      });
-
-      categoryTotals.forEach(totals => {
-        totals.variancePercent = totals[baseName] === 0 ? 0 : (totals.variance / totals[baseName]) * 100;
-      });
-
-      Array.from(groupedData.entries()).forEach(([catName, rows]) => {
-        const totals = categoryTotals.get(catName)!;
+      comparisonRows.forEach(row => {
         body.push([
-          '',
-          `[${totals.name} 합계]`,
-          formatCurrency(totals[baseName]),
-          formatCurrency(totals[targetName]),
-          `${totals.variance > 0 ? '+' : ''}${formatCurrency(totals.variance)}`,
-          `${totals.variancePercent > 0 ? '+' : ''}${totals.variancePercent.toFixed(1)}%`
+          row.accountCode || '',
+          row.accountName,
+          formatCurrency(row.baseAmount),
+          formatCurrency(row.targetAmount),
+          `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
+          `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
         ]);
-        rows.forEach(row => {
-          body.push([
-            row.code,
-            `  ${row.name}`,
-            formatCurrency(row[baseName]),
-            formatCurrency(row[targetName]),
-            `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
-            `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
-          ]);
-        });
       });
     }
 
@@ -537,11 +396,13 @@ export default function VarianceComparison() {
 
       const accountCategoryMap = new Map<string, string>();
       const accountToCategoryNameMap = new Map<string, string>();
+      const accountCodeToNameMap = new Map<string, string>();
       categories.forEach(cat => {
         const type = cat.name.startsWith('제조') ? '제조' : cat.name.startsWith('판관') ? '판관' : '기타';
         cat.accounts.forEach((acc: any) => {
           accountCategoryMap.set(acc.code, type);
           accountToCategoryNameMap.set(acc.code, cat.name);
+          accountCodeToNameMap.set(acc.code, acc.name);
         });
       });
 
@@ -599,14 +460,11 @@ export default function VarianceComparison() {
                 if (salaryAccountCodes.has(item.accountCode)) return;
               }
 
-              if (selectedAccountCategory !== 'all') {
-                if (selectedAccountCategory === '투자예산') {
-                  if (!isInvestmentAccount(item.accountCode)) return;
-                } else if (selectedAccountCategory === '일반비용') {
-                  if (isInvestmentAccount(item.accountCode)) return;
-                } else {
-                  if (catName !== selectedAccountCategory) return;
-                }
+              if (selectedAccountingType !== '전체') {
+                if (getAccountingType(item.accountCode, item.accountName) !== selectedAccountingType) return;
+              }
+              if (selectedAccountClass !== '전체') {
+                if (classifyAccount(item.accountCode, item.accountName) !== selectedAccountClass) return;
               }
 
               const amount = item.completed || 0;
@@ -669,14 +527,13 @@ export default function VarianceComparison() {
                 if (salaryAccountCodes.has(row.code)) return;
               }
 
-              if (selectedAccountCategory !== 'all') {
-                if (selectedAccountCategory === '투자예산') {
-                  if (!isInvestmentAccount(row.code)) return;
-                } else if (selectedAccountCategory === '일반비용') {
-                  if (isInvestmentAccount(row.code)) return;
-                } else {
-                  if (catName !== selectedAccountCategory) return;
-                }
+              const resolvedAccountName = row.name || accountCodeToNameMap.get(row.code) || '';
+
+              if (selectedAccountingType !== '전체') {
+                if (getAccountingType(row.code, resolvedAccountName) !== selectedAccountingType) return;
+              }
+              if (selectedAccountClass !== '전체') {
+                if (classifyAccount(row.code, resolvedAccountName) !== selectedAccountClass) return;
               }
 
               let amount = 0;
@@ -697,7 +554,7 @@ export default function VarianceComparison() {
                 internalAggregated.set(compositeKey, { 
                   deptCode: rowDeptCode, 
                   accountCode: row.code, 
-                  accountName: row.name, 
+                  accountName: resolvedAccountName, 
                   amount 
                 });
               }
@@ -757,6 +614,50 @@ export default function VarianceComparison() {
     }).filter(item => (item[baseName] as number) > 0 || (item[targetName] as number) > 0)
       .sort((a, b) => a.code.localeCompare(b.code)); // Sort by code to ensure Manufacturing comes before SG&A and items are ordered correctly
 
+    const newComparisonRows = Array.from(allCodes).map(code => {
+      const baseItem = baseDataMap.get(code);
+      const targetItem = targetDataMap.get(code);
+      const name = baseItem?.name || targetItem?.name || 'Unknown';
+
+      const baseAmount = baseItem?.total || 0;
+      const targetAmount = targetItem?.total || 0;
+      const variance = targetAmount - baseAmount;
+      const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
+
+      const accountingType = selectedDept === 'by_dept'
+        ? '전체'
+        : getAccountingType(code, name);
+
+      const accountClass = selectedDept === 'by_dept'
+        ? '부서'
+        : classifyAccount(code, name);
+
+      const status =
+        baseAmount === 0 && targetAmount > 0 ? '신규' :
+        baseAmount > 0 && targetAmount === 0 ? '사라짐' :
+        variance > 0 ? '증가' :
+        variance < 0 ? '감소' :
+        '동일';
+
+      return {
+        key: code,
+        accountingType,
+        accountClass,
+        accountCode: selectedDept === 'by_dept' ? '' : code,
+        accountName: name,
+        deptName: selectedDept === 'by_dept' ? name : '',
+        baseAmount,
+        targetAmount,
+        variance,
+        variancePercent,
+        status,
+      };
+    })
+    .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
+    .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+
+    setComparisonRows(newComparisonRows);
+
     // If no data is found in localStorage, fallback to some mock data for demonstration
     if (newChartData.length === 0) {
       const MOCK_DATA = [
@@ -779,11 +680,32 @@ export default function VarianceComparison() {
         };
       });
       setChartData(fallbackData);
+
+      const fallbackComparison = MOCK_DATA.map(item => {
+        const baseAmount = item.actual2025;
+        const targetAmount = item.plan2026;
+        const variance = targetAmount - baseAmount;
+        const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
+        return {
+          key: item.code,
+          accountingType: '판관',
+          accountClass: item.name,
+          accountCode: item.code,
+          accountName: item.name,
+          deptName: '',
+          baseAmount,
+          targetAmount,
+          variance,
+          variancePercent,
+          status: variance > 0 ? '증가' : variance < 0 ? '감소' : '동일'
+        };
+      });
+      setComparisonRows(fallbackComparison);
     } else {
       setChartData(newChartData);
     }
 
-  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, baseName, targetName, selectedDept, selectedAccountCategory, currentUser]);
+  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, baseName, targetName, selectedDept, selectedAccountingType, selectedAccountClass, currentUser]);
 
   const totalBase = chartData.reduce((sum, item) => sum + item[baseName], 0);
   const totalTarget = chartData.reduce((sum, item) => sum + item[targetName], 0);
@@ -796,23 +718,23 @@ export default function VarianceComparison() {
       <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-xs bg-nickel-50 text-nickel-600 px-2 py-0.5 rounded font-bold font-mono">
-            {tab === 'default' && 'Plan vs Actual Analysis'}
-            {tab === 'time' && 'Time Horizon Sync'}
-            {tab === 'dept' && 'Cross-departmental Analysis'}
-            {tab === 'account' && 'Chart of Accounts Audit'}
+            {tab === 'default' && 'Plan vs Actual'}
+            {tab === 'time' && '시점 비교'}
+            {tab === 'dept' && '부서별 비교'}
+            {tab === 'account' && '계정별 비교'}
           </span>
         </div>
         <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
-          {tab === 'default' && '다차원 예산 대비 실적 비교분석 관판'}
-          {tab === 'time' && '다기 시점별 예산 추이 대조 분석반'}
-          {tab === 'dept' && '부서별 예산 집행 편차 일괄 대조반'}
-          {tab === 'account' && '계정 과목별 정기 지출 감사 분석반'}
+          {tab === 'default' && '예산 대비 실적 비교분석'}
+          {tab === 'time' && '시점별 예산·실적 비교분석'}
+          {tab === 'dept' && '부서별 예산 집행 비교분석'}
+          {tab === 'account' && '계정별 예산 집행 비교분석'}
         </h2>
         <p className="text-xs text-[#647067] mt-1">
-          {tab === 'default' && '편성 예산과 실제 집행 실적 데이터 간의 고해상도 분산 추정 및 증감 궤적을 렌더링합니다.'}
-          {tab === 'time' && '서로 다른 연도, 분기, 계획 단계 간의 시계열 추이 및 총 지출 궤적 편차를 격자화합니다.'}
-          {tab === 'dept' && '전사 조직 하위 부서 간의 예산 소진 속도 및 오버런 임계값 한도 편차를 대조합니다.'}
-          {tab === 'account' && '제조원가 및 판관비 세목별 누계 증감 한도를 관판하고 이상 징후 분석을 가이드합니다.'}
+          {tab === 'default' && '선택한 계획과 실적을 같은 기준으로 비교하여 차액과 증감률을 확인합니다.'}
+          {tab === 'time' && '서로 다른 연도·월·계획구분을 기준으로 예산과 실적 변화를 비교합니다.'}
+          {tab === 'dept' && '부서별 편성 예산과 집행 실적을 비교하여 집행 차이를 확인합니다.'}
+          {tab === 'account' && '계정별 예산과 실적 차이를 확인하고 주요 변동 계정을 점검합니다.'}
         </p>
       </div>
 
@@ -826,7 +748,7 @@ export default function VarianceComparison() {
               : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
           }`}
         >
-          Plan vs Actual (계획 대비 실적)
+          계획 대비 실적
         </button>
         <button
           onClick={() => navigate('/variance-comparison?tab=time')}
@@ -836,7 +758,7 @@ export default function VarianceComparison() {
               : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
           }`}
         >
-          시점 비교분석 (시기 타임프레임)
+          시점 비교
         </button>
         <button
           onClick={() => navigate('/variance-comparison?tab=dept')}
@@ -846,7 +768,7 @@ export default function VarianceComparison() {
               : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
           }`}
         >
-          부서별 편차분석 (Cross-sectional)
+          부서별 비교
         </button>
         <button
           onClick={() => navigate('/variance-comparison?tab=account')}
@@ -856,7 +778,7 @@ export default function VarianceComparison() {
               : 'border-transparent text-text-secondary hover:text-eco-black hover:bg-zinc-50'
           }`}
         >
-          계정별 감사 추적 (세목 디테일)
+          계정별 비교
         </button>
       </div>
 
@@ -971,17 +893,26 @@ export default function VarianceComparison() {
               ))}
             </select>
             
-            <span className="text-sm font-bold text-text-secondary w-10 ml-6">계정</span>
+            <span className="text-sm font-bold text-text-secondary w-16 ml-3">회계구분</span>
             <select 
-              value={selectedAccountCategory} 
-              onChange={(e) => setSelectedAccountCategory(e.target.value)}
+              value={selectedAccountingType} 
+              onChange={(e) => setSelectedAccountingType(e.target.value as AccountingType)}
+              className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none w-32 outline-none transition-all"
+            >
+              {ACCOUNTING_TYPE_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt === '전체' ? '전체 계정군' : opt}</option>
+              ))}
+            </select>
+            
+            <span className="text-sm font-bold text-text-secondary w-16 ml-3">비용성격</span>
+            <select 
+              value={selectedAccountClass} 
+              onChange={(e) => setSelectedAccountClass(e.target.value as AccountClass)}
               className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
-              <option value="all">전체 계정</option>
-              <option value="일반비용">일반비용</option>
-              <option value="투자예산">투자예산</option>
-              {INITIAL_CATEGORIES.map(cat => (
-                <option key={cat.name} value={cat.name}>{cat.name}</option>
+              <option value="전체">전체 비용성격</option>
+              {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
               ))}
             </select>
           </div>
@@ -1056,7 +987,7 @@ export default function VarianceComparison() {
 
       {/* Chart */}
       <ChartCard
-        title="계정별 예산 비교"
+        title={selectedDept === 'by_dept' ? '부서별 예산·실적 비교' : '계정별 예산·실적 비교'}
         isEmpty={chartData.length === 0}
       >
         <div className="h-80 w-full">
@@ -1081,140 +1012,71 @@ export default function VarianceComparison() {
         </div>
       </ChartCard>
 
-      {/* Data Table */}
+      {/* Comparison Detail Table */}
       <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden mb-10">
         <div className="px-6 py-5 border-b border-lithium-200 bg-lithium-50 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-eco-black tracking-tight">상세 비교 데이터</h3>
-          {selectedDept !== 'by_dept' && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setCollapsedCategories(new Set())}
-                className="px-3 py-1.5 text-xs font-bold bg-white border border-lithium-200 text-text-secondary rounded-lg hover:bg-lithium-50 transition-all shadow-sm"
-              >
-                전체 펼치기
-              </button>
-              <button
-                onClick={() => setCollapsedCategories(new Set(categories.map(c => c.name).concat(['기타'])))}
-                className="px-3 py-1.5 text-xs font-bold bg-white border border-lithium-200 text-text-secondary rounded-lg hover:bg-lithium-50 transition-all shadow-sm"
-              >
-                전체 접기
-              </button>
-            </div>
-          )}
+          <div>
+            <h3 className="text-lg font-bold text-eco-black tracking-tight">
+              {selectedDept === 'by_dept' ? '부서별 상세 비교 내역' : '계정별 상세 비교 내역'}
+            </h3>
+            <p className="text-xs text-text-secondary mt-1">
+              기준금액과 비교금액의 차이를 계정(부서) 단위로 확인합니다. 단위: 백만원
+            </p>
+          </div>
+          <span className="text-xs font-bold text-text-secondary">
+            {comparisonRows.length.toLocaleString()}건
+          </span>
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-lithium-100/50 border-b border-lithium-200">
-                {selectedDept !== 'by_dept' && (
-                  <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider w-[10%]">코드</th>
-                )}
-                <th className={`px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider ${selectedDept !== 'by_dept' ? 'w-[20%]' : ''}`}>
-                  {selectedDept === 'by_dept' ? '부서명' : '계정명'}
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">{baseName}</th>
-                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">{targetName}</th>
-                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">차액</th>
-                <th className="px-6 py-4 text-xs font-bold text-text-secondary uppercase tracking-wider text-right">증감률</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">비용 성격</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">회계 구분</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">계정코드</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">계정명</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">기준 금액</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">비교 금액</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">차액</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">증감률</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-center">상태</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-lithium-100">
-              {(() => {
-                if (selectedDept === 'by_dept') {
-                  return chartData.map((row, idx) => (
-                    <tr key={`${row.code}_${idx}`} className="hover:bg-lithium-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black">{row.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary text-right">{formatCurrency(toMillions(row[baseName]))}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(row[targetName]))}</td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
-                        {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
-                      </td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                        {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
-                      </td>
-                    </tr>
-                  ));
-                } else {
-                  // Group by category
-                  const accountsMap = new Map();
-                  categories.forEach(cat => {
-                    cat.accounts.forEach((acc: any) => {
-                      accountsMap.set(acc.code, cat.name);
-                    });
-                  });
-
-                  const groupedData = new Map<string, any[]>();
-                  const categoryTotals = new Map<string, any>();
-
-                  chartData.forEach(row => {
-                    const catName = accountsMap.get(row.code) || '기타';
-                    if (!groupedData.has(catName)) {
-                      groupedData.set(catName, []);
-                      categoryTotals.set(catName, {
-                        name: catName,
-                        [baseName]: 0,
-                        [targetName]: 0,
-                        variance: 0,
-                      });
-                    }
-                    groupedData.get(catName)!.push(row);
-                    
-                    const totals = categoryTotals.get(catName)!;
-                    totals[baseName] += row[baseName];
-                    totals[targetName] += row[targetName];
-                    totals.variance += row.variance;
-                  });
-
-                  // Calculate variancePercent for totals
-                  categoryTotals.forEach(totals => {
-                    totals.variancePercent = totals[baseName] === 0 ? 0 : (totals.variance / totals[baseName]) * 100;
-                  });
-
-                  return Array.from(groupedData.entries()).map(([catName, rows]) => {
-                    const totals = categoryTotals.get(catName)!;
-                    const isCollapsed = collapsedCategories.has(catName);
-
-                    return (
-                      <React.Fragment key={catName}>
-                        <tr className="bg-lithium-50/80 border-b border-lithium-100 cursor-pointer hover:bg-lithium-100 transition-all font-bold" onClick={() => toggleCategory(catName)}>
-                          <td colSpan={2} className="px-6 py-4 whitespace-nowrap text-sm text-eco-black">
-                            <div className="flex items-center">
-                              {isCollapsed ? <Plus className="w-3.5 h-3.5 mr-3 text-text-tertiary" /> : <Minus className="w-3.5 h-3.5 mr-3 text-text-tertiary" />}
-                              {catName}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary text-right">{formatCurrency(toMillions(totals[baseName]))}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(totals[targetName]))}</td>
-                          <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${totals.variance > 0 ? 'text-cobalt-600' : totals.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
-                            {totals.variance > 0 ? '+' : ''}{formatCurrency(toMillions(totals.variance))}
-                          </td>
-                          <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${totals.variancePercent > 0 ? 'text-cobalt-500' : totals.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                            {totals.variancePercent > 0 ? '+' : ''}{totals.variancePercent.toFixed(1)}%
-                          </td>
-                        </tr>
-                        {!isCollapsed && rows.map((row, idx) => (
-                          <tr key={`${row.code}_${catName}_${idx}`} className="hover:bg-lithium-50 transition-colors">
-                            <td className="px-6 py-3 whitespace-nowrap text-xs font-medium text-text-tertiary">{row.code}</td>
-                            <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-eco-black">{row.name}</td>
-                            <td className="px-6 py-3 whitespace-nowrap text-sm text-text-secondary text-right">{formatCurrency(toMillions(row[baseName]))}</td>
-                            <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-eco-black text-right">{formatCurrency(toMillions(row[targetName]))}</td>
-                            <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
-                              {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
-                            </td>
-                            <td className={`px-6 py-3 whitespace-nowrap text-sm font-bold text-right ${row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                              {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
-                            </td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    );
-                  });
-                }
-              })()}
+              {comparisonRows.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-6 py-12 text-center text-sm text-text-secondary">
+                    선택한 조건에 해당하는 상세 비교 데이터가 없습니다. 기준/비교 조건, 부서, 회계 구분, 비용 성격 필터를 확인해주세요.
+                  </td>
+                </tr>
+              ) : (
+                comparisonRows.map(row => (
+                  <tr key={row.key} className="hover:bg-lithium-50 transition-colors">
+                    <td className="px-5 py-3 text-sm font-bold text-eco-black">{row.accountClass}</td>
+                    <td className="px-5 py-3 text-sm text-text-secondary">{row.accountingType}</td>
+                    <td className="px-5 py-3 text-xs font-mono text-text-tertiary">{row.accountCode || '-'}</td>
+                    <td className="px-5 py-3 text-sm font-medium text-eco-black">{row.accountName}</td>
+                    <td className="px-5 py-3 text-sm text-right">{formatCurrency(toMillions(row.baseAmount))}</td>
+                    <td className="px-5 py-3 text-sm text-right font-bold text-eco-black">{formatCurrency(toMillions(row.targetAmount))}</td>
+                    <td className={`px-5 py-3 text-sm text-right font-black ${row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
+                      {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
+                    </td>
+                    <td className={`px-5 py-3 text-sm text-right font-black ${row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                      {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
+                    </td>
+                    <td className="px-5 py-3 text-sm text-center">
+                      <span className="px-2 py-1 rounded-lg bg-lithium-100 text-text-secondary text-xs font-bold inline-block">
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
             <tfoot className="bg-lithium-50 border-t-2 border-lithium-200">
               <tr className="border-b border-lithium-100">
-                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black">제조 합계</td>
+                <td colSpan={4} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black tracking-tight text-right">제조 합계</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-text-secondary text-right">{formatCurrency(toMillions(summaryTotals.baseMfg))}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(summaryTotals.targetMfg))}</td>
                 <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.targetMfg - summaryTotals.baseMfg > 0 ? 'text-cobalt-600' : summaryTotals.targetMfg - summaryTotals.baseMfg < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
@@ -1223,9 +1085,10 @@ export default function VarianceComparison() {
                 <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.baseMfg === 0 ? 'text-text-tertiary' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg > 0 ? 'text-cobalt-500' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                   {summaryTotals.baseMfg === 0 ? '0.0%' : `${(summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg > 0 ? '+' : ''}${(((summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg) * 100).toFixed(1)}%`}
                 </td>
+                <td></td>
               </tr>
               <tr className="border-b border-lithium-100">
-                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black">판관 합계</td>
+                <td colSpan={4} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black tracking-tight text-right">판관 합계</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-text-secondary text-right">{formatCurrency(toMillions(summaryTotals.baseSga))}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(summaryTotals.targetSga))}</td>
                 <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.targetSga - summaryTotals.baseSga > 0 ? 'text-cobalt-600' : summaryTotals.targetSga - summaryTotals.baseSga < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
@@ -1234,9 +1097,10 @@ export default function VarianceComparison() {
                 <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.baseSga === 0 ? 'text-text-tertiary' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga > 0 ? 'text-cobalt-500' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                   {summaryTotals.baseSga === 0 ? '0.0%' : `${(summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga > 0 ? '+' : ''}${(((summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga) * 100).toFixed(1)}%`}
                 </td>
+                <td></td>
               </tr>
               <tr className="bg-lithium-100">
-                <td colSpan={selectedDept === 'by_dept' ? 1 : 2} className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black uppercase tracking-tight">총 합계</td>
+                <td colSpan={4} className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black uppercase tracking-tight text-right">총 합계</td>
                 <td className="px-6 py-5 whitespace-nowrap text-base font-bold text-text-secondary text-right">{formatCurrency(toMillions(totalBase))}</td>
                 <td className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black text-right">{formatCurrency(toMillions(totalTarget))}</td>
                 <td className={`px-6 py-5 whitespace-nowrap text-base font-black text-right ${totalVariance > 0 ? 'text-cobalt-600' : totalVariance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
@@ -1245,6 +1109,7 @@ export default function VarianceComparison() {
                 <td className={`px-6 py-5 whitespace-nowrap text-base font-black text-right ${totalVariancePercent > 0 ? 'text-cobalt-500' : totalVariancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                   {totalVariancePercent > 0 ? '+' : ''}{totalVariancePercent.toFixed(1)}%
                 </td>
+                <td></td>
               </tr>
             </tfoot>
           </table>

@@ -36,6 +36,7 @@ import {
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
+import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -171,7 +172,7 @@ export default function BudgetStatus() {
             deptName: dept.name,
             accountCode: account.code,
             accountName: account.name,
-            accountCategory: account.cat,
+            accountCategory: classifyAccount(account.code, account.name),
             budgetAmount,
             actualAmount,
             differenceAmount: diff < 0 ? Math.abs(diff) : -diff, // negative represents surplus, positive represents deficit (as in actual overrun)
@@ -248,7 +249,7 @@ export default function BudgetStatus() {
             deptName: dept.name,
             accountCode: acode,
             accountName: bInfo.accountName,
-            accountCategory: acode.startsWith('A7') ? '투자예산' : acode.startsWith('A6') ? '제조경비' : '판관경비',
+            accountCategory: classifyAccount(acode, bInfo.accountName),
             budgetAmount,
             actualAmount,
             differenceAmount: diff < 0 ? Math.abs(diff) : -diff,
@@ -585,14 +586,9 @@ export default function BudgetStatus() {
               className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
             >
               <option value="all">전체 계정군</option>
-              <option value="임원판공비">임원판공비</option>
-              <option value="부서경비">부서운영경비</option>
-              <option value="일반물품비">소모품·인쇄물</option>
-              <option value="제조경비">제조 가공 대분류</option>
-              <option value="제조가공">제조 경비</option>
-              <option value="인건비성">인건비성 급여</option>
-              <option value="안전투자">안전 보건설비</option>
-              <option value="에너지환경">기후 환경 소싱</option>
+              {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </div>
 
