@@ -9,7 +9,9 @@ import {
   normalizeHeader,
   findHeaderRowIndex,
   parsePastedText,
-  detectUploadFormat
+  detectUploadFormat,
+  isProbablyHeaderlessMonthlyRow,
+  buildHeaderlessMonthlyHeaders
 } from '../lib/actualUploadParser';
 import { AppModal } from '../components/ui/AppModal';
 import { AppButton } from '../components/ui/AppButton';
@@ -87,6 +89,8 @@ export default function PlanActualUpload() {
   const [viewPlanType, setViewPlanType] = useState('실적');
   const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
   const [pasteText, setPasteText] = useState('');
+  const [firstRowIsHeader, setFirstRowIsHeader] = useState(true);
+  const [headerlessStartMonth, setHeaderlessStartMonth] = useState(1);
   const [successBanner, setSuccessBanner] = useState<{isOpen: boolean, isFinal: boolean, message: string, target?: string, generatedRows?: number, location?: string} | null>(null);
   const [lockedDeptsOnUpload, setLockedDeptsOnUpload] = useState<{deptCode: string, deptName: string, status: string}[]>([]);
   const [isSearched, setIsSearched] = useState(false);
@@ -312,18 +316,45 @@ export default function PlanActualUpload() {
        setLockedDeptsOnUpload([]);
     }
 
-    const headerRowIndex = findHeaderRowIndex(rows);
-    const headers = rows[headerRowIndex] || [];
-    const bodyRows = rows.slice(headerRowIndex + 1);
+    const compactRows = rows.filter(row => row.some(cell => String(cell ?? '').trim() !== ''));
+
+    let finalHeaders: any[] = [];
+    let finalBodyRows: any[][] = [];
+
+    if (!firstRowIsHeader && compactRows[0] && isProbablyHeaderlessMonthlyRow(compactRows[0])) {
+      finalHeaders = buildHeaderlessMonthlyHeaders(compactRows[0], headerlessStartMonth);
+      finalBodyRows = compactRows;
+    } else {
+      const headerIndex = findHeaderRowIndex(compactRows);
+
+      if (headerIndex >= 0) {
+        finalHeaders = compactRows[headerIndex];
+        finalBodyRows = compactRows.slice(headerIndex + 1);
+      } else if (compactRows[0] && isProbablyHeaderlessMonthlyRow(compactRows[0])) {
+        finalHeaders = buildHeaderlessMonthlyHeaders(compactRows[0], headerlessStartMonth);
+        finalBodyRows = compactRows;
+      } else {
+        setAlertModal({
+          isOpen: true,
+          message:
+            `알 수 없는 업로드 형식입니다.\n\n` +
+            `감지된 첫 행:\n${(compactRows[0] || []).join(', ')}\n\n` +
+            `지원 형식 예시:\n` +
+            `귀속부서코드 | 계정과목코드 | 계정과목 | 1월 | ... | 12월\n\n` +
+            `헤더 없이 붙여넣는 경우 [첫 행을 헤더로 사용] 체크를 해제하고 다시 시도하세요.`
+        });
+        return;
+      }
+    }
     
-    const records = bodyRows.map(row => {
+    const records = finalBodyRows.map(row => {
         const record: Record<string, unknown> = {};
-        headers.forEach((h, i) => record[normalizeHeader(h)] = row[i]);
+        finalHeaders.forEach((h, i) => record[normalizeHeader(h)] = row[i]);
         return record;
     });
 
     const result = parseUploadRecords({
-        headers: headers.map(String),
+        headers: finalHeaders.map(String),
         records,
         year,
         existingCount: data.length,
@@ -333,10 +364,10 @@ export default function PlanActualUpload() {
     });
 
     if (result.format === 'UNKNOWN') {
-        const rawHeaders = headers.map(String).join(', ');
+        const rawHeaders = finalHeaders.map(String).join(', ');
         setAlertModal({ 
           isOpen: true, 
-          message: `알 수 없는 업로드 형식입니다.\n\n감지된 헤더:\n${rawHeaders}\n\n지원 형식 예시:\n귀속부서코드 | 계정과목코드 | 계정과목 | 1월 | ... | 12월` 
+          message: `알 수 없는 업로드 형식입니다.\n\n감지된 헤더:\n${rawHeaders}\n\n지원 형식 예시:\n귀속부서코드 | 계정과목코드 | 계정과목 | 1월 | ... | 12월\n\n헤더 없이 붙여넣는 경우 [첫 행을 헤더로 사용] 체크를 해제하고 다시 시도하세요.` 
         });
         return;
     }
@@ -1041,13 +1072,42 @@ export default function PlanActualUpload() {
 
       {/* Upload Paste Area */}
       <div className="bg-white p-4 rounded-xl border border-[#e5e8eb] flex flex-col gap-3">
-        <label className="text-sm font-bold text-gray-900 flex items-center gap-2">
-          <Clipboard className="w-4 h-4 text-brand-500" />
-          <span className="mb-[2px]">엑셀 붙여넣기 영역</span>
-        </label>
-        <p className="text-xs text-[#647067]">
-          엑셀에서 범위(헤더 포함) 복사 후 여기에 붙여넣으세요.
-        </p>
+        <div className="flex justify-between items-center">
+          <label className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <Clipboard className="w-4 h-4 text-brand-500" />
+            <span className="mb-[2px]">엑셀 붙여넣기 영역</span>
+          </label>
+          <div className="flex items-center gap-4 border border-[#e5e8eb] p-1.5 px-3 rounded-lg bg-gray-50">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={firstRowIsHeader}
+                onChange={(e) => setFirstRowIsHeader(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+              />
+              첫 행을 헤더로 사용
+            </label>
+            {!firstRowIsHeader && (
+              <div className="flex items-center gap-2 border-l pl-4 border-gray-300">
+                <span className="text-xs font-semibold text-gray-600">헤더 없음 시작월:</span>
+                <select 
+                  value={headerlessStartMonth}
+                  onChange={(e) => setHeaderlessStartMonth(Number(e.target.value))}
+                  className="px-2 py-1 text-sm bg-white border border-gray-300 rounded focus:ring-brand-500"
+                >
+                  {Array.from({length: 12}, (_, i) => (
+                    <option key={i+1} value={i+1}>{i+1}월</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="text-xs text-[#647067] flex flex-col gap-1">
+          <p>엑셀에서 범위 복사 후 아래 입력칸에 붙여넣으세요.</p>
+          <p>• <strong>헤더가 있는 경우:</strong> 귀속부서코드 | 계정과목코드 | 계정과목 | 1월 | 2월 | ...</p>
+          <p>• <strong>헤더가 없는 경우:</strong> 20000 | A60300701 | 제조비용_임원급여_급여 | 9,833,333 | ... (시작월 설정 필요)</p>
+        </div>
         <div className="flex gap-2 items-start">
           <textarea
              value={pasteText}

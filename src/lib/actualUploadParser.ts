@@ -287,15 +287,42 @@ export function findHeaderRowIndex(rows: any[][]): number {
     const format = detectUploadFormat(headers);
     if (format !== 'UNKNOWN') return i;
   }
-  return 0;
+  return -1;
+}
+
+export function isProbablyHeaderlessMonthlyRow(row: any[]): boolean {
+  const deptCode = String(row[0] ?? '').trim();
+  const accountCode = String(row[1] ?? '').trim();
+  const accountName = String(row[2] ?? '').trim();
+
+  if (!deptCode || !accountCode || !accountName) return false;
+
+  const looksLikeDeptCode = /^[0-9A-Za-z_-]{2,20}$/.test(deptCode);
+  const looksLikeAccountCode = /^[A-Z]?\d{5,}|[A-Z]\d{5,}$/i.test(accountCode);
+  const hasAmountColumns = row.slice(3).some(cell => {
+    const text = String(cell ?? '').trim();
+    if (!text) return false;
+    const normalized = text.replace(/,/g, '').replace(/원/g, '').replace(/₩/g, '').replace(/\s/g, '');
+    return normalized !== '' && normalized !== '-' && !Number.isNaN(Number(normalized));
+  });
+
+  return looksLikeDeptCode && looksLikeAccountCode && hasAmountColumns;
+}
+
+export function buildHeaderlessMonthlyHeaders(row: any[], startMonth: number): string[] {
+  const amountColumnCount = Math.max(0, row.length - 3);
+
+  const monthHeaders = Array.from({ length: amountColumnCount }, (_, index) => {
+    const month = startMonth + index;
+    return month <= 12 ? `${month}월` : `초과월${index + 1}`;
+  });
+
+  return ['귀속부서코드', '계정과목코드', '계정과목', ...monthHeaders];
 }
 
 export function parsePastedText(text: string): string[][] {
   return text
     .split(/\r?\n/)
     .filter(row => row.trim() !== '')
-    .map(row => {
-      if (row.includes('\t')) return row.split('\t');
-      return row.split(',');
-    });
+    .map(row => row.split('\t'));
 }
