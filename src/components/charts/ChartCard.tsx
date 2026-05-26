@@ -26,7 +26,7 @@ export function ChartCard({
   contentClassName 
 }: ChartCardProps) {
   return (
-    <AppCard className={cn("flex flex-col h-full", className)}>
+    <AppCard className={cn("flex flex-col w-full min-w-0", className)}>
       <div className="px-6 py-5 border-b border-lithium-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
           <h3 className="text-lg font-bold text-eco-black">{title}</h3>
@@ -38,7 +38,7 @@ export function ChartCard({
           </div>
         )}
       </div>
-      <div className={cn("p-6 flex-1 flex flex-col justify-center min-h-[300px]", contentClassName)}>
+      <div className={cn("p-6 w-full min-w-0 min-h-[300px]", contentClassName)}>
         {isEmpty ? (
           <EmptyState icon={BarChart3} title="데이터 없음" description={emptyMessage} />
         ) : (

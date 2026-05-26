@@ -1,4 +1,5 @@
 import { getAllDepartments } from '../constants';
+import { resolveAccountByCode } from './accountResolver';
 
 export interface ActualData {
   id: number;
@@ -191,6 +192,31 @@ export function parseWideMonthlyRows(params: {
       });
     }
 
+    const uploadedAccountName = String(getRecordValue(record, HEADER_ALIASES.accountName) || '').trim();
+    const resolvedAccount = resolveAccountByCode({
+      accountCode,
+      uploadedName: uploadedAccountName,
+      year: params.year
+    });
+
+    if (resolvedAccount.isRegistered && resolvedAccount.nameMismatch) {
+      warningRows.push({
+        rowNum,
+        field: 'accountName',
+        message: `업로드 계정명 "${resolvedAccount.uploadedName}"이 기준 계정명 "${resolvedAccount.name}"과 다릅니다. 계정코드 ${resolvedAccount.code} 기준으로 기준 계정명을 적용했습니다.`,
+        severity: 'warning'
+      });
+    }
+
+    if (!resolvedAccount.isRegistered) {
+      warningRows.push({
+        rowNum,
+        field: 'accountCode',
+        message: `계정코드 ${resolvedAccount.code}는 예산 계정 선택/계정마스터에 없습니다. 실적 행은 임시로 표시하지만, 계정 코드 관리에서 정식 등록이 필요합니다.`,
+        severity: 'warning'
+      });
+    }
+
     for (let i = 1; i <= 12; i++) {
         const val = getMonthValue(record, i);
         const numericVal = parseAmount(val);
@@ -201,8 +227,8 @@ export function parseWideMonthlyRows(params: {
                 id: params.existingCount + actualRows.length + 1,
                 year: params.year,
                 period: `${i}월`,
-                accountCode,
-                accountName: String(getRecordValue(record, HEADER_ALIASES.accountName) || ''),
+                accountCode: resolvedAccount.code,
+                accountName: resolvedAccount.name,
                 controlType: 'D.부서',
                 usageCode,
                 usageDept: resolvedDept.name,
@@ -280,12 +306,37 @@ export function parseFlatRows(params: {
           });
         }
 
+        const uploadedAccountName = String(getRecordValue(record, HEADER_ALIASES.accountName) || '').trim();
+        const resolvedAccount = resolveAccountByCode({
+          accountCode,
+          uploadedName: uploadedAccountName,
+          year: params.year
+        });
+
+        if (resolvedAccount.isRegistered && resolvedAccount.nameMismatch) {
+          warningRows.push({
+            rowNum,
+            field: 'accountName',
+            message: `업로드 계정명 "${resolvedAccount.uploadedName}"이 기준 계정명 "${resolvedAccount.name}"과 다릅니다. 계정코드 ${resolvedAccount.code} 기준으로 기준 계정명을 적용했습니다.`,
+            severity: 'warning'
+          });
+        }
+
+        if (!resolvedAccount.isRegistered) {
+          warningRows.push({
+            rowNum,
+            field: 'accountCode',
+            message: `계정코드 ${resolvedAccount.code}는 예산 계정 선택/계정마스터에 없습니다. 실적 행은 임시로 표시하지만, 계정 코드 관리에서 정식 등록이 필요합니다.`,
+            severity: 'warning'
+          });
+        }
+
         actualRows.push({
             id: params.existingCount + actualRows.length + 1,
             year: String(getRecordValue(record, ['연도']) || params.year),
             period,
-            accountCode,
-            accountName: String(getRecordValue(record, HEADER_ALIASES.accountName) || ''),
+            accountCode: resolvedAccount.code,
+            accountName: resolvedAccount.name,
             controlType: String(getRecordValue(record, HEADER_ALIASES.controlType) || '').trim() || 'D.부서',
             usageCode,
             usageDept: resolvedDept.name,

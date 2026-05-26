@@ -35,6 +35,7 @@ import {
 } from '../lib/formatters';
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
+import { resolveAccountByCode } from '../lib/accountResolver';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
@@ -227,9 +228,12 @@ export default function BudgetStatus() {
         const allAccountCodes = Array.from(new Set([...Array.from(deptAccountBudgets.keys()), ...Array.from(deptAccountActuals.keys())]));
 
         allAccountCodes.forEach(acode => {
-          const bInfo = deptAccountBudgets.get(acode) || { accountCode: acode, accountName: '등록되지 않은 계정', budgetAmount: 0 };
+          const resolvedAccount = resolveAccountByCode({ accountCode: acode, uploadedName: '', year });
+          const bInfo = deptAccountBudgets.get(acode) || { accountCode: acode, accountName: resolvedAccount.name, budgetAmount: 0 };
           const actualAmount = deptAccountActuals.get(acode) || 0;
           const budgetAmount = bInfo.budgetAmount;
+          
+          const finalAccountName = resolvedAccount.name;
 
           const diff = budgetAmount - actualAmount;
           const rate = budgetAmount > 0 ? Number(((actualAmount / budgetAmount) * 100).toFixed(1)) : 0;
@@ -248,8 +252,8 @@ export default function BudgetStatus() {
             deptCode: dept.code,
             deptName: dept.name,
             accountCode: acode,
-            accountName: bInfo.accountName,
-            accountCategory: classifyAccount(acode, bInfo.accountName),
+            accountName: finalAccountName,
+            accountCategory: classifyAccount(acode, finalAccountName),
             budgetAmount,
             actualAmount,
             differenceAmount: diff < 0 ? Math.abs(diff) : -diff,

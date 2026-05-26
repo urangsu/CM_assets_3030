@@ -30,6 +30,7 @@ import {
 } from '../lib/formatters';
 import { getViewableDepts } from '../constants';
 import { getActualDataKey } from '../lib/storageKeys';
+import { resolveAccountByCode } from '../lib/accountResolver';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
@@ -155,13 +156,16 @@ export default function ExecutionLedger() {
           rowMonth = match ? `${match[1]}월` : r.period;
         }
 
+        const resolvedAccount = resolveAccountByCode({ accountCode: r.accountCode, uploadedName: r.accountName, year });
+        const resolvedAccountName = resolvedAccount.name;
+
         processedRows.push({
           id: r.id || `real-ledger-${idx}`,
           year: r.year || year,
           month: rowMonth,
           accountCode: r.accountCode,
-          accountName: r.accountName,
-          controlType: classifyAccount(r.accountCode, r.accountName),
+          accountName: resolvedAccountName,
+          controlType: classifyAccount(r.accountCode, resolvedAccountName),
           usageCode: r.usageCode,
           usageDept: matchDept ? matchDept.name : (r.usageDept || '외부 위탁부서'),
           amount: Number(r.completed || r.amount || 0),

@@ -10,6 +10,7 @@ import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } 
 import { getBudgetDataKey } from '../lib/storageKeys';
 import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
+import { resolveAccountByCode } from '../lib/accountResolver';
 import { classifyAccount, ACCOUNT_CLASS_OPTIONS, ACCOUNTING_TYPE_OPTIONS, AccountClass, AccountingType, getAccountingType } from '../lib/accountClassification';
 import { isInvestmentAccount } from '../lib/accountMaster';
 import { ChartCard } from '../components/charts/ChartCard';
@@ -453,6 +454,8 @@ export default function VarianceComparison() {
             if (!shouldIncludeMonth(monthIndex, periodMode, periodSelectedMonth)) return;
 
             const catName = accountToCategoryNameMap.get(item.accountCode);
+            const resolvedAccount = resolveAccountByCode({ accountCode: item.accountCode, uploadedName: item.accountName, year });
+            const resolvedAccountName = resolvedAccount.name;
               
               // Salary access check
               if (!hasSalaryAccess) {
@@ -461,10 +464,10 @@ export default function VarianceComparison() {
               }
 
               if (selectedAccountingType !== '전체') {
-                if (getAccountingType(item.accountCode, item.accountName) !== selectedAccountingType) return;
+                if (getAccountingType(item.accountCode, resolvedAccountName) !== selectedAccountingType) return;
               }
               if (selectedAccountClass !== '전체') {
-                if (classifyAccount(item.accountCode, item.accountName) !== selectedAccountClass) return;
+                if (classifyAccount(item.accountCode, resolvedAccountName) !== selectedAccountClass) return;
               }
 
               const amount = item.completed || 0;
@@ -479,7 +482,7 @@ export default function VarianceComparison() {
                 internalAggregated.set(compositeKey, { 
                   deptCode: effectiveDeptCode, 
                   accountCode: item.accountCode, 
-                  accountName: item.accountName, 
+                  accountName: resolvedAccountName, 
                   amount 
                 });
               }
@@ -527,7 +530,8 @@ export default function VarianceComparison() {
                 if (salaryAccountCodes.has(row.code)) return;
               }
 
-              const resolvedAccountName = row.name || accountCodeToNameMap.get(row.code) || '';
+              const resolvedAccount = resolveAccountByCode({ accountCode: row.code, uploadedName: row.name, year });
+              const resolvedAccountName = resolvedAccount.name;
 
               if (selectedAccountingType !== '전체') {
                 if (getAccountingType(row.code, resolvedAccountName) !== selectedAccountingType) return;
@@ -985,33 +989,6 @@ export default function VarianceComparison() {
         </div>
       </div>
 
-      {/* Chart */}
-      <ChartCard
-        title={selectedDept === 'by_dept' ? '부서별 예산·실적 비교' : '계정별 예산·실적 비교'}
-        isEmpty={chartData.length === 0}
-      >
-        <div className="h-80 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={chartData}
-              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2f4f6" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}`} />
-              <Tooltip 
-                cursor={{ fill: 'rgba(0,0,0,0.02)' }}
-                contentStyle={{ borderRadius: '16px', border: '1px solid #dde5de', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                formatter={(value: number) => [`${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}백만원 (${formatCurrency(value)}원)`, '']}
-              />
-              <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-              <Bar dataKey={baseName} fill="#e5e8eb" radius={[6, 6, 0, 0]} maxBarSize={32} />
-              <Bar dataKey={targetName} fill="var(--nickel-500)" radius={[6, 6, 0, 0]} maxBarSize={32} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </ChartCard>
-
       {/* Comparison Detail Table */}
       <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden mb-10">
         <div className="px-6 py-5 border-b border-lithium-200 bg-lithium-50 flex justify-between items-center">
@@ -1114,6 +1091,36 @@ export default function VarianceComparison() {
             </tfoot>
           </table>
         </div>
+      </div>
+
+      {/* Chart */}
+      <div className="w-full min-w-0">
+        <ChartCard
+          title={selectedDept === 'by_dept' ? '부서별 예산·실적 비교' : '계정별 예산·실적 비교'}
+          isEmpty={chartData.length === 0}
+          contentClassName="min-h-[360px] w-full min-w-0 block"
+        >
+          <div className="w-full min-w-[320px] h-[320px]">
+            <ResponsiveContainer width="100%" height={320} debounce={50}>
+              <BarChart
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2f4f6" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}`} />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                  contentStyle={{ borderRadius: '16px', border: '1px solid #dde5de', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                  formatter={(value: number) => [`${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}백만원 (${formatCurrency(value)}원)`, '']}
+                />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                <Bar dataKey={baseName} fill="#e5e8eb" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                <Bar dataKey={targetName} fill="var(--nickel-500)" radius={[6, 6, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </ChartCard>
       </div>
     </div>
   );
