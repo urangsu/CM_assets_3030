@@ -81,6 +81,88 @@ const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, 
   );
 };
 
+function getUploadRowKey(row: ActualData, target: string): string {
+  return [
+    row.year,
+    target,
+    row.usageCode,
+    row.accountCode,
+    row.period
+  ].join('|');
+}
+
+function countDuplicates(
+  existingRows: ActualData[],
+  incomingRows: ActualData[],
+  target: string
+): number {
+  const existingKeys = new Set(existingRows.map(row => getUploadRowKey(row, target)));
+  return incomingRows.filter(row => existingKeys.has(getUploadRowKey(row, target))).length;
+}
+
+function mergeUploadRows(
+  existingRows: ActualData[],
+  incomingRows: ActualData[],
+  target: string,
+  policy: 'overwrite' | 'skip'
+) {
+  const map = new Map<string, ActualData>();
+  existingRows.forEach(row => {
+    map.set(getUploadRowKey(row, target), row);
+  });
+
+  let duplicateCount = 0;
+  let insertedCount = 0;
+  let overwrittenCount = 0;
+  let skippedCount = 0;
+
+  incomingRows.forEach(row => {
+    const key = getUploadRowKey(row, target);
+    const exists = map.has(key);
+
+    if (exists) {
+      duplicateCount += 1;
+
+      if (policy === 'overwrite') {
+        const previous = map.get(key)!;
+        map.set(key, { ...previous, ...row, id: previous.id });
+        overwrittenCount += 1;
+      } else {
+        skippedCount += 1;
+      }
+    } else {
+      map.set(key, row);
+      insertedCount += 1;
+    }
+  });
+
+  return {
+    rows: Array.from(map.values()),
+    duplicateCount,
+    insertedCount,
+    overwrittenCount,
+    skippedCount
+  };
+}
+
+function dedupeRowsByKey(rows: ActualData[], target: string): ActualData[] {
+  const map = new Map<string, ActualData>();
+
+  rows.forEach(row => {
+    const key = getUploadRowKey(row, target);
+    map.set(key, row);
+  });
+
+  return Array.from(map.values());
+}
+
+function reindexRows(rows: ActualData[]): ActualData[] {
+  return rows.map((row, index) => ({
+    ...row,
+    id: index + 1
+  }));
+}
+
 export default function PlanActualUpload() {
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('all');
@@ -116,6 +198,9 @@ export default function PlanActualUpload() {
   const viewableDepts = currentUser ? getViewableDepts(currentUser.code) : [];
   const viewableDeptCodes = viewableDepts.map(d => d.code);
   
+  const [duplicatePolicy, setDuplicatePolicy] = useState<'overwrite' | 'skip'>('overwrite');
+  const [duplicateUploadCount, setDuplicateUploadCount] = useState(0);
+
   const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string} | null>(null);
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, message: string, onConfirm: () => void} | null>(null);
   const [validationResult, setValidationResult] = useState<UploadParseResult | null>(null);
@@ -370,19 +455,25 @@ export default function PlanActualUpload() {
         return;
     }
 
+    setDuplicateUploadCount(countDuplicates(data, result.actualRows, uploadTarget));
     setValidationResult(result);
   };
 
   const confirmImport = () => {
     if (validationResult) {
-       // All output rows come cleanly formatted in actualRows now regardless of ACTUAL/PLAN
-       const updatedData = [...data, ...validationResult.actualRows];
-       setData(updatedData);
+       const mergeResult = mergeUploadRows(
+         data,
+         validationResult.actualRows,
+         uploadTarget,
+         duplicatePolicy
+       );
+
+       setData(reindexRows(mergeResult.rows));
        
        setSuccessBanner({
          isOpen: true,
          isFinal: false,
-         message: `${validationResult.actualRows.length}건이 임시 반영되었습니다. 최종 저장하려면 [저장하기]를 누르세요.`,
+         message: `${mergeResult.insertedCount}건 신규, ${mergeResult.overwrittenCount}건 덮어쓰기, ${mergeResult.skippedCount}건 건너뜀 처리되었습니다. 최종 저장하려면 [저장하기]를 누르세요.`,
          target: uploadTarget,
          generatedRows: validationResult.actualRows.length
        });
@@ -397,7 +488,9 @@ export default function PlanActualUpload() {
     }
 
     if (uploadTarget === '실적') {
-      localStorage.setItem(getActualDataKey(year), JSON.stringify(data));
+      const dedupedData = dedupeRowsByKey(data, uploadTarget);
+      localStorage.setItem(getActualDataKey(year), JSON.stringify(dedupedData));
+      setData(dedupedData);
       setSuccessBanner({
          isOpen: true,
          isFinal: true,
@@ -406,7 +499,9 @@ export default function PlanActualUpload() {
       });
     } else {
       const groupedByDept = new Map<string, ActualData[]>();
-      data.forEach(item => {
+      const rowsToSave = dedupeRowsByKey(data, uploadTarget);
+      
+      rowsToSave.forEach(item => {
         if (!groupedByDept.has(item.usageCode)) {
           groupedByDept.set(item.usageCode, []);
         }
@@ -835,6 +930,37 @@ export default function PlanActualUpload() {
                    </div>
                  </div>
               </div>
+
+              {duplicateUploadCount > 0 && (
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                  <p className="font-bold text-blue-900 mb-2">기존 데이터와 중복: <span className="text-red-500">{duplicateUploadCount}건</span></p>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs text-blue-800 font-semibold mb-1">중복 처리 방식:</p>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="duplicatePolicy" 
+                        value="overwrite" 
+                        checked={duplicatePolicy === 'overwrite'}
+                        onChange={() => setDuplicatePolicy('overwrite')}
+                        className="w-4 h-4 text-brand-500 focus:ring-brand-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">기존 값 덮어쓰기 (권장)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="duplicatePolicy" 
+                        value="skip"
+                        checked={duplicatePolicy === 'skip'}
+                        onChange={() => setDuplicatePolicy('skip')}
+                        className="w-4 h-4 text-brand-500 focus:ring-brand-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">신규 월만 추가 (기존 월 무시)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               {lockedDeptsOnUpload.length > 0 && (
                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
