@@ -81,7 +81,11 @@ const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, 
 export default function PlanActualUpload() {
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('all');
-  const [planType, setPlanType] = useState('실적');
+  const [viewPlanType, setViewPlanType] = useState('실적');
+  const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
+  const [pasteText, setPasteText] = useState('');
+  const [successBanner, setSuccessBanner] = useState<{isOpen: boolean, isFinal: boolean, message: string, target?: string, generatedRows?: number, location?: string} | null>(null);
+  const [lockedDeptsOnUpload, setLockedDeptsOnUpload] = useState<{deptCode: string, deptName: string, status: string}[]>([]);
   const [isSearched, setIsSearched] = useState(false);
   const [visibleCount, setVisibleCount] = useState(100);
   const [data, setData] = useState<ActualData[]>([]);
@@ -159,12 +163,11 @@ export default function PlanActualUpload() {
   };
 
   useEffect(() => {
-    if (planType === '실적') {
+    if (viewPlanType === '실적') {
       const savedData = localStorage.getItem(getActualDataKey(year));
       if (savedData) {
         let actualData: ActualData[] = JSON.parse(savedData);
-        
-        // Filter salary accounts if no permission
+        // ... (keep actualData mapping)
         const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
         const settings = savedSettings ? JSON.parse(savedSettings) : {};
         const userSetting = currentUser ? settings[currentUser.code] : null;
@@ -179,7 +182,6 @@ export default function PlanActualUpload() {
           });
           actualData = actualData.filter(item => !salaryAccountCodes.has(item.accountCode));
         }
-        
         setData(actualData);
       } else {
         setData([]);
@@ -191,9 +193,8 @@ export default function PlanActualUpload() {
       let idCounter = 1;
 
       allDepts.forEach(dept => {
-        const key = getBudgetDataKey(dept.code, year, planType);
+        const key = getBudgetDataKey(dept.code, year, viewPlanType);
         const budgetRows = JSON.parse(localStorage.getItem(key) || '[]');
-        
         budgetRows.forEach((row: any) => {
           row.values.forEach((val: number, idx: number) => {
             if (val !== 0) {
@@ -240,9 +241,15 @@ export default function PlanActualUpload() {
     }
     setIsSearched(false);
     setVisibleCount(100);
-  }, [year, planType, currentUser]);
+  }, [year, viewPlanType, currentUser]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!uploadTarget) {
+      setAlertModal({ isOpen: true, message: '업로드 대상을 먼저 선택해주세요. 실적인지 경영계획 등인지 선택해야 저장 위치가 결정됩니다.' });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -258,34 +265,53 @@ export default function PlanActualUpload() {
       const ws = wb.Sheets[wsname];
       const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
       
-      processImportedData(jsonData); // Pass all data
+      processImportedData(jsonData);
     };
     reader.readAsBinaryString(file);
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handlePasteArea = () => {
+    if (!uploadTarget) {
+      setAlertModal({ isOpen: true, message: '업로드 대상을 먼저 선택해주세요. 실적인지 경영계획 등인지 선택해야 저장 위치가 결정됩니다.' });
+      return;
     }
+    if (!pasteText.trim()) return;
+    
+    const rows = pasteText.split(/\r?\n/).filter(row => row.trim() !== '').map(row => row.split('\t'));
+    processImportedData(rows);
+    setPasteText(''); // Clear after processing
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    // Only process paste if we are not focused on an input
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-      return;
-    }
+    if (!uploadTarget) return; // Silent ignore for global paste if no target
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     
     const pasteData = e.clipboardData.getData('text');
     if (!pasteData) return;
     
-    // Split by lines and then by tabs (Excel format)
     const rows = pasteData.split(/\r?\n/).filter(row => row.trim() !== '').map(row => row.split('\t'));
     processImportedData(rows);
   };
 
   const processImportedData = (rows: any[][]) => {
+    // Check locks early
+    if (uploadTarget !== '실적') {
+       const locked = [];
+       const allDepts = currentUser?.code === '99999' ? getAllDepartments() : viewableDepts;
+       for (const dept of allDepts) {
+         if (isBudgetLocked(dept.code, year, uploadTarget)) {
+           locked.push({ deptCode: dept.code, deptName: dept.name, status: '잠금/확정' });
+         }
+       }
+       setLockedDeptsOnUpload(locked);
+    } else {
+       setLockedDeptsOnUpload([]);
+    }
+
     const headers = rows[0] || [];
     const bodyRows = rows.slice(1);
     
-    // Normalize headers for mapping
     const records = bodyRows.map(row => {
         const record: Record<string, unknown> = {};
         headers.forEach((h, i) => record[normalizeHeader(h)] = row[i]);
@@ -299,7 +325,7 @@ export default function PlanActualUpload() {
         existingCount: data.length,
         currentUser,
         viewableDeptCodes,
-        planType
+        planType: uploadTarget
     });
 
     if (result.format === 'UNKNOWN') {
@@ -312,25 +338,36 @@ export default function PlanActualUpload() {
 
   const confirmImport = () => {
     if (validationResult) {
+       // All output rows come cleanly formatted in actualRows now regardless of ACTUAL/PLAN
        const updatedData = [...data, ...validationResult.actualRows];
        setData(updatedData);
        
-       if (validationResult.budgetRows.length > 0) {
-           // Handle budget rows - needs implementation based on PLAN_WIDE logic
-           setAlertModal({ isOpen: true, message: `${validationResult.actualRows.length}개의の実적 데이터와 ${validationResult.budgetRows.length}개의 계획 데이터가 처리를 위해 준비되었습니다.` });
-       } else {
-           setAlertModal({ isOpen: true, message: `${validationResult.actualRows.length}개의 실적 데이터가 추가되었습니다. 저장하기를 눌러 반영해 주세요.` });
-       }
+       setSuccessBanner({
+         isOpen: true,
+         isFinal: false,
+         message: `${validationResult.actualRows.length}건이 임시 반영되었습니다. 최종 저장하려면 [저장하기]를 누르세요.`,
+         target: uploadTarget,
+         generatedRows: validationResult.actualRows.length
+       });
        setValidationResult(null);
     }
   };
 
   const handleSave = () => {
-    if (planType === '실적') {
+    if (!uploadTarget) {
+      setAlertModal({ isOpen: true, message: '업로드 대상을 선택하고 데이터를 임시 반영한 뒤 저장해주세요.' });
+      return;
+    }
+
+    if (uploadTarget === '실적') {
       localStorage.setItem(getActualDataKey(year), JSON.stringify(data));
-      setAlertModal({ isOpen: true, message: '실적 데이터가 저장되었습니다.' });
+      setSuccessBanner({
+         isOpen: true,
+         isFinal: true,
+         message: `실적 데이터 저장이 완료되었습니다.`,
+         location: `실적DB ${year}`
+      });
     } else {
-      // Group data by usageCode
       const groupedByDept = new Map<string, ActualData[]>();
       data.forEach(item => {
         if (!groupedByDept.has(item.usageCode)) {
@@ -341,18 +378,23 @@ export default function PlanActualUpload() {
 
       const deptsToUpdate = currentUser?.code === '99999' ? getAllDepartments() : viewableDepts;
 
-      const lockedDepts = deptsToUpdate.filter(dept => isBudgetLocked(dept.code, year, planType) && groupedByDept.has(dept.code));
+      const lockedDepts = deptsToUpdate.filter(dept => isBudgetLocked(dept.code, year, uploadTarget) && groupedByDept.has(dept.code));
       if (lockedDepts.length > 0) {
-        setAlertModal({ isOpen: true, message: `제출 또는 승인 완료된 예산은 수정할 수 없습니다 (예: ${lockedDepts[0].name}).` });
-        return;
+        setAlertModal({ isOpen: true, message: `제출 또는 승인 완료된 예산은 덮어쓸 수 없습니다 (예: ${lockedDepts[0].name}). 잠금 부서 데이터는 제외하고 저장됩니다.` });
       }
 
+      let savedDeptNames = [];
+
       deptsToUpdate.forEach(dept => {
+        if (isBudgetLocked(dept.code, year, uploadTarget)) return;
+
         const deptCode = dept.code;
-        const key = getBudgetDataKey(deptCode, year, planType);
+        const key = getBudgetDataKey(deptCode, year, uploadTarget);
         const deptData = groupedByDept.get(deptCode) || [];
         
         if (deptData.length === 0) return;
+
+        savedDeptNames.push(dept.name);
 
         const existingData = localStorage.getItem(key);
         const budgetRows: any[] = existingData ? JSON.parse(existingData) : [];
@@ -378,19 +420,24 @@ export default function PlanActualUpload() {
             }
           }
         });
-        
         localStorage.setItem(key, JSON.stringify(budgetRows));
       });
-      setAlertModal({ isOpen: true, message: `${planType} 데이터가 저장되었습니다.` });
+      
+      setSuccessBanner({
+         isOpen: true,
+         isFinal: true,
+         message: `${uploadTarget} 데이터 저장이 완료되었습니다.`,
+         location: `예산DB ${year} (${savedDeptNames.length}개 부서)`
+      });
     }
   };
 
   const handleClear = () => {
     setConfirmModal({
       isOpen: true,
-      message: currentUser?.code === '99999' ? `모든 ${planType} 데이터를 삭제하시겠습니까?` : `조회 가능한 부서의 ${planType} 데이터를 모두 삭제하시겠습니까?`,
+      message: currentUser?.code === '99999' ? `모든 ${viewPlanType} 데이터를 삭제하시겠습니까?` : `조회 가능한 부서의 ${viewPlanType} 데이터를 모두 삭제하시겠습니까?`,
       onConfirm: () => {
-        if (planType === '실적') {
+        if (viewPlanType === '실적') {
           if (currentUser?.code === '99999') {
             setData([]);
             localStorage.removeItem(getActualDataKey(year));
@@ -403,7 +450,7 @@ export default function PlanActualUpload() {
           // Clear budget data for relevant depts
           const deptsToClear = currentUser?.code === '99999' ? getAllDepartments() : viewableDepts;
           deptsToClear.forEach(dept => {
-            localStorage.removeItem(getBudgetDataKey(dept.code, year, planType));
+            localStorage.removeItem(getBudgetDataKey(dept.code, year, viewPlanType));
           });
           setData([]);
         }
@@ -714,7 +761,7 @@ export default function PlanActualUpload() {
       {validationResult && (
         <AppModal
           isOpen={!!validationResult}
-          title="데이터 유효성 검사 결과"
+          title="데이터 검증 결과"
           onClose={() => setValidationResult(null)}
           footer={
             <div className="flex justify-end gap-2">
@@ -723,23 +770,34 @@ export default function PlanActualUpload() {
               </AppButton>
               <AppButton 
                 onClick={confirmImport}
-                disabled={validationResult.actualRows.length === 0 && validationResult.budgetRows.length === 0}
+                disabled={validationResult.actualRows.length === 0}
               >
-                저장 후 계속
+                임시 반영
               </AppButton>
             </div>
           }
         >
             <div className="space-y-4 text-sm">
-              <p className="text-[#4e5968]">총 {validationResult.actualRows.length + validationResult.budgetRows.length + validationResult.warningRows.length + validationResult.errorRows.length}건 중 
-              실적 {validationResult.actualRows.length}건, 
-              계획 {validationResult.budgetRows.length}건, 
-              경고 <span className="font-bold text-yellow-600 px-1">{validationResult.warningRows.length}</span>건, 
-              오류 <span className="font-bold text-red-600 px-1">{validationResult.errorRows.length}</span>건</p>
+              <div className="bg-[#fcfdfe] p-4 rounded-xl border border-[#e5e8eb]">
+                 <p className="font-bold text-gray-900 mb-2">업로드 대상: <span className="text-brand-600">{uploadTarget}</span></p>
+                 <p className="text-gray-700">생성 예정 행: <strong>{validationResult.actualRows.length}건</strong></p>
+              </div>
+
+              {lockedDeptsOnUpload.length > 0 && (
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
+                  <h4 className="font-bold text-orange-800 mb-2 flex items-center"><AlertTriangle className="w-4 h-4 mr-1" />잠금 부서 경고 (저장 제외됨)</h4>
+                  <p className="text-xs text-orange-700 mb-2">총 {lockedDeptsOnUpload.length}개 부서의 데이터가 잠금 상태이므로 덮어쓰기에서 제외됩니다.</p>
+                  <ul className="list-disc pl-5 text-orange-700 space-y-1 text-xs max-h-24 overflow-y-auto">
+                    {lockedDeptsOnUpload.map((d, i) => (
+                      <li key={i}>{d.deptCode} {d.deptName}: {d.status}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               
               {validationResult.errorRows.length > 0 && (
                 <div className="bg-red-50 p-4 rounded-xl border border-red-100 max-h-40 overflow-y-auto">
-                  <h4 className="font-bold text-red-700 mb-2 flex items-center"><X className="w-4 h-4 mr-1" />오류 내용 (저장 제외)</h4>
+                  <h4 className="font-bold text-red-700 mb-2 flex items-center"><X className="w-4 h-4 mr-1" />오류 내용 (저장 제외됨)</h4>
                   <ul className="list-disc pl-5 text-red-600 space-y-1 text-xs">
                     {validationResult.errorRows.map((e, i) => (
                       <li key={i}>{e.rowNum}행: {e.message}</li>
@@ -758,10 +816,6 @@ export default function PlanActualUpload() {
                   </ul>
                 </div>
               )}
-              
-              <p className="text-[#4e5968] font-medium pt-2 border-t border-[#f2f4f6]">
-                오류가 있는 행은 저장 대상에서 제외됩니다.<br/>계속하시겠습니까?
-              </p>
             </div>
         </AppModal>
       )}
@@ -834,10 +888,10 @@ export default function PlanActualUpload() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">계획 구분</label>
+            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">조회 구분(View)</label>
             <select 
-              value={planType}
-              onChange={(e) => { setPlanType(e.target.value); setIsSearched(false); }}
+              value={viewPlanType}
+              onChange={(e) => { setViewPlanType(e.target.value); setIsSearched(false); }}
               className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 transition-all outline-none appearance-none"
             >
               <option value="실적">실적</option>
@@ -887,46 +941,102 @@ export default function PlanActualUpload() {
           </div>
         </div>
 
-        <div className="flex gap-2 items-end">
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center px-4 py-2 h-[42px] bg-white border border-[#e5e8eb] text-[#4e5968] rounded-xl text-sm font-semibold hover:bg-[#f2f4f6] transition-colors whitespace-nowrap"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            엑셀 업로드
-          </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            className="hidden" 
-            accept=".xlsx, .xls"
-          />
-          <button 
-            onClick={handleClear}
-            className="flex items-center px-4 py-2 h-[42px] bg-white border border-[#e5e8eb] text-[#f04452] rounded-xl text-sm font-semibold hover:bg-[#fff0f0] transition-colors whitespace-nowrap"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            초기화
-          </button>
-          <button 
-            onClick={handleSave}
-            className="flex items-center px-4 py-2 h-[42px] bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 shadow-lg shadow-brand-500/20 transition-all whitespace-nowrap"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            저장하기
-          </button>
+        <div className="flex flex-col gap-2 items-end shrink-0">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-brand-600 uppercase">업로드 대상:</label>
+            <select 
+              value={uploadTarget}
+              onChange={(e) => setUploadTarget(e.target.value as any)}
+              className="px-4 py-2 h-[42px] bg-brand-50 border border-brand-200 rounded-xl text-sm font-bold text-brand-700 focus:ring-2 focus:ring-brand-500 transition-all outline-none appearance-none"
+            >
+              <option value="">▼ 선택해주세요</option>
+              <option value="실적">실적</option>
+              <option value="경영계획">경영계획</option>
+              <option value="수정경영계획">수정경영계획</option>
+              <option value="1차 RP">1차 RP</option>
+              <option value="2차 RP">2차 RP</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center px-4 py-2 h-[42px] bg-white border border-[#e5e8eb] text-[#4e5968] rounded-xl text-sm font-semibold hover:bg-[#f2f4f6] transition-colors whitespace-nowrap"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              엑셀 업로드
+            </button>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+              className="hidden" 
+              accept=".xlsx, .xls"
+            />
+            <button 
+              onClick={handleClear}
+              className="flex items-center px-4 py-2 h-[42px] bg-white border border-[#e5e8eb] text-[#f04452] rounded-xl text-sm font-semibold hover:bg-[#fff0f0] transition-colors whitespace-nowrap"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              초기화
+            </button>
+            <button 
+              onClick={handleSave}
+              className="flex items-center px-4 py-2 h-[42px] bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 shadow-lg shadow-brand-500/20 transition-all whitespace-nowrap"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              최종 저장
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Info Box */}
-      <div className="bg-brand-50 p-4 rounded-xl border border-brand-100 flex items-start gap-3">
-        <Clipboard className="w-5 h-5 text-brand-500 mt-0.5" />
-        <div>
-          <p className="text-sm font-semibold text-brand-900">데이터 붙여넣기 지원</p>
-          <p className="text-xs text-brand-700 mt-1">
-            엑셀에서 데이터를 복사(Ctrl+C)한 후 이 페이지 어디서든 붙여넣기(Ctrl+V) 하시면 자동으로 데이터가 추가됩니다.
-          </p>
+      {/* Success Banner */}
+      {successBanner?.isOpen && (
+        <div className={`p-4 rounded-xl border flex items-start gap-3 shadow-sm ${successBanner.isFinal ? 'bg-teal-50 border-teal-200' : 'bg-blue-50 border-blue-200'}`}>
+          <CheckCircle className={`w-5 h-5 mt-0.5 ${successBanner.isFinal ? 'text-teal-500' : 'text-blue-500'}`} />
+          <div className="flex-1">
+            <p className={`text-sm font-bold ${successBanner.isFinal ? 'text-teal-900' : 'text-blue-900'}`}>{successBanner.message}</p>
+            {!successBanner.isFinal && (
+              <div className="text-xs text-blue-700 mt-2 flex flex-col gap-1">
+                <span>• 업로드 대상: <strong className="font-semibold">{successBanner.target}</strong></span>
+                <span>• 생성 행 수: <strong className="font-semibold">{successBanner.generatedRows}</strong>건</span>
+                <span className="inline-flex items-center gap-1"><AlertCircle className="w-3 h-3" /> [최종 저장] 버튼을 눌러야 실제 시스템에 반영됩니다.</span>
+              </div>
+            )}
+            {successBanner.isFinal && successBanner.location && (
+               <div className="text-xs text-teal-700 mt-2 flex flex-col gap-1">
+                 <span>• 저장 위치: <strong className="font-semibold">{successBanner.location}</strong></span>
+               </div>
+            )}
+          </div>
+          <button onClick={() => setSuccessBanner(null)} className="p-1 hover:bg-black/5 rounded">
+            <X className={`w-4 h-4 ${successBanner.isFinal ? 'text-teal-500' : 'text-blue-500'}`} />
+          </button>
+        </div>
+      )}
+
+      {/* Upload Paste Area */}
+      <div className="bg-white p-4 rounded-xl border border-[#e5e8eb] flex flex-col gap-3">
+        <label className="text-sm font-bold text-gray-900 flex items-center gap-2">
+          <Clipboard className="w-4 h-4 text-brand-500" />
+          <span className="mb-[2px]">엑셀 붙여넣기 영역</span>
+        </label>
+        <p className="text-xs text-[#647067]">
+          엑셀에서 범위(헤더 포함) 복사 후 여기에 붙여넣으세요.
+        </p>
+        <div className="flex gap-2 items-start">
+          <textarea
+             value={pasteText}
+             onChange={(e) => setPasteText(e.target.value)}
+             placeholder="여기를 클릭한 후 Ctrl+V 로 붙여넣으세요..."
+             className="flex-1 min-h-[42px] h-[42px] max-h-[200px] border border-[#d1d6db] rounded-xl p-3 text-sm focus:ring-2 focus:ring-brand-500 outline-none resize-y"
+          />
+          <button 
+             onClick={handlePasteArea}
+             className="px-4 h-[42px] bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl font-bold text-sm shrink-0 transition-colors"
+          >
+            붙여넣은 데이터 검증
+          </button>
         </div>
       </div>
 

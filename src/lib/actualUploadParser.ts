@@ -34,10 +34,32 @@ export interface ActualUploadValidationResult {
 }
 
 export type UploadFormat =
-  | 'ACTUAL_WIDE_MONTHLY'
-  | 'ACTUAL_FLAT'
-  | 'PLAN_WIDE_MONTHLY'
+  | 'MONTHLY_WIDE'
+  | 'FLAT'
   | 'UNKNOWN';
+
+export function parseAmount(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const raw = String(value)
+    .trim()
+    .replace(/,/g, '')
+    .replace(/₩/g, '')
+    .replace(/원/g, '')
+    .replace(/\s/g, '');
+
+  if (raw === '' || raw === '-') return 0;
+
+  // 회계식 음수: (1000)
+  if (/^\(.+\)$/.test(raw)) {
+    const inner = raw.slice(1, -1);
+    const n = Number(inner);
+    return Number.isFinite(n) ? -n : 0;
+  }
+
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
 
 export function normalizeHeader(header: unknown): string {
   return String(header || '')
@@ -48,12 +70,12 @@ export function normalizeHeader(header: unknown): string {
 }
 
 const HEADER_ALIASES = {
-  deptCode: ['귀속부서코드', '사용처코드', '부서코드', 'deptcode', 'usagecode'],
-  accountCode: ['계정코드', '계정과목코드', 'accountcode'],
-  usageDept: ['귀속부서', '사용처', '부서', '부서명', 'usagedept'],
+  deptCode: ['귀속부서코드', '사용처코드', '작성부서코드', '부서코드', 'deptcode', 'usagecode', '예산사용처코드'],
+  accountCode: ['계정코드', '계정과목코드', '예산계정코드', 'accountcode'],
+  usageDept: ['귀속부서', '사용처', '부서', '부서명', '예산사용처', 'usagedept'],
   period: ['기간', '월', 'period'],
   completed: ['완료실적', '실적', 'completed'],
-  accountName: ['계정명', '계정과목', 'accountname'],
+  accountName: ['계정명', '계정과목', '계정', '예산계정', '계정과목명', 'accountname'],
   controlType: ['통제구분', '관리구분', 'controltype'],
   amount: ['예산', '금액'],
   additional: ['추가'],
@@ -68,11 +90,7 @@ function hasAny(normalized: string[], aliases: string[]): boolean {
 }
 
 function countMonthlyActualHeaders(normalized: string[]): number {
-  return normalized.filter(h => /^\d+월(실적)?$/.test(h) || h === 'jan' || h === 'feb' || h === 'mar' || h === 'apr' || h === 'may' || h === 'jun' || h === 'jul' || h === 'aug' || h === 'sep' || h === 'oct' || h === 'nov' || h === 'dec').length;
-}
-
-function countMonthlyBudgetHeaders(normalized: string[]): number {
-  return normalized.filter(h => /^\d+월?$/.test(h)).length;
+  return normalized.filter(h => /^\d+월(실적|예산)?$/.test(h) || /^0?\d월$/.test(h) || /^m\d{2}$/.test(h) || h === 'jan' || h === 'feb' || h === 'mar' || h === 'apr' || h === 'may' || h === 'jun' || h === 'jul' || h === 'aug' || h === 'sep' || h === 'oct' || h === 'nov' || h === 'dec').length;
 }
 
 export function detectUploadFormat(headers: string[]): UploadFormat {
@@ -81,14 +99,10 @@ export function detectUploadFormat(headers: string[]): UploadFormat {
   const hasDeptCode = hasAny(normalized, HEADER_ALIASES.deptCode);
   const hasAccountCode = hasAny(normalized, HEADER_ALIASES.accountCode);
   const hasPeriod = hasAny(normalized, HEADER_ALIASES.period);
-  const hasCompleted = hasAny(normalized, HEADER_ALIASES.completed);
-  const monthActualCount = countMonthlyActualHeaders(normalized);
-  const monthBudgetCount = countMonthlyBudgetHeaders(normalized);
-  const hasPlanMeta = normalized.some(h => ['투자여부', '일반구분', '예산유형', '관리구분'].includes(h));
+  const monthCount = countMonthlyActualHeaders(normalized);
 
-  if (hasDeptCode && hasAccountCode && monthActualCount > 0) return 'ACTUAL_WIDE_MONTHLY';
-  if (hasPeriod && hasAccountCode && hasDeptCode && hasCompleted) return 'ACTUAL_FLAT';
-  if (hasPlanMeta && hasAccountCode && monthBudgetCount > 0) return 'PLAN_WIDE_MONTHLY';
+  if (hasDeptCode && hasAccountCode && monthCount >= 1) return 'MONTHLY_WIDE';
+  if (hasPeriod && hasAccountCode && hasDeptCode) return 'FLAT';
 
   return 'UNKNOWN';
 }
@@ -121,7 +135,7 @@ export interface UploadParseResult {
   errorRows: ValidationIssue[];
 }
 
-export function parseActualWideMonthlyRows(params: {
+export function parseWideMonthlyRows(params: {
   records: Record<string, unknown>[];
   year: string;
   existingCount: number;
@@ -132,9 +146,9 @@ export function parseActualWideMonthlyRows(params: {
   
   params.records.forEach((record, index) => {
     const rowNum = index + 2;
-    const usageCode = String(record[normalizeHeader('귀속부서코드')] || record[normalizeHeader('부서코드')] || record[normalizeHeader('사용처코드')] || '');
-    const accountCode = String(record[normalizeHeader('계정과목코드')] || record[normalizeHeader('계정코드')] || '');
-    const usageDept = String(record[normalizeHeader('귀속부서')] || record[normalizeHeader('부서명')] || record[normalizeHeader('부서')] || '');
+    const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '');
+    const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '');
+    const usageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '');
 
     if (!usageCode || !accountCode) {
       errorRows.push({ rowNum, message: '부서코드 또는 계정코드가 없습니다.', severity: 'error' });
@@ -142,8 +156,8 @@ export function parseActualWideMonthlyRows(params: {
     }
 
     for (let i = 1; i <= 12; i++) {
-        const val = getMonthActualValue(record, i);
-        const numericVal = Number(val) || 0;
+        const val = getMonthValue(record, i);
+        const numericVal = parseAmount(val);
         
         if (numericVal !== 0) {
             const isActual = params.planType === '실적';
@@ -152,7 +166,7 @@ export function parseActualWideMonthlyRows(params: {
                 year: params.year,
                 period: `${i}월`,
                 accountCode,
-                accountName: String(record[normalizeHeader('계정명')] || record[normalizeHeader('계정과목')] || ''),
+                accountName: String(getRecordValue(record, HEADER_ALIASES.accountName) || ''),
                 controlType: '',
                 usageCode,
                 usageDept,
@@ -169,7 +183,7 @@ export function parseActualWideMonthlyRows(params: {
     }
   });
 
-  return { format: 'ACTUAL_WIDE_MONTHLY', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows: [], errorRows };
+  return { format: 'MONTHLY_WIDE', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows: [], errorRows };
 }
 
 function getRecordValue(record: Record<string, unknown>, aliases: string[]) {
@@ -182,21 +196,24 @@ function getRecordValue(record: Record<string, unknown>, aliases: string[]) {
   return undefined;
 }
 
-function getMonthActualValue(record: Record<string, unknown>, month: number) {
+function getMonthValue(record: Record<string, unknown>, month: number) {
   const MONTH_EN_ALIASES = [
     '', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'
   ];
   const aliases = [
+    `${month}월`,
+    `0${month}월`,
     `${month}월실적`,
     `${month}월 실적`,
-    `${month}월`,
+    `${month}월예산`,
+    `${month}월 예산`,
     `m${String(month).padStart(2, '0')}`,
     MONTH_EN_ALIASES[month],
   ];
   return getRecordValue(record, aliases);
 }
 
-export function parseActualFlatRows(params: {
+export function parseFlatRows(params: {
   records: Record<string, unknown>[];
   year: string;
   existingCount: number;
@@ -205,85 +222,36 @@ export function parseActualFlatRows(params: {
     const errorRows: ValidationIssue[] = [];
     params.records.forEach((record, index) => {
         const rowNum = index + 2;
-        const period = String(record[normalizeHeader('기간')] || '').trim();
-        const accountCode = String(record[normalizeHeader('계정코드')] || '').trim();
-        const usageCode = String(record[normalizeHeader('사용처코드')] || '').trim();
-        const attributedDeptCode = String(record[normalizeHeader('귀속부서코드')] || '').trim();
-        const completed = record[normalizeHeader('완료실적')];
+        const period = String(getRecordValue(record, HEADER_ALIASES.period) || '').trim();
+        const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '').trim();
+        const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '').trim();
+        const completedVal = getRecordValue(record, HEADER_ALIASES.completed);
 
-        if (!period || !accountCode || (!usageCode && !attributedDeptCode) || isNaN(Number(completed))) {
-          errorRows.push({ rowNum, message: '필수 항목 누락 또는 완료실적 숫자 아님', severity: 'error' });
+        if (!period || !accountCode || !usageCode ) {
+          errorRows.push({ rowNum, message: '필수 항목 누락', severity: 'error' });
           return;
         }
 
         actualRows.push({
             id: params.existingCount + actualRows.length + 1,
-            year: String(record[normalizeHeader('연도')] || params.year),
+            year: String(getRecordValue(record, ['연도']) || params.year),
             period,
             accountCode,
-            accountName: String(record[normalizeHeader('계정명')] || ''),
-            controlType: String(record[normalizeHeader('통제구분')] || ''),
-            usageCode: usageCode || attributedDeptCode,
-            usageDept: String(record[normalizeHeader('사용처')] || ''),
-            amount: Number(record[normalizeHeader('예산')] || 0),
-            additional: Number(record[normalizeHeader('추가')] || 0),
-            transferred: Number(record[normalizeHeader('전용')] || 0),
-            carriedOver: Number(record[normalizeHeader('이월')] || 0),
-            planned: Number(record[normalizeHeader('계획')] || 0),
-            completed: Number(completed || 0),
-            balance: Number(record[normalizeHeader('잔액')] || 0),
-            remarks: String(record[normalizeHeader('비고')] || '')
+            accountName: String(getRecordValue(record, HEADER_ALIASES.accountName) || ''),
+            controlType: String(getRecordValue(record, HEADER_ALIASES.controlType) || ''),
+            usageCode,
+            usageDept: String(getRecordValue(record, HEADER_ALIASES.usageDept) || ''),
+            amount: parseAmount(getRecordValue(record, HEADER_ALIASES.amount)),
+            additional: parseAmount(getRecordValue(record, HEADER_ALIASES.additional)),
+            transferred: parseAmount(getRecordValue(record, HEADER_ALIASES.transferred)),
+            carriedOver: parseAmount(getRecordValue(record, HEADER_ALIASES.carriedOver)),
+            planned: parseAmount(getRecordValue(record, HEADER_ALIASES.planned)),
+            completed: parseAmount(completedVal),
+            balance: parseAmount(getRecordValue(record, ['잔액'])),
+            remarks: String(getRecordValue(record, HEADER_ALIASES.remarks) || '')
         });
     });
-    return { format: 'ACTUAL_FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows: [], errorRows };
-}
-
-export function parsePlanWideMonthlyRows(params: {
-  records: Record<string, unknown>[];
-  year: string;
-  existingCount: number;
-}): UploadParseResult {
-    const budgetRows: PlanBudgetUploadRow[] = [];
-    const errorRows: ValidationIssue[] = [];
-
-    params.records.forEach((record, index) => {
-        const rowNum = index + 2;
-        const code = String(record[normalizeHeader('계정코드')] || '').trim();
-        const name = String(record[normalizeHeader('계정명')] || '').trim();
-        const attributedDeptCode = String(record[normalizeHeader('부서코드')] || '').trim();
-
-        if (!code || !attributedDeptCode) {
-            errorRows.push({ rowNum, message: '필수 항목 누락', severity: 'error' });
-            return;
-        }
-
-        const values: number[] = [];
-        for (let i = 1; i <= 12; i++) {
-            const val = getMonthBudgetValue(record, i);
-            values.push(Number(val) || 0);
-        }
-
-        budgetRows.push({
-            id: `plan_${Date.now()}_${index}`,
-            year: params.year,
-            attributedDeptCode,
-            code,
-            name,
-            values,
-            sourceType: 'UPLOAD'
-        });
-    });
-
-    return { format: 'PLAN_WIDE_MONTHLY', sourceRowCount: params.records.length, generatedRowCount: budgetRows.length, actualRows: [], budgetRows, warningRows: [], errorRows };
-}
-
-function getMonthBudgetValue(record: Record<string, unknown>, month: number) {
-    const aliases = [
-        `${month}월`,
-        `${month}월예산`,
-        `m${String(month).padStart(2, '0')}`,
-    ];
-    return getRecordValue(record, aliases);
+    return { format: 'FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows: [], errorRows };
 }
 
 export function parseUploadRecords(params: {
@@ -296,7 +264,9 @@ export function parseUploadRecords(params: {
   planType: string;
 }): UploadParseResult {
     const format = detectUploadFormat(params.headers);
-    if (format === 'ACTUAL_WIDE_MONTHLY') return parseActualWideMonthlyRows(params);
-    if (format === 'ACTUAL_FLAT') return parseActualFlatRows(params);
-    return parsePlanWideMonthlyRows(params);
+    if (format === 'MONTHLY_WIDE') return parseWideMonthlyRows(params);
+    if (format === 'FLAT') return parseFlatRows(params);
+    
+    // Fallback if not matching specifically
+    return { format: 'UNKNOWN', sourceRowCount: params.records.length, generatedRowCount: 0, actualRows: [], budgetRows: [], warningRows: [], errorRows: [] };
 }
