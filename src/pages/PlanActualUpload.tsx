@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   ActualData, 
-  ActualUploadValidationResult, 
-  PlanBudgetUploadRow,
   UploadParseResult,
   parseUploadRecords, 
   normalizeHeader,
@@ -120,7 +118,7 @@ export default function PlanActualUpload() {
   
   const [alertModal, setAlertModal] = useState<{isOpen: boolean, message: string} | null>(null);
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, message: string, onConfirm: () => void} | null>(null);
-  const [validationResult, setValidationResult] = useState<ActualUploadValidationResult | null>(null);
+  const [validationResult, setValidationResult] = useState<UploadParseResult | null>(null);
 
   // Requirement 2: Multi-select state
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -211,7 +209,7 @@ export default function PlanActualUpload() {
                 period: `${idx + 1}월`,
                 accountCode: row.code,
                 accountName: row.name,
-                controlType: '',
+                controlType: 'D.부서',
                 usageCode: dept.code,
                 usageDept: dept.name,
                 amount: val,

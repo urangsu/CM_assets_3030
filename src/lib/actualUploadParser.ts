@@ -1,3 +1,5 @@
+import { getAllDepartments } from '../constants';
+
 export interface ActualData {
   id: number;
   year: string;
@@ -145,6 +147,19 @@ export interface UploadParseResult {
   errorRows: ValidationIssue[];
 }
 
+function resolveDepartmentName(deptCode: string, providedName?: string): { name: string; resolved: boolean } {
+  const provided = String(providedName ?? '').trim();
+  if (provided) return { name: provided, resolved: true };
+
+  const code = String(deptCode ?? '').trim();
+  if (!code) return { name: '', resolved: false };
+
+  const dept = getAllDepartments().find(d => String(d.code).trim() === code);
+  if (dept?.name) return { name: dept.name, resolved: true };
+
+  return { name: '', resolved: false };
+}
+
 export function parseWideMonthlyRows(params: {
   records: Record<string, unknown>[];
   year: string;
@@ -153,16 +168,27 @@ export function parseWideMonthlyRows(params: {
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
+  const warningRows: ValidationIssue[] = [];
   
   params.records.forEach((record, index) => {
     const rowNum = index + 2;
     const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '');
     const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '');
-    const usageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '');
+    const providedUsageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '').trim();
 
     if (!usageCode || !accountCode) {
       errorRows.push({ rowNum, message: '부서코드 또는 계정코드가 없습니다.', severity: 'error' });
       return;
+    }
+
+    const resolvedDept = resolveDepartmentName(usageCode, providedUsageDept);
+    if (!resolvedDept.resolved) {
+      warningRows.push({
+        rowNum,
+        field: 'usageDept',
+        message: `예산사용처코드 ${usageCode}에 해당하는 부서명을 찾지 못했습니다.`,
+        severity: 'warning'
+      });
     }
 
     for (let i = 1; i <= 12; i++) {
@@ -177,9 +203,9 @@ export function parseWideMonthlyRows(params: {
                 period: `${i}월`,
                 accountCode,
                 accountName: String(getRecordValue(record, HEADER_ALIASES.accountName) || ''),
-                controlType: '',
+                controlType: 'D.부서',
                 usageCode,
-                usageDept,
+                usageDept: resolvedDept.name,
                 amount: isActual ? 0 : numericVal,
                 additional: 0,
                 transferred: 0,
@@ -193,7 +219,7 @@ export function parseWideMonthlyRows(params: {
     }
   });
 
-  return { format: 'MONTHLY_WIDE', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows: [], errorRows };
+  return { format: 'MONTHLY_WIDE', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows, errorRows };
 }
 
 function getRecordValue(record: Record<string, unknown>, aliases: string[]) {
@@ -230,16 +256,28 @@ export function parseFlatRows(params: {
 }): UploadParseResult {
     const actualRows: ActualData[] = [];
     const errorRows: ValidationIssue[] = [];
+    const warningRows: ValidationIssue[] = [];
     params.records.forEach((record, index) => {
         const rowNum = index + 2;
         const period = String(getRecordValue(record, HEADER_ALIASES.period) || '').trim();
         const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '').trim();
         const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '').trim();
+        const providedUsageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '').trim();
         const completedVal = getRecordValue(record, HEADER_ALIASES.completed);
 
         if (!period || !accountCode || !usageCode ) {
           errorRows.push({ rowNum, message: '필수 항목 누락', severity: 'error' });
           return;
+        }
+
+        const resolvedDept = resolveDepartmentName(usageCode, providedUsageDept);
+        if (!resolvedDept.resolved) {
+          warningRows.push({
+            rowNum,
+            field: 'usageDept',
+            message: `예산사용처코드 ${usageCode}에 해당하는 부서명을 찾지 못했습니다.`,
+            severity: 'warning'
+          });
         }
 
         actualRows.push({
@@ -248,9 +286,9 @@ export function parseFlatRows(params: {
             period,
             accountCode,
             accountName: String(getRecordValue(record, HEADER_ALIASES.accountName) || ''),
-            controlType: String(getRecordValue(record, HEADER_ALIASES.controlType) || ''),
+            controlType: String(getRecordValue(record, HEADER_ALIASES.controlType) || '').trim() || 'D.부서',
             usageCode,
-            usageDept: String(getRecordValue(record, HEADER_ALIASES.usageDept) || ''),
+            usageDept: resolvedDept.name,
             amount: parseAmount(getRecordValue(record, HEADER_ALIASES.amount)),
             additional: parseAmount(getRecordValue(record, HEADER_ALIASES.additional)),
             transferred: parseAmount(getRecordValue(record, HEADER_ALIASES.transferred)),
@@ -261,7 +299,7 @@ export function parseFlatRows(params: {
             remarks: String(getRecordValue(record, HEADER_ALIASES.remarks) || '')
         });
     });
-    return { format: 'FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows: [], errorRows };
+    return { format: 'FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows, errorRows };
 }
 
 export function parseUploadRecords(params: {
