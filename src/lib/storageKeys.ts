@@ -31,7 +31,8 @@ export interface SubmissionStatus {
 }
 
 export function getSubmissionStatusMapKey(deptCode: string, year: string, planType: string) {
-  return `${deptCode}_${year}_${planType}`;
+  const safePlanType = normalizePlanType(planType);
+  return `${deptCode}_${year}_${safePlanType}`;
 }
 
 export function normalizeSubmissionStatus(raw: any): SubmissionStatus {
@@ -47,8 +48,15 @@ export function getSubmissionStatus(deptCode: string, year: string, planType: st
     const rawData = localStorage.getItem(STORAGE_KEYS.SUBMISSION_STATUS);
     if (rawData) {
       const allStatuses = JSON.parse(rawData);
-      const key = getSubmissionStatusMapKey(deptCode, year, planType);
-      const statusData = allStatuses[key];
+
+      for (const candidate of getPlanTypeAliases(planType)) {
+        const key = `${deptCode}_${year}_${candidate}`;
+        const statusData = allStatuses[key];
+        if (statusData) return normalizeSubmissionStatus(statusData);
+      }
+
+      const normalizedKey = getSubmissionStatusMapKey(deptCode, year, planType);
+      const statusData = allStatuses[normalizedKey];
       if (statusData) {
         return normalizeSubmissionStatus(statusData);
       }
@@ -80,7 +88,10 @@ export function setSubmissionStatus(
   const statuses = raw ? JSON.parse(raw) : {};
   const key = getSubmissionStatusMapKey(deptCode, year, planType);
 
-  statuses[key] = status;
+  statuses[key] = {
+    ...status,
+    status: status.status,
+  };
   localStorage.setItem(STORAGE_KEYS.SUBMISSION_STATUS, JSON.stringify(statuses));
 }
 

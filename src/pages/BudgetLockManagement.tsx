@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
-import { Search, Lock, Unlock, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { Search, Lock, Unlock, CheckCircle2, XCircle } from 'lucide-react';
 import { getAllDepartments, STORAGE_KEYS } from '../constants';
-import { getSubmissionStatusMapKey, normalizeSubmissionStatus, BudgetStatus, unlockBudget, appendBudgetLockAuditLog, setSubmissionStatus } from '../lib/storageKeys';
+import { getSubmissionStatusMapKey, normalizeSubmissionStatus, BudgetStatus, appendBudgetLockAuditLog, setSubmissionStatus } from '../lib/storageKeys';
 import { useNavigate } from 'react-router-dom';
+
+type LockActionType = 'UNLOCK' | 'REJECT' | 'APPROVE' | 'DRAFT';
 
 export default function BudgetLockManagement() {
   const navigate = useNavigate();
@@ -14,6 +16,29 @@ export default function BudgetLockManagement() {
   const [statusFilter, setStatusFilter] = useState('all');
 
   const [data, setData] = useState<any[]>([]);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const [actionModal, setActionModal] = useState<{
+    open: boolean;
+    action: LockActionType | null;
+    deptCode: string;
+    deptName: string;
+    currentStatus: BudgetStatus;
+    targetStatus: BudgetStatus;
+    title: string;
+    description: string;
+    reason: string;
+  }>({
+    open: false,
+    action: null,
+    deptCode: '',
+    deptName: '',
+    currentStatus: 'DRAFT',
+    targetStatus: 'DRAFT',
+    title: '',
+    description: '',
+    reason: '',
+  });
 
   useEffect(() => {
     const savedUser = localStorage.getItem('current_user');
@@ -26,7 +51,13 @@ export default function BudgetLockManagement() {
 
   useEffect(() => {
     loadData();
-  }, [year, planType]);
+  }, [year, planType, currentUser?.code]);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(''), 3000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   const loadData = () => {
     const rawData = localStorage.getItem(STORAGE_KEYS.SUBMISSION_STATUS);
@@ -49,57 +80,100 @@ export default function BudgetLockManagement() {
     setData(rows);
   };
 
-  const handleUnlock = (deptCode: string, deptName: string, currentStatus: string) => {
-    const reason = window.prompt(`${deptCode} ${deptName}의 예산 잠금을 해제하시겠습니까?\n사유를 입력해주세요.`);
-    if (reason !== null) {
-      if (!reason.trim()) {
-        window.alert('잠금 해제 사유를 입력해야 합니다.');
-        return;
-      }
-      
-      unlockBudget(deptCode, year, planType, currentUser?.name, reason);
-      
-      appendBudgetLockAuditLog({
-        action: 'UNLOCK',
-        deptCode,
-        deptName,
-        year,
-        planType,
-        beforeStatus: currentStatus,
-        afterStatus: 'DRAFT',
-        userCode: currentUser?.code,
-        userName: currentUser?.name,
-        reason
-      });
-      
-      loadData();
+  const getStatusLabel = (status: BudgetStatus) => {
+    switch (status) {
+      case 'DRAFT': return '작성중';
+      case 'SUBMITTED': return '상신완료';
+      case 'REVIEWING': return '검토중';
+      case 'APPROVED': return '승인완료';
+      case 'REJECTED': return '반려';
+      case 'LOCKED': return '잠금';
+      default: return status;
     }
   };
 
-  const handleAction = (deptCode: string, deptName: string, currentStatus: string, targetStatus: string, actionName: string) => {
-    if (window.confirm(`${deptCode} ${deptName}의 상태를 [${actionName}] 하시겠습니까?`)) {
-      setSubmissionStatus(deptCode, year, planType, {
-        status: targetStatus as BudgetStatus,
-        time: new Date().toLocaleString(),
-        user: currentUser?.name,
-        reason: `관리자 임의 변경 (${actionName})`,
-      });
-      
-      appendBudgetLockAuditLog({
-        action: actionName.includes('반려') ? 'REJECT' : (actionName.includes('승인') ? 'APPROVE' : 'UNLOCK'),
-        deptCode,
-        deptName,
-        year,
-        planType,
-        beforeStatus: currentStatus,
-        afterStatus: targetStatus,
-        userCode: currentUser?.code,
-        userName: currentUser?.name,
-        reason: `관리자 임의 변경 (${actionName})`
-      });
-      
-      loadData();
+  const openActionModal = (params: {
+    action: LockActionType;
+    deptCode: string;
+    deptName: string;
+    currentStatus: BudgetStatus;
+    targetStatus: BudgetStatus;
+  }) => {
+    const actionLabels = {
+      UNLOCK: '잠금 해제',
+      REJECT: '반려 처리',
+      APPROVE: '승인 처리',
+      DRAFT: '작성중 전환',
+    };
+
+    setActionModal({
+      open: true,
+      ...params,
+      title: `${params.deptName} ${actionLabels[params.action]}`,
+      description:
+        `${params.deptCode} ${params.deptName}의 ${year}년 ${planType} 상태를 ` +
+        `[${getStatusLabel(params.currentStatus)}]에서 [${getStatusLabel(params.targetStatus)}] 상태로 변경합니다.`,
+      reason: '',
+    });
+  };
+
+  const confirmStatusChange = () => {
+    if (!actionModal.open || !actionModal.action) return;
+
+    const requiresReason = ['UNLOCK', 'REJECT', 'DRAFT'].includes(actionModal.action);
+
+    if (requiresReason && !actionModal.reason.trim()) {
+      setToastMessage('처리 사유를 입력해주세요.');
+      return;
     }
+
+    const beforeStatus = actionModal.currentStatus;
+    const afterStatus = actionModal.targetStatus;
+    const finalReason = actionModal.reason.trim() || `관리자 ${actionModal.title}`;
+
+    setSubmissionStatus(actionModal.deptCode, year, planType, {
+      status: afterStatus,
+      time: new Date().toLocaleString(),
+      user: currentUser?.name || currentUser?.code,
+      deptName: actionModal.deptName,
+      reason: finalReason,
+    });
+
+    appendBudgetLockAuditLog({
+      action:
+        actionModal.action === 'UNLOCK' || actionModal.action === 'DRAFT'
+          ? 'UNLOCK'
+          : actionModal.action === 'REJECT'
+            ? 'REJECT'
+            : 'APPROVE',
+      deptCode: actionModal.deptCode,
+      deptName: actionModal.deptName,
+      year,
+      planType,
+      beforeStatus,
+      afterStatus,
+      userCode: currentUser?.code,
+      userName: currentUser?.name,
+      reason: actionModal.reason.trim(),
+    });
+
+    setData(prev => prev.map(row => {
+      if (row.deptCode !== actionModal.deptCode) return row;
+      return {
+        ...row,
+        status: afterStatus,
+        time: new Date().toLocaleString(),
+        user: currentUser?.name || currentUser?.code,
+        reason: finalReason,
+      };
+    }));
+
+    setActionModal(prev => ({ ...prev, open: false }));
+    setTimeout(loadData, 0);
+
+    setToastMessage(
+      `${actionModal.deptName} ${year}년 ${planType} 상태가 ${getStatusLabel(afterStatus)}(으)로 변경되었습니다.`
+    );
   };
 
   const filteredData = data.filter(row => {
@@ -142,13 +216,19 @@ export default function BudgetLockManagement() {
         description="부서별 예산 제출 상태를 조회하고, 잠금 해제 등 관리자 조치를 수행합니다." 
       />
 
+      {toastMessage && (
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-700 shadow-sm animate-in fade-in slide-in-from-top-2">
+          {toastMessage}
+        </div>
+      )}
+
       <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm flex flex-wrap gap-4 items-end">
         <div>
           <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">조회 연도</label>
           <select 
             value={year}
             onChange={(e) => setYear(e.target.value)}
-            className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 w-32"
+            className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 w-32 outline-none appearance-none"
           >
             <option value="2024">2024년</option>
             <option value="2025">2025년</option>
@@ -161,7 +241,7 @@ export default function BudgetLockManagement() {
           <select 
             value={planType}
             onChange={(e) => setPlanType(e.target.value)}
-            className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 w-32"
+            className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 w-32 outline-none appearance-none"
           >
             <option value="경영계획">경영계획</option>
             <option value="수정경영계획">수정경영계획</option>
@@ -175,7 +255,7 @@ export default function BudgetLockManagement() {
           <select 
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 w-32"
+            className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 w-32 outline-none appearance-none"
           >
             <option value="all">전체</option>
             <option value="DRAFT">작성중</option>
@@ -198,7 +278,7 @@ export default function BudgetLockManagement() {
               placeholder="부서코드, 부서명 입력"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-[42px] pl-10 pr-4 bg-[#f2f4f6] border-none rounded-xl text-sm outline-none"
+              className="w-full h-[42px] pl-10 pr-4 bg-[#f2f4f6] border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500 transition-all"
             />
           </div>
         </div>
@@ -223,7 +303,7 @@ export default function BudgetLockManagement() {
             <tbody className="divide-y divide-[#e5e8eb]">
               {filteredData.length > 0 ? (
                 filteredData.map(row => (
-                  <tr key={`${row.deptCode}_${row.year}`} className="hover:bg-[#f9fafb]">
+                  <tr key={`${row.deptCode}_${row.year}_${row.planType}`} className="hover:bg-[#f9fafb]">
                     <td className="px-4 py-3 text-xs font-mono text-[#8b95a1]">{row.deptCode}</td>
                     <td className="px-4 py-3 text-sm font-medium text-[#191f28]">{row.deptName}</td>
                     <td className="px-4 py-3 text-xs text-[#4e5968]">{row.year}</td>
@@ -236,7 +316,13 @@ export default function BudgetLockManagement() {
                       <div className="flex items-center justify-center gap-2">
                         {['APPROVED', 'LOCKED', 'SUBMITTED', 'REVIEWING'].includes(row.status) && (
                           <button 
-                            onClick={() => handleUnlock(row.deptCode, row.deptName, row.status)}
+                            onClick={() => openActionModal({
+                              action: 'UNLOCK',
+                              deptCode: row.deptCode,
+                              deptName: row.deptName,
+                              currentStatus: row.status,
+                              targetStatus: 'DRAFT',
+                            })}
                             className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
                             title="잠금 해제 (작성중으로 되돌리기)"
                           >
@@ -246,29 +332,32 @@ export default function BudgetLockManagement() {
                         {['SUBMITTED', 'REVIEWING'].includes(row.status) && (
                           <>
                             <button
-                               onClick={() => handleAction(row.deptCode, row.deptName, row.status, 'APPROVED', '승인 처리')}
+                               onClick={() => openActionModal({
+                                action: 'APPROVE',
+                                deptCode: row.deptCode,
+                                deptName: row.deptName,
+                                currentStatus: row.status,
+                                targetStatus: 'APPROVED',
+                               })}
                                className="p-1.5 bg-green-50 text-green-600 rounded hover:bg-green-100 transition-colors"
                                title="승인 처리"
                             >
                                <CheckCircle2 className="w-4 h-4" />
                             </button>
                             <button
-                               onClick={() => handleAction(row.deptCode, row.deptName, row.status, 'REJECTED', '반려 처리')}
+                               onClick={() => openActionModal({
+                                action: 'REJECT',
+                                deptCode: row.deptCode,
+                                deptName: row.deptName,
+                                currentStatus: row.status,
+                                targetStatus: 'REJECTED',
+                               })}
                                className="p-1.5 bg-orange-50 text-orange-600 rounded hover:bg-orange-100 transition-colors"
                                title="반려 처리"
                             >
                                <XCircle className="w-4 h-4" />
                             </button>
                           </>
-                        )}
-                        {['DRAFT', 'REJECTED'].includes(row.status) && (
-                          <button
-                             onClick={() => handleAction(row.deptCode, row.deptName, row.status, 'APPROVED', '강제 승인 처리')}
-                             className="text-xs px-2 py-1 bg-zinc-100 text-zinc-600 rounded hover:bg-zinc-200 transition-colors border border-zinc-200"
-                             title="강제로 승인 상태로 변경"
-                          >
-                             강제 승인
-                          </button>
                         )}
                       </div>
                     </td>
@@ -285,6 +374,57 @@ export default function BudgetLockManagement() {
           </table>
         </div>
       </div>
+
+      {actionModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-zinc-200">
+            <h3 className="text-lg font-bold text-gray-900">{actionModal.title}</h3>
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+              {actionModal.description}
+            </p>
+
+            <div className="mt-4 rounded-xl bg-gray-50 border border-gray-200 p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">부서</span>
+                <strong>{actionModal.deptCode} {actionModal.deptName}</strong>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-gray-500">현재 상태</span>
+                <strong>{getStatusLabel(actionModal.currentStatus)}</strong>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-gray-500">변경 상태</span>
+                <strong>{getStatusLabel(actionModal.targetStatus)}</strong>
+              </div>
+            </div>
+
+            <label className="block mt-4 text-xs font-bold text-gray-500">
+              처리 사유 {['UNLOCK', 'REJECT', 'DRAFT'].includes(actionModal.action || '') && <span className="text-red-500">*</span>}
+            </label>
+            <textarea
+              value={actionModal.reason}
+              onChange={(e) => setActionModal(prev => ({ ...prev, reason: e.target.value }))}
+              placeholder="예: 실적 업로드 반영을 위한 관리자 잠금 해제"
+              className="mt-1 w-full min-h-[96px] rounded-xl border border-gray-300 p-3 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setActionModal(prev => ({ ...prev, open: false }))}
+                className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmStatusChange}
+                className="px-4 py-2 rounded-xl bg-gray-800 text-white text-sm font-bold hover:bg-gray-900 transition-colors"
+              >
+                변경 적용
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
