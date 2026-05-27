@@ -240,6 +240,26 @@ function getSortValue(row: ActualData, key: SortKey): string | number {
   return String(row[key as keyof ActualData] ?? '').trim();
 }
 
+function parseBatchAmount(value: string): number {
+  const raw = String(value ?? '')
+    .trim()
+    .replace(/,/g, '')
+    .replace(/₩/g, '')
+    .replace(/원/g, '')
+    .replace(/\s/g, '');
+
+  if (raw === '' || raw === '-') return 0;
+
+  if (/^\(.+\)$/.test(raw)) {
+    const inner = raw.slice(1, -1);
+    const n = Number(inner);
+    return Number.isFinite(n) ? -n : 0;
+  }
+
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export default function PlanActualUpload() {
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('all');
@@ -312,7 +332,15 @@ export default function PlanActualUpload() {
     accountCode: { checked: false, value: '' },
     accountName: { checked: false, value: '' },
     usageCode: { checked: false, value: '' },
-    usageDept: { checked: false, value: '' }
+    usageDept: { checked: false, value: '' },
+    amount: { checked: false, value: '' },
+    additional: { checked: false, value: '' },
+    transferred: { checked: false, value: '' },
+    carriedOver: { checked: false, value: '' },
+    planned: { checked: false, value: '' },
+    completed: { checked: false, value: '' },
+    balance: { checked: false, value: '' },
+    remarks: { checked: false, value: '' },
   });
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({
@@ -827,6 +855,16 @@ export default function PlanActualUpload() {
     { key: 'remarks', type: 'text', widthKey: 'remarks' },
   ];
 
+  const MONEY_FIELDS: Array<keyof ActualData> = [
+    'amount',
+    'additional',
+    'transferred',
+    'carriedOver',
+    'planned',
+    'completed',
+    'balance',
+  ];
+
   const handleBatchUpdate = () => {
     const updatedData = data.map(row => {
       if (selectedRows.has(row.id)) {
@@ -837,6 +875,32 @@ export default function PlanActualUpload() {
         if (batchEditFields.accountName.checked) newRow.accountName = batchEditFields.accountName.value;
         if (batchEditFields.usageCode.checked) newRow.usageCode = batchEditFields.usageCode.value;
         if (batchEditFields.usageDept.checked) newRow.usageDept = batchEditFields.usageDept.value;
+        if (batchEditFields.remarks.checked) newRow.remarks = batchEditFields.remarks.value;
+
+        const moneyChanged =
+          batchEditFields.amount.checked ||
+          batchEditFields.additional.checked ||
+          batchEditFields.transferred.checked ||
+          batchEditFields.carriedOver.checked ||
+          batchEditFields.planned.checked ||
+          batchEditFields.completed.checked;
+
+        MONEY_FIELDS.forEach(field => {
+          if ((batchEditFields as any)[field]?.checked) {
+            (newRow as any)[field] = parseBatchAmount((batchEditFields as any)[field].value);
+          }
+        });
+
+        if (moneyChanged && !batchEditFields.balance.checked) {
+          newRow.balance =
+            (Number(newRow.amount) || 0) +
+            (Number(newRow.additional) || 0) +
+            (Number(newRow.transferred) || 0) +
+            (Number(newRow.carriedOver) || 0) -
+            (Number(newRow.planned) || 0) -
+            (Number(newRow.completed) || 0);
+        }
+
         return newRow;
       }
       return row;
@@ -844,7 +908,7 @@ export default function PlanActualUpload() {
     setData(updatedData);
 
     setIsBatchEditModalOpen(false);
-    setAlertModal({ isOpen: true, message: '선택한 데이터가 일괄 수정되었습니다. 실적 부서 변경은 예산 계획을 이동하지 않습니다. 예산 이관은 조직변경 관리에서 별도로 처리해야 합니다.' });
+    setAlertModal({ isOpen: true, message: '선택한 데이터가 일괄 수정되었습니다. 최종 저장을 눌러야 실제 데이터에 반영됩니다.' });
   };
 
   return (
@@ -868,8 +932,20 @@ export default function PlanActualUpload() {
         >
             <div className="p-2 space-y-4 max-h-[60vh] overflow-y-auto">
               <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-600 mb-4">
-                수정할 항목을 체크하고 값을 입력해주세요. 체크되지 않은 항목은 기존 데이터가 유지됩니다.
+                수정할 항목을 체크하고 값을 입력하세요. 체크하지 않은 항목은 기존 값이 유지됩니다. 금액 항목은 선택한 모든 행에 같은 값으로 일괄 적용됩니다.
               </div>
+
+              {viewPlanType === '실적' && (
+                <div className="bg-teal-50 border border-teal-100 rounded-xl p-3 text-xs text-teal-700">
+                  실적 데이터는 보통 `집행완료` 금액을 수정합니다. 예산잔액은 자동 재계산됩니다.
+                </div>
+              )}
+
+              {viewPlanType !== '실적' && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+                  계획 데이터는 보통 `예산금액`을 수정합니다. 최종 저장 시 부서별 예산DB에 반영됩니다.
+                </div>
+              )}
               
               {[
                 { id: 'year', label: '예산년도', placeholder: '2026' },
@@ -1001,6 +1077,86 @@ export default function PlanActualUpload() {
                   value={batchEditFields.usageCode.value}
                   disabled
                   className="flex-1 px-4 py-2 border border-[#d1d6db] rounded-xl text-sm bg-[#f9fafb] text-[#8b95a1]"
+                />
+              </div>
+
+              <div className="border-t border-[#e5e8eb] pt-4 mt-4">
+                <h4 className="text-sm font-bold text-[#191f28] mb-3">금액 항목</h4>
+
+                {[
+                  { id: 'amount', label: '예산금액', placeholder: '0' },
+                  { id: 'additional', label: '추가예산', placeholder: '0' },
+                  { id: 'transferred', label: '전용예산', placeholder: '0' },
+                  { id: 'carriedOver', label: '이월예산', placeholder: '0' },
+                  { id: 'planned', label: '집행예정', placeholder: '0' },
+                  { id: 'completed', label: '집행완료', placeholder: '0' },
+                  { id: 'balance', label: '예산잔액', placeholder: '자동 계산 또는 직접 입력' },
+                ].map((field) => (
+                  <div key={field.id} className="flex items-center gap-4 mb-2">
+                    <div className="flex items-center gap-2 w-32">
+                      <input
+                        type="checkbox"
+                        id={`check-${field.id}`}
+                        checked={(batchEditFields as any)[field.id].checked}
+                        onChange={(e) => setBatchEditFields(prev => ({
+                          ...prev,
+                          [field.id]: { ...(prev as any)[field.id], checked: e.target.checked }
+                        }))}
+                        className="w-4 h-4 rounded border-[#d1d6db] text-brand-500 focus:ring-brand-500"
+                      />
+                      <label htmlFor={`check-${field.id}`} className="text-sm font-medium text-[#4e5968] cursor-pointer">
+                        {field.label}
+                      </label>
+                    </div>
+
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder={field.placeholder}
+                      value={(batchEditFields as any)[field.id].value}
+                      onChange={(e) => setBatchEditFields(prev => ({
+                        ...prev,
+                        [field.id]: { ...(prev as any)[field.id], value: e.target.value }
+                      }))}
+                      disabled={!(batchEditFields as any)[field.id].checked}
+                      className="flex-1 px-4 py-2 border border-[#d1d6db] rounded-xl text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-[#f9fafb] disabled:text-[#8b95a1]"
+                    />
+                  </div>
+                ))}
+
+                <p className="text-xs text-[#8b95a1] mt-2">
+                  예산잔액을 직접 체크하지 않으면 금액 구성요소 변경 후 자동 재계산됩니다.<br/>
+                  (예산잔액 = 예산금액 + 추가예산 + 전용예산 + 이월예산 - 집행예정 - 집행완료)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-4 mt-4">
+                <div className="flex items-center gap-2 w-32">
+                  <input
+                    type="checkbox"
+                    id="check-remarks"
+                    checked={batchEditFields.remarks.checked}
+                    onChange={(e) => setBatchEditFields(prev => ({
+                      ...prev,
+                      remarks: { ...prev.remarks, checked: e.target.checked }
+                    }))}
+                    className="w-4 h-4 rounded border-[#d1d6db] text-brand-500 focus:ring-brand-500"
+                  />
+                  <label htmlFor="check-remarks" className="text-sm font-medium text-[#4e5968] cursor-pointer">
+                    비고
+                  </label>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="비고 입력"
+                  value={batchEditFields.remarks.value}
+                  onChange={(e) => setBatchEditFields(prev => ({
+                    ...prev,
+                    remarks: { ...prev.remarks, value: e.target.value }
+                  }))}
+                  disabled={!batchEditFields.remarks.checked}
+                  className="flex-1 px-4 py-2 border border-[#d1d6db] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-[#f9fafb] disabled:text-[#8b95a1]"
                 />
               </div>
             </div>
