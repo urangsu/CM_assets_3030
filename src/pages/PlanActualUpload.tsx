@@ -34,14 +34,40 @@ import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 
-// Resizable Header Component
-const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, width: number, minWidth: number, onResize: (newWidth: number) => void }) => {
+// Sort logic
+type SortDirection = 'asc' | 'desc';
+type SortKey = 'no' | keyof ActualData;
+
+// Sortable Resizable Header Component
+const SortableResizableHeader = ({
+  title,
+  width,
+  minWidth,
+  sortKey,
+  sortConfig,
+  onSort,
+  onResize,
+  align = 'left',
+}: {
+  title: string;
+  width: number;
+  minWidth: number;
+  sortKey: SortKey;
+  sortConfig: { key: SortKey; direction: SortDirection } | null;
+  onSort: (key: SortKey) => void;
+  onResize: (newWidth: number) => void;
+  align?: 'left' | 'center' | 'right';
+}) => {
   const [isResizing, setIsResizing] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
 
+  const active = sortConfig?.key === sortKey;
+  const direction = active ? sortConfig.direction : null;
+
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsResizing(true);
     startXRef.current = e.clientX;
     startWidthRef.current = width;
@@ -71,13 +97,28 @@ const ResizableHeader = ({ title, width, minWidth, onResize }: { title: string, 
   }, [isResizing, minWidth, onResize]);
 
   return (
-    <div className="relative flex items-center justify-center w-full h-full px-2 py-2">
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={[
+        'relative flex items-center w-full h-full px-2 py-2 select-none group focus:outline-none focus-visible:bg-zinc-100',
+        align === 'right' ? 'justify-end text-right' : align === 'center' ? 'justify-center text-center' : 'justify-start text-left',
+      ].join(' ')}
+      title={`${title} 정렬`}
+    >
       <span className="truncate">{title}</span>
-      <div 
+
+      <span className={`ml-1 text-[10px] ${active ? 'text-brand-600' : 'text-lithium-400 opacity-0 group-hover:opacity-100'}`}>
+        {active ? (direction === 'asc' ? '▲' : '▼') : '↕'}
+      </span>
+
+      <span
         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-brand-500 z-30"
         onMouseDown={handleMouseDown}
+        onClick={(e) => e.stopPropagation()}
       />
-    </div>
+    </button>
   );
 };
 
@@ -163,6 +204,42 @@ function reindexRows(rows: ActualData[]): ActualData[] {
   }));
 }
 
+const numericFields: Array<keyof ActualData> = [
+  'amount',
+  'additional',
+  'transferred',
+  'carriedOver',
+  'planned',
+  'completed',
+  'balance',
+];
+
+function parseSortableMonth(period: unknown): number {
+  const text = String(period ?? '').trim();
+
+  const match = text.match(/(\d{1,2})월?/);
+  if (match) return Number(match[1]);
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) return numeric;
+
+  return 999;
+}
+
+function getSortValue(row: ActualData, key: SortKey): string | number {
+  if (key === 'no') return row.id;
+
+  if (key === 'period') {
+    return parseSortableMonth(row.period);
+  }
+
+  if (numericFields.includes(key as keyof ActualData)) {
+    return Number(row[key as keyof ActualData]) || 0;
+  }
+
+  return String(row[key as keyof ActualData] ?? '').trim();
+}
+
 export default function PlanActualUpload() {
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('all');
@@ -207,6 +284,24 @@ export default function PlanActualUpload() {
 
   // Requirement 2: Multi-select state
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+
+  // Sort state
+  const [sortConfig, setSortConfig] = useState<{
+    key: SortKey;
+    direction: SortDirection;
+  } | null>(null);
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) {
+        return { key, direction: 'asc' };
+      }
+      if (prev.direction === 'asc') {
+        return { key, direction: 'desc' };
+      }
+      return null;
+    });
+  };
   
   // Requirement 3: Batch edit state
   const [isBatchEditModalOpen, setIsBatchEditModalOpen] = useState(false);
@@ -620,7 +715,29 @@ export default function PlanActualUpload() {
     return monthMatch && searchMatch;
   }) : [];
 
-  const visibleData = filteredData.slice(0, visibleCount);
+  const sortedData = React.useMemo(() => {
+    if (!sortConfig) return filteredData;
+
+    return [...filteredData].sort((a, b) => {
+      const aValue = getSortValue(a, sortConfig.key);
+      const bValue = getSortValue(b, sortConfig.key);
+
+      let result = 0;
+
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        result = aValue - bValue;
+      } else {
+        result = String(aValue).localeCompare(String(bValue), 'ko-KR', {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      }
+
+      return sortConfig.direction === 'asc' ? result : -result;
+    });
+  }, [filteredData, sortConfig]);
+
+  const visibleData = sortedData.slice(0, visibleCount);
 
   const formatNumber = (num: number) => {
     return num.toLocaleString();
@@ -668,7 +785,7 @@ export default function PlanActualUpload() {
       nextRow = Math.max(0, rowIndex - 1);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      nextRow = Math.min(filteredData.length - 1, rowIndex + 1);
+      nextRow = Math.min(visibleData.length - 1, rowIndex + 1);
     } else if (e.key === 'ArrowLeft') {
       const target = e.target as HTMLInputElement;
       if (target.selectionStart === 0) {
@@ -1257,7 +1374,7 @@ export default function PlanActualUpload() {
           <table className="w-full text-left border-collapse table-fixed" style={{ width: (Object.values(colWidths) as number[]).reduce((a, b) => a + b, 0) }}>
             <thead className="sticky top-0 z-10 bg-[#f9fafb] shadow-sm">
               <tr className="border-bottom border-[#e5e8eb]">
-                <th style={{ width: colWidths.checkbox }} className="px-2 py-3 text-center">
+                <th style={{ width: colWidths.checkbox }} className="px-2 py-3 text-center" title="현재 조회 결과 전체 선택">
                   <input 
                     type="checkbox"
                     checked={selectedRows.size === filteredData.length && filteredData.length > 0}
@@ -1271,51 +1388,53 @@ export default function PlanActualUpload() {
                     className="w-4 h-4 rounded border-[#d1d6db] text-brand-500 focus:ring-brand-500"
                   />
                 </th>
-                <th style={{ width: colWidths.no }} className="px-2 py-3 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-center">No.</th>
+                <th style={{ width: colWidths.no }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-center">
+                  <SortableResizableHeader title="No." width={colWidths.no} minWidth={50} sortKey="no" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('no', w)} align="center" />
+                </th>
                 <th style={{ width: colWidths.year }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="예산년도" width={colWidths.year} minWidth={60} onResize={(w) => handleResize('year', w)} />
+                  <SortableResizableHeader title="예산년도" width={colWidths.year} minWidth={60} sortKey="year" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('year', w)} />
                 </th>
                 <th style={{ width: colWidths.period }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="기간" width={colWidths.period} minWidth={60} onResize={(w) => handleResize('period', w)} />
+                  <SortableResizableHeader title="기간" width={colWidths.period} minWidth={60} sortKey="period" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('period', w)} />
                 </th>
                 <th style={{ width: colWidths.accountCode }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="예산계정코드" width={colWidths.accountCode} minWidth={80} onResize={(w) => handleResize('accountCode', w)} />
+                  <SortableResizableHeader title="예산계정코드" width={colWidths.accountCode} minWidth={80} sortKey="accountCode" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('accountCode', w)} />
                 </th>
                 <th style={{ width: colWidths.accountName }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="예산계정" width={colWidths.accountName} minWidth={80} onResize={(w) => handleResize('accountName', w)} />
+                  <SortableResizableHeader title="예산계정" width={colWidths.accountName} minWidth={80} sortKey="accountName" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('accountName', w)} />
                 </th>
                 <th style={{ width: colWidths.controlType }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="예산통제구분" width={colWidths.controlType} minWidth={80} onResize={(w) => handleResize('controlType', w)} />
+                  <SortableResizableHeader title="예산통제구분" width={colWidths.controlType} minWidth={80} sortKey="controlType" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('controlType', w)} />
                 </th>
                 <th style={{ width: colWidths.usageCode }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="예산사용처코드" width={colWidths.usageCode} minWidth={80} onResize={(w) => handleResize('usageCode', w)} />
+                  <SortableResizableHeader title="예산사용처코드" width={colWidths.usageCode} minWidth={80} sortKey="usageCode" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('usageCode', w)} />
                 </th>
                 <th style={{ width: colWidths.usageDept }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="예산사용처" width={colWidths.usageDept} minWidth={80} onResize={(w) => handleResize('usageDept', w)} />
+                  <SortableResizableHeader title="예산사용처" width={colWidths.usageDept} minWidth={80} sortKey="usageDept" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('usageDept', w)} />
                 </th>
                 <th style={{ width: colWidths.amount }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-right">
-                  <ResizableHeader title="예산금액" width={colWidths.amount} minWidth={80} onResize={(w) => handleResize('amount', w)} />
+                  <SortableResizableHeader title="예산금액" width={colWidths.amount} minWidth={80} sortKey="amount" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('amount', w)} align="right" />
                 </th>
                 <th style={{ width: colWidths.additional }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-right">
-                  <ResizableHeader title="추가예산" width={colWidths.additional} minWidth={80} onResize={(w) => handleResize('additional', w)} />
+                  <SortableResizableHeader title="추가예산" width={colWidths.additional} minWidth={80} sortKey="additional" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('additional', w)} align="right" />
                 </th>
                 <th style={{ width: colWidths.transferred }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-right">
-                  <ResizableHeader title="전용예산" width={colWidths.transferred} minWidth={80} onResize={(w) => handleResize('transferred', w)} />
+                  <SortableResizableHeader title="전용예산" width={colWidths.transferred} minWidth={80} sortKey="transferred" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('transferred', w)} align="right" />
                 </th>
                 <th style={{ width: colWidths.carriedOver }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-right">
-                  <ResizableHeader title="이월예산" width={colWidths.carriedOver} minWidth={80} onResize={(w) => handleResize('carriedOver', w)} />
+                  <SortableResizableHeader title="이월예산" width={colWidths.carriedOver} minWidth={80} sortKey="carriedOver" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('carriedOver', w)} align="right" />
                 </th>
                 <th style={{ width: colWidths.planned }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-right">
-                  <ResizableHeader title="집행예정" width={colWidths.planned} minWidth={80} onResize={(w) => handleResize('planned', w)} />
+                  <SortableResizableHeader title="집행예정" width={colWidths.planned} minWidth={80} sortKey="planned" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('planned', w)} align="right" />
                 </th>
                 <th style={{ width: colWidths.completed }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-right">
-                  <ResizableHeader title="집행완료" width={colWidths.completed} minWidth={80} onResize={(w) => handleResize('completed', w)} />
+                  <SortableResizableHeader title="집행완료" width={colWidths.completed} minWidth={80} sortKey="completed" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('completed', w)} align="right" />
                 </th>
                 <th style={{ width: colWidths.balance }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-right">
-                  <ResizableHeader title="예산잔액" width={colWidths.balance} minWidth={80} onResize={(w) => handleResize('balance', w)} />
+                  <SortableResizableHeader title="예산잔액" width={colWidths.balance} minWidth={80} sortKey="balance" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('balance', w)} align="right" />
                 </th>
                 <th style={{ width: colWidths.remarks }} className="px-0 py-0 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider">
-                  <ResizableHeader title="비고" width={colWidths.remarks} minWidth={100} onResize={(w) => handleResize('remarks', w)} />
+                  <SortableResizableHeader title="비고" width={colWidths.remarks} minWidth={100} sortKey="remarks" sortConfig={sortConfig} onSort={handleSort} onResize={(w) => handleResize('remarks', w)} />
                 </th>
                 <th style={{ width: colWidths.delete }} className="px-2 py-3 text-[11px] font-bold text-[#8b95a1] uppercase tracking-wider text-center">삭제</th>
               </tr>
@@ -1323,7 +1442,7 @@ export default function PlanActualUpload() {
             <tbody className="divide-y divide-[#e5e8eb]">
               {!isSearched ? (
                 <tr>
-                  <td colSpan={17} className="px-4 py-12 text-center text-[#8b95a1] text-sm">
+                  <td colSpan={18} className="px-4 py-12 text-center text-[#8b95a1] text-sm">
                     조회 버튼을 클릭하여 데이터를 확인해 주세요.
                   </td>
                 </tr>
@@ -1376,7 +1495,7 @@ export default function PlanActualUpload() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={17} className="px-4 py-12 text-center text-[#8b95a1] text-sm">
+                  <td colSpan={18} className="px-4 py-12 text-center text-[#8b95a1] text-sm">
                     데이터가 없습니다. 엑셀 업로드 또는 붙여넣기를 통해 데이터를 추가해 주세요.
                   </td>
                 </tr>
