@@ -1,7 +1,18 @@
 import { STORAGE_KEYS } from '../constants';
+import { normalizePlanType, getPlanTypeAliases } from './planTypes';
 
 export function getBudgetDataKey(deptCode: string, year: string, planType: string) {
-  return `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${planType}`;
+  const safePlanType = normalizePlanType(planType);
+  return `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${safePlanType}`;
+}
+
+export function readBudgetData(deptCode: string, year: string, planType: string): string | null {
+  for (const candidate of getPlanTypeAliases(planType)) {
+    const key = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${candidate}`;
+    const raw = localStorage.getItem(key);
+    if (raw) return raw;
+  }
+  return null;
 }
 
 export function getActualDataKey(year: string) {

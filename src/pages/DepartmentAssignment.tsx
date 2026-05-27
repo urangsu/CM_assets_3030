@@ -416,7 +416,7 @@ export default function DepartmentAssignment() {
       <div className="bg-white p-4 rounded-lg border border-zinc-200 shadow-sm flex flex-col gap-3">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-700">
           <Filter className="w-3.5 h-3.5 text-[#008f83]" />
-          다차원 필터링 설정
+          조회 조건
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
           <div>

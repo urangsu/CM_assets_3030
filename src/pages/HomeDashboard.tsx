@@ -453,7 +453,7 @@ export default function HomeDashboard() {
             <div className="flex items-center justify-between border-b border-[#eef2ec] pb-3 mb-4">
               <div>
                 <h3 className="text-base font-bold text-[#111111]">전사 분기별 예산 계획 vs 실제 집행 추이</h3>
-                <p className="text-xs text-[#8b95a1] mt-0.5">2026 회계연도 기준 월간 통제 궤적</p>
+                <p className="text-xs text-[#8b95a1] mt-0.5">2026 회계연도 기준 월간 현황</p>
               </div>
               <span className="text-[10px] font-mono bg-[#eef2ec] px-2 py-0.5 rounded text-[#647067] uppercase">Interactive</span>
             </div>

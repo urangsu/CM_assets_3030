@@ -156,7 +156,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
   {
     group: "대시보드",
     items: [
-      { id: 'dashboard', label: '운영 관제 대시보드', icon: 'grid', href: '/dashboard' }
+      { id: 'dashboard', label: '운영 대시보드', icon: 'grid', href: '/dashboard' }
     ]
   },
   {
@@ -433,28 +433,28 @@ export default function Sidebar() {
       </nav>
       <div className="sb-footer flex flex-col gap-1 px-4 py-3 border-t border-zinc-250">
         <div className="text-[9px] text-zinc-400 opacity-60 tracking-wider font-bold font-mono">
-          HYCM CONTROL CENTER v2.1
+          HYCM 운영 포털
         </div>
         <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-zinc-500">
           <button 
             onClick={() => setActiveModal('guide')}
             className="hover:text-[#008f83] transition-colors cursor-pointer"
           >
-            Guide
+            사용 가이드
           </button>
           <span className="text-zinc-300">·</span>
           <a 
             href="mailto:su@poscohycm.com"
             className="hover:text-[#008f83] transition-colors"
           >
-            Feedback
+            피드백
           </a>
           <span className="text-zinc-300">·</span>
           <button 
             onClick={() => setActiveModal('privacy')}
             className="hover:text-[#008f83] transition-colors cursor-pointer"
           >
-            Privacy
+            개인정보
           </button>
         </div>
       </div>

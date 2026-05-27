@@ -44,7 +44,7 @@ export default function App() {
         <Route path="/budget-status" element={<Layout><BudgetStatus /></Layout>} />
         <Route path="/execution-ledger" element={<Layout><ExecutionLedger /></Layout>} />
 
-        {/* 2. 다차원 점검 및 통제 */}
+        {/* 2. 점검 및 통제 */}
         <Route path="/underrun-check" element={<Layout><UnderrunCheck /></Layout>} />
         <Route path="/unbudgeted-check" element={<Layout><UnbudgetedCheck /></Layout>} />
 

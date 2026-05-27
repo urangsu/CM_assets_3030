@@ -288,7 +288,7 @@ export default function ExecutionLedger() {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-zinc-100 text-[#4e5968] px-2 py-0.5 rounded font-bold font-mono">Ledger Database</span>
-            {isDemoMode && <span className="text-[10px] bg-[#fdf0e2] text-[#F7A059] border border-[#fbd6b4] px-1.5 py-0.5 rounded font-bold">SAMPLE CONTEXT</span>}
+            {isDemoMode && <span className="text-[10px] bg-[#fdf0e2] text-[#F7A059] border border-[#fbd6b4] px-1.5 py-0.5 rounded font-bold">화면 확인용 샘플 데이터</span>}
           </div>
           <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
             공장 및 부서 수급 실제 집행 내역 장부
@@ -303,7 +303,7 @@ export default function ExecutionLedger() {
       <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs space-y-4">
         <div className="flex items-center gap-2 text-xs font-bold text-[#111111] border-b border-[#eef2ec] pb-2.5">
           <Sliders className="w-3.5 h-3.5 text-[#008f83]" />
-          <span>집행 원장 검색 관제실</span>
+          <span>조회 조건</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -379,7 +379,7 @@ export default function ExecutionLedger() {
 
           {/* Status tracking */}
           <div>
-            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">검증 결재 상태</label>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">결재 상태</label>
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}

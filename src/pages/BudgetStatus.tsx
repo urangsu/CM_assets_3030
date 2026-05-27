@@ -36,6 +36,7 @@ import {
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
 import { resolveAccountByCode } from '../lib/accountResolver';
+import { PLAN_TYPE_OPTIONS, BUDGET_PLAN_TYPE_OPTIONS, normalizePlanType } from '../lib/planTypes';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
@@ -450,10 +451,10 @@ export default function BudgetStatus() {
             <span className="text-xs bg-teal-50 text-[#008f83] px-2 py-0.5 rounded font-bold font-mono">
               {activeTab === 'overview' ? '2026 Audit Board' : '2026 Approval Portal'}
             </span>
-            {isDemoMode && <span className="text-[10px] bg-[#fdf0e2] text-[#F7A059] border border-[#fbd6b4] px-1.5 py-0.5 rounded-md font-bold">SAMPLE DATA ACTIVE</span>}
+            {isDemoMode && <span className="text-[10px] bg-[#fdf0e2] text-[#F7A059] border border-[#fbd6b4] px-1.5 py-0.5 rounded-md font-bold">화면 확인용 샘플 데이터</span>}
           </div>
           <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
-            {activeTab === 'overview' ? '부서별 예산 편성 대비 실적 현황 관제실' : '예산 조정 제출 및 심사 승인 관제판'}
+            {activeTab === 'overview' ? '부서별 예산 편성 대비 실적 현황' : '예산 조정 제출 및 심사 승인 현황'}
           </h2>
           <p className="text-xs text-[#647067] mt-1">
             {activeTab === 'overview' 
@@ -509,7 +510,7 @@ export default function BudgetStatus() {
       <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs space-y-4">
         <div className="flex items-center gap-2 text-xs font-bold text-[#333333] border-b border-[#eef2ec] pb-2.5">
           <Filter className="w-3.5 h-3.5 text-[#008f83]" />
-          <span>다차원 관제 필터링 엔진</span>
+          <span>조회 조건</span>
         </div>
         
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
@@ -561,14 +562,15 @@ export default function BudgetStatus() {
               onChange={(e) => setPlanType(e.target.value)}
               className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
             >
-              <option value="경영계획">경영계획</option>
-              <option value="수수계획">수수계획</option>
+              {BUDGET_PLAN_TYPE_OPTIONS.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
             </select>
           </div>
 
           {/* Dept */}
           <div>
-            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">조회 대상 부서</label>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">부서</label>
             <select 
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
@@ -583,7 +585,7 @@ export default function BudgetStatus() {
 
           {/* Category */}
           <div>
-            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">계정 분류</label>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">비용 성격</label>
             <select 
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
@@ -598,13 +600,13 @@ export default function BudgetStatus() {
 
           {/* Anomaly Filter */}
           <div>
-            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans text-rose-600">집행 주의 상태</label>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans text-rose-600">집행 상태</label>
             <select 
               value={selectedAnomaly}
               onChange={(e) => setSelectedAnomaly(e.target.value)}
               className="w-full text-xs p-2.5 bg-white border border-rose-200 rounded-xl focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
             >
-              <option value="all">전체 집행 궤적</option>
+              <option value="all">전체 집행 상태</option>
               <option value="OVERRUN">초과 경보 (OVERRUN)</option>
               <option value="UNDERRUN">낮은 집행률 (UNDERRUN)</option>
               <option value="UNBUDGETED">무예산 집행 (UNBUDGETED)</option>
@@ -683,7 +685,7 @@ export default function BudgetStatus() {
           {/* Month Cumulative Sparklines */}
           <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs lg:col-span-2">
             <h3 className="text-sm font-bold text-[#111111] mb-4 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-[#008f83]" /> 월간 누적 집행 동기화 궤적
+              <TrendingUp className="w-4 h-4 text-[#008f83]" /> 월간 누적 집행 현황
             </h3>
             <div className="h-[230px] w-full font-mono text-xs">
               <ResponsiveContainer width="100%" height="100%">

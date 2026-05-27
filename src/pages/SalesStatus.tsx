@@ -128,7 +128,7 @@ export default function SalesStatus() {
             <span className="text-xs bg-teal-50 text-[#008f83] px-2.5 py-0.5 rounded font-bold font-mono">CC Operating Sales</span>
           </div>
           <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
-            메탈 원자재 및 배터리 양극재 제품 판매 관제실
+            메탈 원자재 및 배터리 양극재 제품 판매 대시보드
           </h2>
           <p className="text-xs text-zinc-500 mt-1">
             하이니켈 전구체, 황산니켈, LFP 양극재를 비롯한 리튬 2차전지 주력 제품 계약 체결 및 실제 인도 판매 매출 현황을 분석합니다.

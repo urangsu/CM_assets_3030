@@ -1,4 +1,4 @@
-import { getBudgetDataKey, getActualDataKey } from './storageKeys';
+import { getBudgetDataKey, getActualDataKey, readBudgetData } from './storageKeys';
 import { SALARY_CATEGORIES, DEPARTMENTS } from '../constants';
 import { INITIAL_CATEGORIES } from '../pages/AccountSelection';
 
@@ -79,8 +79,7 @@ export const getBudgetRowsByDeptYearPlan = (deptCodes: string[], year: string, p
   // Load rows from all departments to support cross-department assignments
   let allRawRows: any[] = [];
   uniqueDeptCodes.forEach(dc => {
-    const key = getBudgetDataKey(dc, year, planType);
-    const savedData = localStorage.getItem(key);
+    const savedData = readBudgetData(dc, year, planType);
     if (savedData) {
       try {
         const rows = JSON.parse(savedData);

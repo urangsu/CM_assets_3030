@@ -7,6 +7,7 @@ import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetSt
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { inferBudgetTypeByAccountCode, inferManagementCategoryByAccountCode } from '../lib/accountMaster';
+import { PLAN_TYPE_OPTIONS, BUDGET_PLAN_TYPE_OPTIONS, normalizePlanType } from '../lib/planTypes';
 
 import { usePermission } from '../lib/permissions';
 
@@ -1342,11 +1343,9 @@ export default function BudgetCreation() {
                 onChange={(e) => setPlanType(e.target.value)}
                 className="bg-lithium-100 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 block w-40 p-2.5 font-medium appearance-none"
               >
-                <option value="경영계획">경영계획</option>
-                <option value="수정경영계획">수정경영계획</option>
-                <option value="1차 RP">1차 RP</option>
-                <option value="2차 RP">2차 RP</option>
-                <option value="실적">실적</option>
+                {PLAN_TYPE_OPTIONS.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
               </select>
               {selectedDeptCode === 'all' && (
                 <button
@@ -2007,10 +2006,9 @@ export default function BudgetCreation() {
                       onChange={(e) => setImportModal({ ...importModal, sourcePlanType: e.target.value })}
                       className="w-full bg-[#f2f4f6] border-none text-[#191f28] text-sm rounded-xl focus:ring-2 focus:ring-brand-500 p-2.5 font-medium appearance-none"
                     >
-                      <option value="경영계획">경영계획</option>
-                      <option value="수정경영계획">수정경영계획</option>
-                      <option value="1차RP">1차RP</option>
-                      <option value="2차RP">2차RP</option>
+                      {BUDGET_PLAN_TYPE_OPTIONS.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
                     </select>
                   </div>
                 )}

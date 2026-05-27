@@ -66,7 +66,7 @@ export default function TopHeader({ dataState, isDemo = true }: TopHeaderProps) 
       {isDemo && (
         <span className="demo-chip">
           <span className="demo-dot" />
-          SAMPLE DATA
+          화면 확인용 샘플 데이터
         </span>
       )}
       <div className="flex-1" />

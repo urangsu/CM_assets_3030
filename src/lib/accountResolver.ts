@@ -1,6 +1,6 @@
 import { INITIAL_CATEGORIES } from '../pages/AccountSelection';
 import { STORAGE_KEYS, getAllDepartments } from '../constants';
-import { getActualDataKey, getBudgetDataKey } from './storageKeys';
+import { getActualDataKey, getBudgetDataKey, readBudgetData } from './storageKeys';
 
 export type AccountResolveSource =
   | 'initial'
@@ -81,7 +81,7 @@ export function buildBudgetAccountMap(year?: string): Map<string, string> {
     getAllDepartments().forEach(dept => {
       years.forEach(y => {
         planTypes.forEach(planType => {
-          const raw = localStorage.getItem(getBudgetDataKey(dept.code, y, planType));
+          const raw = readBudgetData(dept.code, y, planType);
           const rows = raw ? JSON.parse(raw) : [];
 
           rows.forEach((row: any) => {

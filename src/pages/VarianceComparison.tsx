@@ -7,7 +7,8 @@ import pptxgen from 'pptxgenjs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey } from '../lib/storageKeys';
+import { getBudgetDataKey, readBudgetData } from '../lib/storageKeys';
+import { normalizePlanType } from '../lib/planTypes';
 import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { resolveAccountByCode } from '../lib/accountResolver';
@@ -30,12 +31,12 @@ export default function VarianceComparison() {
   };
 
   const [baseYear, setBaseYear] = useState(() => localStorage.getItem('variance_baseYear') || '2026');
-  const [basePlanType, setBasePlanType] = useState(() => localStorage.getItem('variance_basePlanType') || '경영계획');
+  const [basePlanType, setBasePlanType] = useState(() => normalizePlanType(localStorage.getItem('variance_basePlanType') || '경영계획'));
   const [baseMonthMode, setBaseMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
   const [baseSelectedMonth, setBaseSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   
   const [targetYear, setTargetYear] = useState(() => localStorage.getItem('variance_targetYear') || '2026');
-  const [targetPlanType, setTargetPlanType] = useState(() => localStorage.getItem('variance_targetPlanType') || '실적');
+  const [targetPlanType, setTargetPlanType] = useState(() => normalizePlanType(localStorage.getItem('variance_targetPlanType') || '실적'));
   const [targetMonthMode, setTargetMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
   const [targetSelectedMonth, setTargetSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   
@@ -505,7 +506,7 @@ export default function VarianceComparison() {
         const internalAggregated = new Map<string, { deptCode: string, accountCode: string, accountName: string, amount: number }>();
 
         allDepts.forEach(dept => {
-          const savedDataStr = localStorage.getItem(getBudgetDataKey(dept.code, year, planType));
+          const savedDataStr = readBudgetData(dept.code, year, planType);
           // Keep oldKey as fallback for migration support
           const oldKey = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}`;
           const dataStr = savedDataStr || (year === '2026' && planType === '경영계획' ? localStorage.getItem(oldKey) : null);
@@ -722,7 +723,7 @@ export default function VarianceComparison() {
       <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-xs bg-nickel-50 text-nickel-600 px-2 py-0.5 rounded font-bold font-mono">
-            {tab === 'default' && 'Plan vs Actual'}
+            {tab === 'default' && '계획 대비 실적'}
             {tab === 'time' && '시점 비교'}
             {tab === 'dept' && '부서별 비교'}
             {tab === 'account' && '계정별 비교'}
