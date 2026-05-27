@@ -210,6 +210,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
       { id: 'settings', label: '사용자 권한', icon: 'user', href: '/user-management' },
       { id: 'account-master-direct', label: '계정 코드 관리', icon: 'tag', href: '/account-management' },
       { id: 'department-master', label: '부서 코드 관리', icon: 'org', href: '/department-management' },
+      { id: 'budget-lock-dept', label: '예산 잠금 관리', icon: 'lock', href: '/budget-lock-management' },
       { id: 'system-settings', label: '시스템 설정', icon: 'settings', href: '/user-management?tab=settings' }
     ]
   }

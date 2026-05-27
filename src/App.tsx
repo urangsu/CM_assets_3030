@@ -9,6 +9,7 @@ import VarianceComparison from './pages/VarianceComparison';
 import BusinessActivityBudget from './pages/BusinessActivityBudget';
 import BudgetOverrunCheck from './pages/BudgetOverrunCheck';
 import PlanActualUpload from './pages/PlanActualUpload';
+import BudgetLockManagement from './pages/BudgetLockManagement';
 
 // Newly added high-fidelity pages
 import BudgetStatus from './pages/BudgetStatus';
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/account-management" element={<Layout><AccountManagement /></Layout>} />
         <Route path="/department-management" element={<Layout><DepartmentManagement /></Layout>} />
         <Route path="/department-assignment" element={<Layout><DepartmentAssignment /></Layout>} />
+        <Route path="/budget-lock-management" element={<Layout><BudgetLockManagement /></Layout>} />
 
         {/* 5. 비즈니스 운영 모듈 */}
         <Route path="/sales-status" element={<Layout><SalesStatus /></Layout>} />

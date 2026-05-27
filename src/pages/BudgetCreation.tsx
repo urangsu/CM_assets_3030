@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X, ArrowRightLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked, getSubmissionStatus } from '../lib/storageKeys';
+import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked, getSubmissionStatus, unlockBudget, appendBudgetLockAuditLog } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { inferBudgetTypeByAccountCode, inferManagementCategoryByAccountCode } from '../lib/accountMaster';
@@ -1441,9 +1441,41 @@ export default function BudgetCreation() {
                 상신 취소
               </button>
             ) : submissionStatus.status === 'APPROVED' ? (
-              <div className="flex items-center justify-center w-[120px] py-1.5 bg-green-50 text-green-600 border border-green-200 rounded-xl text-xs font-bold shadow-sm">
-                <Check className="w-3.5 h-3.5 mr-1.5" />
-                승인 완료
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center w-[120px] py-1.5 bg-green-50 text-green-600 border border-green-200 rounded-xl text-xs font-bold shadow-sm">
+                  <Check className="w-3.5 h-3.5 mr-1.5" />
+                  승인 완료
+                </div>
+                {(currentUser?.code === '99999' || currentUser?.code === '32100') && (
+                  <button
+                    onClick={() => {
+                      const reason = window.prompt("잠금 해제 사유를 입력하세요.");
+                      if (reason !== null) {
+                        if (!reason.trim()) {
+                          window.alert('사유를 입력해야 합니다.');
+                          return;
+                        }
+                        unlockBudget(selectedDeptCode, year, planType, currentUser.name, reason);
+                        appendBudgetLockAuditLog({
+                          action: 'UNLOCK',
+                          deptCode: selectedDeptCode,
+                          deptName: viewableDepts.find(d => d.code === selectedDeptCode)?.name || selectedDeptCode,
+                          year: year,
+                          planType: planType,
+                          beforeStatus: 'APPROVED',
+                          afterStatus: 'DRAFT',
+                          userCode: currentUser.code,
+                          userName: currentUser.name,
+                          reason: reason,
+                        });
+                        window.location.reload();
+                      }
+                    }}
+                    className="flex items-center justify-center px-3 py-1.5 bg-zinc-100 text-zinc-600 border border-zinc-200 rounded-xl text-xs font-bold hover:bg-zinc-200 transition-all shadow-sm"
+                  >
+                    잠금 해제
+                  </button>
+                )}
               </div>
             ) : submissionStatus.status === 'REJECTED' ? (
               <div className="flex items-center gap-2">

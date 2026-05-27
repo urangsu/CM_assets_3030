@@ -263,6 +263,7 @@ function parseBatchAmount(value: string): number {
 export default function PlanActualUpload() {
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('all');
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState('all');
   const [viewPlanType, setViewPlanType] = useState('실적');
   const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
   const [pasteText, setPasteText] = useState('');
@@ -508,20 +509,6 @@ export default function PlanActualUpload() {
   };
 
   const processImportedData = (rows: any[][]) => {
-    // Check locks early
-    if (uploadTarget !== '실적') {
-       const locked = [];
-       const allDepts = currentUser?.code === '99999' ? getAllDepartments() : viewableDepts;
-       for (const dept of allDepts) {
-         if (isBudgetLocked(dept.code, year, uploadTarget)) {
-           locked.push({ deptCode: dept.code, deptName: dept.name, status: '잠금/확정' });
-         }
-       }
-       setLockedDeptsOnUpload(locked);
-    } else {
-       setLockedDeptsOnUpload([]);
-    }
-
     const compactRows = rows.filter(row => row.some(cell => String(cell ?? '').trim() !== ''));
 
     let finalHeaders: any[] = [];
@@ -569,6 +556,21 @@ export default function PlanActualUpload() {
         planType: uploadTarget
     });
 
+    // Check locks ONLY for affected departments
+    if (uploadTarget !== '실적') {
+      const locked = [];
+      const affectedCodes = Array.from(new Set(result.actualRows.map(r => r.usageCode).filter(Boolean)));
+      for (const code of affectedCodes) {
+        if (isBudgetLocked(code, year, uploadTarget)) {
+          const dept = getAllDepartments().find(d => d.code === code);
+          locked.push({ deptCode: code, deptName: dept?.name || code, status: '잠금/확정' });
+        }
+      }
+      setLockedDeptsOnUpload(locked);
+    } else {
+      setLockedDeptsOnUpload([]);
+    }
+
     if (result.format === 'UNKNOWN') {
         const rawHeaders = finalHeaders.map(String).join(', ');
         setAlertModal({ 
@@ -614,10 +616,12 @@ export default function PlanActualUpload() {
       const dedupedData = dedupeRowsByKey(data, uploadTarget);
       localStorage.setItem(getActualDataKey(year), JSON.stringify(dedupedData));
       setData(dedupedData);
+      
+      const affectedCodes = new Set(dedupedData.map(r => r.usageCode).filter(Boolean));
       setSuccessBanner({
          isOpen: true,
          isFinal: true,
-         message: `실적 데이터 저장이 완료되었습니다.`,
+         message: `실적 데이터가 저장되었습니다.\n저장 위치: 실적DB ${year}\n대상 부서: ${affectedCodes.size}개`,
          location: `실적DB ${year}`
       });
     } else {
@@ -635,7 +639,10 @@ export default function PlanActualUpload() {
 
       const lockedDepts = deptsToUpdate.filter(dept => isBudgetLocked(dept.code, year, uploadTarget) && groupedByDept.has(dept.code));
       if (lockedDepts.length > 0) {
-        setAlertModal({ isOpen: true, message: `제출 또는 승인 완료된 예산은 덮어쓸 수 없습니다 (예: ${lockedDepts[0].name}). 잠금 부서 데이터는 제외하고 저장됩니다.` });
+        setAlertModal({ 
+          isOpen: true, 
+          message: `일부 부서가 예산 잠금 상태입니다.\n잠금 부서는 저장에서 제외됩니다.\n상세 목록을 확인하거나 관리자 권한으로 잠금을 해제해주세요.\n\n[제외된 잠금 부서]\n${lockedDepts.map(d => `- ${d.code} ${d.name}`).join('\n')}` 
+        });
       }
 
       let savedDeptNames = [];
@@ -678,12 +685,21 @@ export default function PlanActualUpload() {
         localStorage.setItem(key, JSON.stringify(budgetRows));
       });
       
-      setSuccessBanner({
-         isOpen: true,
-         isFinal: true,
-         message: `${uploadTarget} 데이터 저장이 완료되었습니다.`,
-         location: `예산DB ${year} (${savedDeptNames.length}개 부서)`
-      });
+      if (lockedDepts.length > 0) {
+        setSuccessBanner({
+           isOpen: true,
+           isFinal: true,
+           message: `일부 부서는 잠금 상태라 제외되었습니다.\n저장 완료: ${savedDeptNames.length}개 부서\n제외: ${lockedDepts.length}개 부서`,
+           location: `예산DB ${year} (${uploadTarget})`
+        });
+      } else {
+        setSuccessBanner({
+           isOpen: true,
+           isFinal: true,
+           message: `경영계획 예산DB에 저장되었습니다.\n대상 부서: ${savedDeptNames.length}개`,
+           location: `예산DB ${year} (${uploadTarget})`
+        });
+      }
     }
   };
 
@@ -737,10 +753,18 @@ export default function PlanActualUpload() {
 
     const searchMatch = item.accountCode.includes(searchTerm) || 
       item.accountName.includes(searchTerm) ||
+      item.usageCode.includes(searchTerm) ||
       item.usageDept.includes(searchTerm) ||
       item.controlType.includes(searchTerm);
 
-    return monthMatch && searchMatch;
+    let deptMatch = true;
+    if (selectedDeptFilter === 'viewable') {
+      deptMatch = viewableDeptCodes.includes(item.usageCode);
+    } else if (selectedDeptFilter !== 'all') {
+      deptMatch = item.usageCode === selectedDeptFilter;
+    }
+
+    return monthMatch && searchMatch && deptMatch;
   }) : [];
 
   const sortedData = React.useMemo(() => {
@@ -1237,7 +1261,20 @@ export default function PlanActualUpload() {
 
               {lockedDeptsOnUpload.length > 0 && (
                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
-                  <h4 className="font-bold text-orange-800 mb-2 flex items-center"><AlertTriangle className="w-4 h-4 mr-1" />잠금 부서 경고 (저장 제외됨)</h4>
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-orange-800 flex items-center"><AlertTriangle className="w-4 h-4 mr-1" />잠금 부서 경고 (저장 제외됨)</h4>
+                    {(currentUser?.code === '99999' || currentUser?.code === '32100') && (
+                      <button 
+                        onClick={() => {
+                          setValidationResult(null); // 모달 닫기
+                          setTimeout(() => window.location.href = '/budget-lock-management', 100);
+                        }}
+                        className="text-xs bg-orange-100 text-orange-800 px-3 py-1 rounded-full font-bold hover:bg-orange-200 transition-colors"
+                      >
+                         잠금 관리 열기
+                      </button>
+                    )}
+                  </div>
                   <p className="text-xs text-orange-700 mb-2">총 {lockedDeptsOnUpload.length}개 부서의 데이터가 잠금 상태이므로 덮어쓰기에서 제외됩니다.</p>
                   <ul className="list-disc pl-5 text-orange-700 space-y-1 text-xs max-h-24 overflow-y-auto">
                     {lockedDeptsOnUpload.map((d, i) => (
@@ -1354,6 +1391,23 @@ export default function PlanActualUpload() {
             </select>
           </div>
 
+          <div>
+            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1" title="조회 권한이 있는 부서만 표시됩니다.">부서</label>
+            <select 
+              value={selectedDeptFilter}
+              onChange={(e) => { setSelectedDeptFilter(e.target.value); setIsSearched(false); }}
+              className="px-4 py-2 h-[42px] bg-[#f2f4f6] border-none rounded-xl text-sm font-medium text-[#191f28] focus:ring-2 focus:ring-brand-500 transition-all outline-none appearance-none w-48"
+            >
+              <option value="all">전체 부서</option>
+              <option value="viewable">조회 가능 부서</option>
+              {viewableDepts.map(dept => (
+                <option key={dept.code} value={dept.code}>
+                  {dept.code} {dept.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={() => { setIsSearched(true); setVisibleCount(100); }}
             className="px-4 py-2 h-[42px] bg-brand-500 text-white rounded-xl text-sm font-semibold hover:bg-brand-600 transition-all whitespace-nowrap"
@@ -1395,21 +1449,28 @@ export default function PlanActualUpload() {
 
         <div className="flex flex-col gap-2 items-end shrink-0">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-brand-600 uppercase">업로드 대상:</label>
+            <label className="text-xs font-bold text-brand-600 uppercase">저장 위치:</label>
             <select 
               value={uploadTarget}
               onChange={(e) => setUploadTarget(e.target.value as any)}
               className="px-4 py-2 h-[42px] bg-brand-50 border border-brand-200 rounded-xl text-sm font-bold text-brand-700 focus:ring-2 focus:ring-brand-500 transition-all outline-none appearance-none"
             >
               <option value="">▼ 선택해주세요</option>
-              <option value="실적">실적</option>
-              <option value="경영계획">경영계획</option>
-              <option value="수정경영계획">수정경영계획</option>
-              <option value="1차 RP">1차 RP</option>
-              <option value="2차 RP">2차 RP</option>
+              <option value="실적">실적DB</option>
+              <option value="경영계획">경영계획 예산DB</option>
+              <option value="수정경영계획">수정경영계획 예산DB</option>
+              <option value="1차 RP">1차 RP 예산DB</option>
+              <option value="2차 RP">2차 RP 예산DB</option>
             </select>
           </div>
-          <div className="flex gap-2">
+          {uploadTarget && (
+            <p className="text-[11px] text-[#8b95a1] max-w-[280px] text-right">
+              {uploadTarget === '실적' 
+                ? '실적DB 저장은 예산 잠금 상태와 무관하게 저장됩니다.' 
+                : '제출/승인/잠금 상태의 부서는 덮어쓸 수 없습니다.'}
+            </p>
+          )}
+          <div className="flex gap-2 mt-1">
             <button 
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center px-4 py-2 h-[42px] bg-white border border-[#e5e8eb] text-[#4e5968] rounded-xl text-sm font-semibold hover:bg-[#f2f4f6] transition-colors whitespace-nowrap"
