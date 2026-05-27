@@ -10,12 +10,19 @@ export interface FilterBarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export function FilterBar({ children, actions, className, ...props }: FilterBarProps) {
   return (
-    <AppCard className={cn("p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6", className)} {...props}>
-      <div className="flex flex-wrap gap-4 w-full md:w-auto flex-1">
+    <AppCard
+      className={cn(
+        "p-4 mb-5 flex flex-col gap-4",
+        className
+      )}
+      {...props}
+    >
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 w-full">
         {children}
       </div>
+
       {actions && (
-        <div className="flex flex-wrap gap-2 w-full md:w-auto shrink-0">
+        <div className="flex justify-end gap-2 w-full border-t border-lithium-100 pt-3">
           {actions}
         </div>
       )}
@@ -25,8 +32,10 @@ export function FilterBar({ children, actions, className, ...props }: FilterBarP
 
 export function FilterItem({ label, children }: { label: string, children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5 min-w-[120px]">
-      <label className="text-xs font-bold text-lithium-500 uppercase tracking-wide">{label}</label>
+    <div className="flex flex-col gap-1 min-w-0">
+      <label className="text-[11px] font-bold text-lithium-500 tracking-tight truncate">
+        {label}
+      </label>
       {children}
     </div>
   );

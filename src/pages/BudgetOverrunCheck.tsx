@@ -6,8 +6,8 @@ import { getBudgetDataKey } from '../lib/storageKeys';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
 import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import { getBudgetRowsByDeptYearPlan, getActualRowsByYear, isSalaryAccountCode, parsePeriodMonth, aggregateByDeptAccount } from '../lib/budgetAggregation';
+import { BUDGET_PLAN_TYPE_OPTIONS, normalizePlanType } from '../lib/planTypes';
 import { canViewSalaryAccounts, getViewableDeptCodes } from '../lib/permissions';
-import { isInvestmentAccount } from '../lib/accountMaster';
 
 // Components
 import { PageHeader } from '../components/ui/PageHeader';
@@ -122,9 +122,18 @@ export default function BudgetOverrunCheck() {
     });
 
     overrunData.sort((a, b) => {
-      const statusOrder: Record<string, number> = { '초과': 1, '무예산 집행': 2, '정상': 3 };
-      if (statusOrder[a.status] !== statusOrder[b.status]) {
-        return statusOrder[a.status] - statusOrder[b.status];
+      const statusOrder: Record<string, number> = {
+        '초과': 1,
+        '무예산 집행': 2,
+        '미달': 3,
+        '정상': 4,
+      };
+      
+      const aOrder = statusOrder[a.status] ?? 99;
+      const bOrder = statusOrder[b.status] ?? 99;
+      
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder;
       }
       if (a.overrunAmount !== b.overrunAmount) {
         return b.overrunAmount - a.overrunAmount;
@@ -201,8 +210,8 @@ export default function BudgetOverrunCheck() {
   return (
     <div className="p-6">
       <PageHeader 
-        title={<><AlertTriangle className="inline-block w-6 h-6 text-[#F7A059] mr-2 -mt-1"/>예산 초과 통제 보드</>}
-        description="조직별/계정별 실제 집행 대비 예산 소진 현황을 검토하고 비정상적 초과 및 불용 내역을 검증 통제합니다."
+        title={<><AlertTriangle className="inline-block w-6 h-6 text-[#F7A059] mr-2 -mt-1"/>예산 한도 점검</>}
+        description="선택한 기간의 예산·실적을 비교하여 초과, 미달, 무예산 집행 항목을 확인합니다."
       />
       
       <FilterBar 
@@ -226,11 +235,10 @@ export default function BudgetOverrunCheck() {
           </AppSelect>
         </FilterItem>
         <FilterItem label="계획구분">
-          <AppSelect value={planType} onChange={(e) => setPlanType(e.target.value)}>
-            <option value="경영계획">경영계획</option>
-            <option value="수정경영계획">수정경영계획</option>
-            <option value="1차RP">1차RP</option>
-            <option value="2차RP">2차RP</option>
+          <AppSelect value={planType} onChange={(e) => setPlanType(normalizePlanType(e.target.value))}>
+            {BUDGET_PLAN_TYPE_OPTIONS.map(type => (
+              <option key={type} value={type}>{type}</option>
+            ))}
           </AppSelect>
         </FilterItem>
         <FilterItem label="조회 기준">
@@ -254,27 +262,27 @@ export default function BudgetOverrunCheck() {
             ))}
           </AppSelect>
         </FilterItem>
-        <FilterItem label="계정구분">
+        <FilterItem label="비용 성격">
           <AppSelect value={accountCategory} onChange={(e) => setAccountCategory(e.target.value)}>
-            <option value="전체">전체 계정군</option>
+            <option value="전체">전체</option>
             {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </AppSelect>
         </FilterItem>
-        <FilterItem label="상태 보기">
+        <FilterItem label="집행 상태">
           <AppSelect value={overrunFilter} onChange={(e) => setOverrunFilter(e.target.value)}>
-            <option value="초과 항목만">초과 항목만</option>
-            <option value="미달 항목만">미달 항목만</option>
-            <option value="무예산 집행만">무예산 집행만</option>
-            <option value="정상 항목만">정상 항목만</option>
-            <option value="전체 보기">전체 보기</option>
+            <option value="전체 보기">전체</option>
+            <option value="초과 항목만">초과</option>
+            <option value="미달 항목만">미달</option>
+            <option value="무예산 집행만">무예산</option>
+            <option value="정상 항목만">정상</option>
           </AppSelect>
         </FilterItem>
       </FilterBar>
 
-      <div className="flex justify-between items-center text-sm text-lithium-500 mb-6 px-2">
-        <span>* 조회 권한이 있는 부서의 데이터만 표시됩니다.<br/>* 급여성 계정은 권한이 있는 사용자에게만 표시됩니다.</span>
+      <div className="mb-4 rounded-xl border border-lithium-200 bg-lithium-50 px-4 py-2 text-[12px] text-lithium-600 leading-relaxed">
+        조회 권한이 있는 부서만 표시되며, 급여성 계정은 권한 보유자에게만 노출됩니다.
       </div>
 
       {!searched && (
@@ -295,36 +303,38 @@ export default function BudgetOverrunCheck() {
       
       {searched && results.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-            <MetricCard title="초과 계정 수" value={`${results.filter(r => r.status === '초과').length}건`} variant="warning" />
-            <MetricCard title="초과 금액 합계" value={<BudgetAmount value={results.reduce((sum, r) => sum + r.overrunAmount, 0)} />} variant="warning" />
-            <MetricCard title="미달 계정 수" value={`${results.filter(r => r.status === '미달').length}건`} variant="success" />
-            <MetricCard title="미달 금액 합계" value={<BudgetAmount value={results.reduce((sum, r) => sum + r.shortfallAmount, 0)} />} variant="success" />
-            <MetricCard title="무예산 집행 건수" value={`${results.filter(r => r.status === '무예산 집행').length}건`} />
-            <MetricCard title="조회 대상 부서 수" value={`${new Set(results.map(r => r.deptCode)).size}개 부서`} />
+          <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-3 mb-5">
+            <MetricCard size="compact" title="초과 계정" value={`${results.filter(r => r.status === '초과').length}건`} variant="warning" />
+            <MetricCard
+              size="compact"
+              title="초과 금액"
+              value={<BudgetAmount value={results.reduce((sum, r) => sum + r.overrunAmount, 0)} displayUnit="million" showTooltip />}
+              variant="warning"
+            />
+            <MetricCard size="compact" title="미달 계정" value={`${results.filter(r => r.status === '미달').length}건`} variant="success" />
+            <MetricCard
+              size="compact"
+              title="미달 금액"
+              value={<BudgetAmount value={results.reduce((sum, r) => sum + r.shortfallAmount, 0)} displayUnit="million" showTooltip />}
+              variant="success"
+            />
+            <MetricCard size="compact" title="무예산" value={`${results.filter(r => r.status === '무예산 집행').length}건`} />
+            <MetricCard size="compact" title="조회 부서" value={`${new Set(results.map(r => r.deptCode)).size}개`} />
           </div>
           
-          <AppCard className="overflow-hidden">
-            <AppTable>
+          <AppCard className="overflow-hidden min-w-0">
+            <AppTable className="min-w-[1100px] text-[13px]">
                <AppTableHeader>
                  <tr>
                    <AppTableHead className="w-8"></AppTableHead>
-                   <AppTableHead>부서코드</AppTableHead>
                    <AppTableHead>부서</AppTableHead>
-                   <AppTableHead>계정과목코드</AppTableHead>
+                   <AppTableHead>계정코드</AppTableHead>
                    <AppTableHead>계정과목</AppTableHead>
-                   <AppTableHead>초과/미달월</AppTableHead>
-                   <AppTableHead>월수</AppTableHead>
+                   <AppTableHead>발생월</AppTableHead>
                    <AppTableHead className="text-right">기간예산</AppTableHead>
                    <AppTableHead className="text-right">기간실적</AppTableHead>
-                   <AppTableHead className="text-right">초과금액</AppTableHead>
-                   <AppTableHead className="text-right">미달금액</AppTableHead>
-                   <AppTableHead className="text-right">잔액</AppTableHead>
+                   <AppTableHead className="text-right">차이금액</AppTableHead>
                    <AppTableHead className="text-right">집행률(%)</AppTableHead>
-                   <AppTableHead>최대발생월</AppTableHead>
-                   <AppTableHead className="text-right">최대발생금</AppTableHead>
-                   <AppTableHead className="text-right">연도예산</AppTableHead>
-                   <AppTableHead className="text-right">연도실적</AppTableHead>
                    <AppTableHead className="text-center">상태</AppTableHead>
                    <AppTableHead className="text-center font-bold">의견/조치</AppTableHead>
                  </tr>
@@ -333,37 +343,27 @@ export default function BudgetOverrunCheck() {
                  {results.map((r, i) => (
                    <React.Fragment key={i}>
                    <AppTableRow onClick={() => toggleRow(i)} className="cursor-pointer hover:bg-zinc-50/50">
-                     <AppTableCell onClick={(e) => { e.stopPropagation(); toggleRow(i); }}>
+                     <AppTableCell className="px-3 py-2" onClick={(e) => { e.stopPropagation(); toggleRow(i); }}>
                         {expandedRows.has(i) ? <ChevronUp className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
                      </AppTableCell>
-                     <AppTableCell className="text-zinc-600">{r.deptCode}</AppTableCell>
-                     <AppTableCell>{depts.find(d => d.code === r.deptCode)?.name}</AppTableCell>
-                     <AppTableCell className="text-zinc-500">{r.accountCode}</AppTableCell>
-                     <AppTableCell>{r.accountName}</AppTableCell>
-                     <AppTableCell className={r.status === '미달' ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>{r.status === '미달' ? formatListMonths(r.shortfallMonths) : formatListMonths(r.overrunMonths)}</AppTableCell>
-                     <AppTableCell>{(r.status === '미달' ? r.shortfallMonths.length : r.overrunMonths.length) > 0 ? (r.status === '미달' ? r.shortfallMonths.length : r.overrunMonths.length) + '개월' : '-'}</AppTableCell>
-                     <AppTableCell className="text-right"><BudgetAmount value={r.qBudget} /></AppTableCell>
-                     <AppTableCell className="text-right"><BudgetAmount value={r.qActual} /></AppTableCell>
-                     <AppTableCell className="text-right">
-                       <BudgetAmount value={r.overrunAmount} tone={r.overrunAmount > 0 ? "warning" : "default"} />
+                     <AppTableCell className="px-3 py-2 text-zinc-800">{depts.find(d => d.code === r.deptCode)?.name}</AppTableCell>
+                     <AppTableCell className="px-3 py-2 text-zinc-500">{r.accountCode}</AppTableCell>
+                     <AppTableCell className="px-3 py-2">{r.accountName}</AppTableCell>
+                     <AppTableCell className={`px-3 py-2 font-bold ${r.status === '미달' ? "text-emerald-600" : "text-rose-600"}`}>{r.status === '미달' ? formatListMonths(r.shortfallMonths) : formatListMonths(r.overrunMonths)}</AppTableCell>
+                     <AppTableCell className="px-3 py-2 text-right"><BudgetAmount value={r.qBudget} displayUnit="million" showTooltip /></AppTableCell>
+                     <AppTableCell className="px-3 py-2 text-right"><BudgetAmount value={r.qActual} displayUnit="million" showTooltip /></AppTableCell>
+                     <AppTableCell className="px-3 py-2 text-right">
+                       {(r.status === '초과' || r.status === '무예산 집행') && <BudgetAmount value={r.overrunAmount} tone="warning" displayUnit="million" showTooltip />}
+                       {r.status === '미달' && <BudgetAmount value={r.shortfallAmount} tone="success" displayUnit="million" showTooltip />}
+                       {r.status === '정상' && <span className="text-zinc-500">-</span>}
                      </AppTableCell>
-                     <AppTableCell className="text-right">
-                       <BudgetAmount value={r.shortfallAmount} tone={r.status === '미달' ? "success" : "default"} />
+                     <AppTableCell className="px-3 py-2 text-right">
+                       {r.qBudget > 0 ? <BudgetRate value={(r.qActual / r.qBudget) * 100} /> : <span className="text-zinc-450 text-[11px]">예산 없음</span>}
                      </AppTableCell>
-                     <AppTableCell className="text-right text-zinc-600"><BudgetAmount value={r.balance} /></AppTableCell>
-                     <AppTableCell className="text-right">
-                       {r.qBudget > 0 ? <BudgetRate value={(r.qActual / r.qBudget) * 100} /> : <span className="text-zinc-450 text-xs">예산 없음</span>}
-                     </AppTableCell>
-                     <AppTableCell>{r.status === '미달' ? (r.maxShortfallMonth ? `${r.maxShortfallMonth}월` : '-') : (r.maxOverrunMonth ? `${r.maxOverrunMonth}월` : '-')}</AppTableCell>
-                     <AppTableCell className="text-right font-medium">
-                        {r.status === '미달' ? (r.maxShortfallAmount > 0 ? <span className="text-emerald-600"><BudgetAmount value={r.maxShortfallAmount} /></span> : '-') : (r.maxOverrunAmount > 0 ? <span className="text-rose-600"><BudgetAmount value={r.maxOverrunAmount} /></span> : '-')}
-                     </AppTableCell>
-                     <AppTableCell className="text-right text-zinc-500"><BudgetAmount value={r.yBudget} /></AppTableCell>
-                     <AppTableCell className="text-right text-zinc-500"><BudgetAmount value={r.yActual} /></AppTableCell>
-                     <AppTableCell className="text-center">
+                     <AppTableCell className="px-3 py-2 text-center">
                        <OverrunBadge status={r.status} />
                      </AppTableCell>
-                     <AppTableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                     <AppTableCell className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                        <button
                          onClick={(e) => {
                            e.stopPropagation();
@@ -397,7 +397,7 @@ export default function BudgetOverrunCheck() {
                    {expandedRows.has(i) && (
                      <AppTableRow className="bg-zinc-50/10">
                        <AppTableCell></AppTableCell>
-                       <AppTableCell colSpan={18} className="p-0 font-sans">
+                       <AppTableCell colSpan={10} className="p-0 font-sans">
                          <div className="py-2 pr-6">
                            <table className="w-full text-xs ml-4 border border-zinc-200 bg-white rounded-lg overflow-hidden my-2 shadow-sm">
                              <thead className="bg-[#f7f9f7] font-bold text-zinc-600">
@@ -415,15 +415,15 @@ export default function BudgetOverrunCheck() {
                                {r.monthlyDetails.map((m: any) => (
                                  <tr key={m.month} className="hover:bg-zinc-50/30">
                                    <td className="px-3 py-2 text-zinc-900 font-medium">{m.month}월</td>
-                                   <td className="px-3 py-2 text-right text-zinc-550">{m.budget.toLocaleString()}원</td>
-                                   <td className="px-3 py-2 text-right text-zinc-900">{m.actual.toLocaleString()}원</td>
-                                   <td className={`px-3 py-2 text-right font-medium ${m.overrunAmount > 0 ? 'text-rose-600' : 'text-zinc-400'}`}>
-                                     {m.overrunAmount > 0 ? `+${m.overrunAmount.toLocaleString()}원` : '-'}
+                                   <td className="px-3 py-2 text-right text-zinc-550"><BudgetAmount value={m.budget} displayUnit="million" showTooltip className="text-[11px]" /></td>
+                                   <td className="px-3 py-2 text-right text-zinc-900"><BudgetAmount value={m.actual} displayUnit="million" showTooltip className="text-[11px]" /></td>
+                                   <td className="px-3 py-2 text-right font-medium">
+                                     {m.overrunAmount > 0 ? <BudgetAmount value={m.overrunAmount} tone="warning" displayUnit="million" showTooltip className="text-[11px]" /> : '-'}
                                    </td>
-                                   <td className={`px-3 py-2 text-right font-medium ${m.shortfallAmount > 0 ? 'text-emerald-600' : 'text-zinc-400'}`}>
-                                     {m.shortfallAmount > 0 ? `${m.shortfallAmount.toLocaleString()}원` : '-'}
+                                   <td className="px-3 py-2 text-right font-medium">
+                                     {m.shortfallAmount > 0 ? <BudgetAmount value={m.shortfallAmount} tone="success" displayUnit="million" showTooltip className="text-[11px]" /> : '-'}
                                    </td>
-                                   <td className="px-3 py-2 text-right text-zinc-500">{m.balance.toLocaleString()}원</td>
+                                   <td className="px-3 py-2 text-right text-zinc-500"><BudgetAmount value={m.balance} displayUnit="million" showTooltip className="text-[11px]" /></td>
                                    <td className="px-3 py-2 text-center">
                                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                                        m.status === '정상' ? 'bg-zinc-50 text-zinc-600' :

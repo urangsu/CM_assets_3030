@@ -18,8 +18,8 @@ export const AppSelect = React.forwardRef<HTMLSelectElement, AppSelectProps>(
         <select
           ref={ref}
           className={cn(
-            'flex h-10 w-full appearance-none rounded-xl border border-lithium-300 bg-white px-3 py-2 pr-10 text-sm font-medium text-eco-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nickel-500 disabled:cursor-not-allowed disabled:bg-lithium-50 disabled:text-lithium-500 transition-shadow',
-            leftIcon && 'pl-10',
+            'flex h-9 w-full appearance-none rounded-lg border border-lithium-300 bg-white px-2.5 py-1.5 pr-8 text-[13px] font-medium text-eco-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nickel-500 disabled:cursor-not-allowed disabled:bg-lithium-50 disabled:text-lithium-500 transition-shadow',
+            leftIcon && 'pl-9',
             className
           )}
           {...props}
