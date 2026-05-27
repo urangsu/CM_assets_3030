@@ -348,7 +348,7 @@ export default function DepartmentAssignment() {
             <h1 className="text-xl font-bold tracking-tight text-eco-black">부서 귀속 변경 (Department Assignment)</h1>
           </div>
           <p className="text-xs text-zinc-500 mt-1">
-            작성부서와 귀속부서가 다른 예산 항목의 귀속 관계를 안전하게 재할당하고 보정하는 Control Panel 운영 페이지입니다.
+            작성부서와 귀속부서가 다른 예산 항목의 귀속 관계를 안전하게 재할당하고 보정하는 관리 페이지입니다.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -381,7 +381,7 @@ export default function DepartmentAssignment() {
       {/* 2026 Navigation Flow Assist Card */}
       <div className="bg-[#f2faf7] border border-[#ddeae5] p-4.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3.5 shadow-xs">
         <div>
-          <span className="text-xs bg-[#008f83] text-white px-2 py-0.5 rounded font-bold font-mono font-sans shadow-xs">FLOW CONSOLE</span>
+          <span className="text-xs bg-[#008f83] text-white px-2 py-0.5 rounded font-bold font-mono font-sans shadow-xs">진행 단계</span>
           <h4 className="text-sm font-bold text-zinc-900 mt-1.5 font-sans">📂 실적 부서 귀속 관계 조정 제어판</h4>
           <p className="text-xs text-zinc-500 mt-0.5 font-sans">수정된 계정 및 부서 귀속 관계를 점검하시고, 다음 단계인 [예산 작성]으로 즉시 이동하여 예산을 기재하십시오.</p>
         </div>
@@ -541,7 +541,7 @@ export default function DepartmentAssignment() {
                 <th className="py-2.5 px-3">계정코드</th>
                 <th className="py-2.5 px-3">계정명</th>
                 <th className="py-2.5 px-3 text-right">체결 예산총액</th>
-                <th className="py-2.5 px-3 text-center">수행 상태</th>
+                <th className="py-2.5 px-3 text-center">변경 상태</th>
                 <th className="py-2.5 px-4 text-center">액션</th>
               </tr>
             </thead>
@@ -611,7 +611,7 @@ export default function DepartmentAssignment() {
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-100 text-zinc-600 border border-zinc-200">
-                            기본 원본
+                            초기값
                           </span>
                         )}
                       </td>
@@ -649,7 +649,7 @@ export default function DepartmentAssignment() {
         <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden p-4">
           <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-widest mb-3 flex items-center gap-2">
             <span className="inline-block w-2.5 h-2.5 bg-amber-500 rounded-full"></span>
-            실시간 부서 귀속 변경 Override 이력 (Audit Trail {overrides.length}건)
+            실시간 부서 귀속 변경 Override 이력 ({overrides.length}건)
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-zinc-600 border-collapse">
@@ -745,7 +745,7 @@ export default function DepartmentAssignment() {
 
               <div>
                 <label className="block text-[11px] font-semibold text-zinc-500 mb-1.5 uppercase tracking-wider">
-                  귀속 변경 사유 작성 (Audit log 저장용)
+                  귀속 변경 사유 작성 (이력 저장용)
                 </label>
                 <textarea
                   value={changeReason}

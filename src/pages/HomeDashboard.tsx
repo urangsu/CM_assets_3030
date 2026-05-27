@@ -326,7 +326,7 @@ export default function HomeDashboard() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
         <RefreshCw className="w-8 h-8 text-brand-500 animate-spin" />
-        <span className="text-sm text-[#4e5968] font-medium font-sans">실시간 관제 데이터 분석 중...</span>
+        <span className="text-sm text-[#4e5968] font-medium font-sans">실시간 데이터 분석 중...</span>
       </div>
     );
   }
@@ -439,7 +439,7 @@ export default function HomeDashboard() {
           value={`${stats.overrunDeptsCount}건 검출`} 
           subValue={`조회 대상 부서 ${stats.viewableDeptsCount}개 중`}
           icon={AlertTriangle}
-          trend={stats.overrunDeptsCount > 0 ? "검토 필요" : "정상 통제"}
+          trend={stats.overrunDeptsCount > 0 ? "검토 필요" : "정상"}
           trendType={stats.overrunDeptsCount > 0 ? 'up' : 'down'}
           colorClass={stats.overrunDeptsCount > 0 ? "text-amber-600 bg-amber-50" : "text-[#718872] bg-zinc-100"}
         />
@@ -525,7 +525,7 @@ export default function HomeDashboard() {
       {/* 5. Highly Professional App Workflow Roadmap Guide */}
       <div className="bg-white border border-[#dde5de] p-6 rounded-2xl shadow-sm">
         <h3 className="text-base font-bold text-[#111111] mb-1">2026년 기업 계획 및 통합 통제 업무 수행 맵</h3>
-        <p className="text-xs text-[#8b95a1] mb-5">효과적인 예산 집행 관제를 위해 아래 단계순으로 업무를 진행해 주시기 바랍니다.</p>
+        <p className="text-xs text-[#8b95a1] mb-5">효과적인 예산 집행 관리를 위해 아래 단계순으로 업무를 진행해 주시기 바랍니다.</p>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative">
           {/* Timeline Node 1 */}

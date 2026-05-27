@@ -207,7 +207,7 @@ export default function UnderrunCheck() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
         <Clock className="w-8 h-8 text-brand-500 animate-spin" />
-        <span className="text-xs text-[#4e5968] mt-2 font-sans">미달 항목 관제 필터 분석 중...</span>
+        <span className="text-xs text-[#4e5968] mt-2 font-sans">미달 항목 필터 분석 중...</span>
       </div>
     );
   }
@@ -221,17 +221,17 @@ export default function UnderrunCheck() {
           <span className="text-xs bg-emerald-50 text-[#008f83] border border-emerald-100 px-2 py-0.5 rounded font-bold">집행 소진 미달 (Under 30%)</span>
         </div>
         <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5">
-          예산 집행 미달 자금 전입전출 관제판
+          집행 미달 현황
         </h2>
         <p className="text-xs text-[#647067] mt-1 text-zinc-500">
-          계획 대비 집행 실적이 너무 미미한 항목(소진 진척도 30% 미만)들을 추려 한도 삭감, 예산 전출, 회수가 필요한 불용성 예상 전도금을 검증합니다.
+          집행률 30% 미만 내역을 조회하고 처리합니다.
         </p>
       </div>
 
       {/* Metric Callouts */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-xs text-[#647067] block">검출된 불용 예후 항목</span>
+          <span className="text-xs text-[#647067] block">미달 건수</span>
           <span className="text-xl font-bold text-zinc-900 font-mono mt-1.5 block">{totalUnderCount}건</span>
         </div>
         <div className="bg-rose-50 border border-rose-100 p-5 rounded-2xl shadow-xs">
@@ -301,18 +301,18 @@ export default function UnderrunCheck() {
               <th className="px-5 py-3">계정명 (코드)</th>
               <th className="px-5 py-3 text-right">편성 예산</th>
               <th className="px-5 py-3 text-right">실제 집행</th>
-              <th className="px-5 py-3 text-right">미소진 회수가능액</th>
+              <th className="px-5 py-3 text-right">잔여액</th>
               <th className="px-5 py-3 text-center">집행률 (30% 이하)</th>
               <th className="px-5 py-3">지연 사유 요약</th>
               <th className="px-5 py-3 text-center">결재 조치</th>
-              <th className="px-5 py-3 text-center font-bold">통보</th>
+              <th className="px-5 py-3 text-center font-bold">검토</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
             {underrunRows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-5 py-12 text-center text-zinc-400 font-medium font-sans">
-                  미집행 불용 예후가 30% 미만으로 도출된 부서 세목이 현재 발견되지 않았습니다.
+                  집행률 30% 미만인 내역이 없습니다.
                 </td>
               </tr>
             ) : (
@@ -358,7 +358,7 @@ export default function UnderrunCheck() {
                       onClick={() => handleOpenReview(row)}
                       className="px-2.5 py-1 bg-white hover:bg-zinc-100 border border-[#dde5de] text-zinc-700 hover:border-teal-500 hover:text-teal-600 font-semibold rounded cursor-pointer transition-all"
                     >
-                      조치 상신/배전
+                      검토
                     </button>
                   </td>
                 </tr>

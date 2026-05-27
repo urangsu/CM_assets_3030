@@ -28,7 +28,7 @@ export const logAuditEvent = (userCode: string, action: string, details: any = {
   }
 };
 
-export const getAuditLogs = (): AuditEvent[] => {
+export const getAuditRecords = (): AuditEvent[] => {
   try {
     const existingStr = localStorage.getItem(AUDIT_LOG_KEY);
     return existingStr ? JSON.parse(existingStr) : [];

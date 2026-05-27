@@ -200,7 +200,7 @@ export default function UnbudgetedCheck() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
         <Clock className="w-8 h-8 text-brand-500 animate-spin" />
-        <span className="text-xs text-[#4e5968] mt-2 font-sans">무예산 오집행 원장 확인 중...</span>
+        <span className="text-xs text-[#4e5968] mt-2 font-sans">집행 내역 확인 중...</span>
       </div>
     );
   }
@@ -210,29 +210,28 @@ export default function UnbudgetedCheck() {
       {/* Header Info */}
       <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm">
         <div className="flex items-center gap-2">
-          <span className="text-xs bg-rose-50 border border-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold">Unallocated Risk Auditing</span>
-          <span className="text-xs bg-red-100 text-rose-700 px-2 py-0.5 rounded font-bold text-[10px] font-mono">무예산 집행 통제</span>
+          <span className="text-xs bg-rose-50 border border-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold">무예산 점검</span>
         </div>
         <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5">
-          편성 예산 항목 부재 (무예산) 집행 점검 및 해명
+          무예산 집행 현황
         </h2>
         <p className="text-xs text-[#647067] mt-1 text-zinc-500">
-          사전 경영 대분류 세목 승인을 득하지 않고 변칙 지출된 전사 예산외 실제 집행 항목들을 검증 및 모니터링하여 경질이나 긴급 예산 조정을 상신합니다.
+          계획에 없는 무예산 집행 건을 검토하고 처리합니다.
         </p>
       </div>
 
       {/* KPI stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-xs text-[#647067] block">검출된 예산 외 직지출 건수</span>
-          <span className="text-xl font-bold text-rose-600 font-mono mt-1.5 block">{totalCount}건 검출</span>
+          <span className="text-xs text-[#647067] block">무예산 집행 건수</span>
+          <span className="text-xl font-bold text-rose-600 font-mono mt-1.5 block">{totalCount}건</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-xs text-zinc-500 block">무예산 실제 누적 방출액</span>
+          <span className="text-xs text-zinc-500 block">총 집행 금액</span>
           <span className="text-xl font-bold text-[#111111] font-mono mt-1.5 block" title={formatWon(totalLeakAmount)}>{formatMillionWon(totalLeakAmount)}</span>
         </div>
         <div className="bg-[#f0f9f8] border border-teal-100 p-5 rounded-2xl shadow-xs">
-          <span className="text-xs text-[#008f83] block">감사 및 소명 처리율</span>
+          <span className="text-xs text-[#008f83] block">검토 완료율</span>
           <span className="text-xl font-bold text-[#008f83] font-mono mt-1.5 block">
             {Math.round((unbudgetedRows.filter(r => r.status && r.status !== 'DRAFT').length / (totalCount || 1)) * 100)}%
           </span>
@@ -295,15 +294,15 @@ export default function UnbudgetedCheck() {
               <th className="px-5 py-3 text-right">집행 편차 (누수액)</th>
               <th className="px-5 py-3 text-center">승인 대조율</th>
               <th className="px-5 py-3">소명 사유 및 해명</th>
-              <th className="px-5 py-3 text-center">검증결재상질</th>
-              <th className="px-5 py-3 text-center font-bold">감사</th>
+              <th className="px-5 py-3 text-center">결재 상태</th>
+              <th className="px-5 py-3 text-center font-bold">검토</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
             {unbudgetedRows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-5 py-12 text-center text-zinc-400 font-medium font-sans">
-                  비정상 무예산 집행 내역이 발견되지 않았습니다. 전사 규격 통제가 올바르게 집행 중입니다.
+                  무예산 집행 내역이 없습니다.
                 </td>
               </tr>
             ) : (
@@ -346,7 +345,7 @@ export default function UnbudgetedCheck() {
                       onClick={() => handleOpenReview(row)}
                       className="px-2.5 py-1 bg-white hover:bg-zinc-100 border border-[#dde5de] text-rose-600 hover:border-rose-500 rounded cursor-pointer transition-all font-semibold"
                     >
-                      해빙 / 감사
+                      검토
                     </button>
                   </td>
                 </tr>

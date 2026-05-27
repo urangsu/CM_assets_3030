@@ -62,7 +62,7 @@ export default function TopHeader({ dataState, isDemo = true }: TopHeaderProps) 
     <header className="hdr">
       <span className="logo">HY<em>CM</em></span>
       <div className="vr" />
-      <span className="portal-name">운영 관제 포털</span>
+      <span className="portal-name">운영 포털</span>
       {isDemo && (
         <span className="demo-chip">
           <span className="demo-dot" />

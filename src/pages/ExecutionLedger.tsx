@@ -274,7 +274,7 @@ export default function ExecutionLedger() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
         <RefreshCw className="w-8 h-8 text-brand-500 animate-spin" />
-        <span className="text-sm text-[#4e5968] font-sans">실제 전도금 및 집행 장부 동기화 중...</span>
+        <span className="text-sm text-[#4e5968] font-sans">집행 데이터 동기화 중...</span>
       </div>
     );
   }
@@ -287,14 +287,14 @@ export default function ExecutionLedger() {
       <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs bg-zinc-100 text-[#4e5968] px-2 py-0.5 rounded font-bold font-mono">Ledger Database</span>
+            <span className="text-xs bg-zinc-100 text-[#4e5968] px-2 py-0.5 rounded font-bold font-mono">집행 데이터</span>
             {isDemoMode && <span className="text-[10px] bg-[#fdf0e2] text-[#F7A059] border border-[#fbd6b4] px-1.5 py-0.5 rounded font-bold">화면 확인용 샘플 데이터</span>}
           </div>
           <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
-            공장 및 부서 수급 실제 집행 내역 장부
+            집행 내역 상세 조회
           </h2>
           <p className="text-xs text-[#647067] mt-1">
-            원장 Excel 양식 업로드 혹은 현장 직접 집금으로 적재된 전사 거래 세목 한도 집행 결과를 월별 통제 테이블로 열람합니다.
+            월별 집행 결과를 조회합니다.
           </p>
         </div>
       </div>
@@ -364,7 +364,7 @@ export default function ExecutionLedger() {
 
           {/* Account category */}
           <div>
-            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">예산 성질 분류</label>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">비용 성격 분류</label>
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
@@ -386,11 +386,11 @@ export default function ExecutionLedger() {
               className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
             >
               <option value="all">전체 결재 상태</option>
-              <option value="DRAFT">검증 완료 / 자동 통과</option>
-              <option value="ACTION_REQ">조치 요청 대상</option>
-              <option value="APPROVED">조정 승인 완료</option>
-              <option value="REJECTED">반려 및 자금 동결</option>
-              <option value="HELD">검증 보류 중</option>
+              <option value="DRAFT">작성중</option>
+              <option value="ACTION_REQ">조치 요청</option>
+              <option value="APPROVED">승인</option>
+              <option value="REJECTED">반려</option>
+              <option value="HELD">보류</option>
             </select>
           </div>
         </div>
@@ -411,20 +411,20 @@ export default function ExecutionLedger() {
       {/* 3. Operational KPIs Matrix */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">검색 집행 거래수</span>
+          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">검색 건수</span>
           <span className="text-xl font-bold text-[#111111] mt-2 font-mono block">{kpis.totalCount}건</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10px] font-bold text-[#008f83] uppercase block tracking-wider">총 거래 누계 집행액</span>
+          <span className="text-[10px] font-bold text-[#008f83] uppercase block tracking-wider">총 집행 금액</span>
           <span className="text-xl font-bold text-[#008f83] mt-2 font-mono block" title={formatWon(kpis.totalAmount)}>{formatMillionWon(kpis.totalAmount)}</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">건별 평균 집행 고정비</span>
+          <span className="text-[10px] font-bold text-[#647067] uppercase block tracking-wider">평균 집행 금액</span>
           <span className="text-xl font-bold text-[#111111] mt-2 font-mono block" title={formatWon(kpis.averageAmount)}>{formatMillionWon(kpis.averageAmount)}</span>
         </div>
         <div className="bg-amber-50/50 border border-[#fbd6b4] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10px] font-bold text-[#F7A059] uppercase block tracking-wider">500만 이상 주요 지출건</span>
-          <span className="text-xl font-bold text-amber-600 mt-2 font-mono block">{kpis.overrunLedgerCount}건 발견</span>
+          <span className="text-[10px] font-bold text-[#F7A059] uppercase block tracking-wider">500만 이상 지출</span>
+          <span className="text-xl font-bold text-amber-600 mt-2 font-mono block">{kpis.overrunLedgerCount}건</span>
         </div>
       </div>
 
@@ -433,7 +433,7 @@ export default function ExecutionLedger() {
         {/* Monthly Trend Area Chart */}
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs lg:col-span-2">
           <h3 className="text-sm font-bold text-[#111111] mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-[#008f83]" /> 월별 실제 집행 흐름 분석
+            <TrendingUp className="w-4 h-4 text-[#008f83]" /> 월별 집행 추이
           </h3>
           <div className="h-[210px] w-full font-mono text-xs">
             <ResponsiveContainer width="100%" height="100%">
@@ -452,7 +452,7 @@ export default function ExecutionLedger() {
         {/* Account breakdown */}
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
           <h3 className="text-sm font-bold text-[#111111] mb-4 flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-[#008f83]" /> 품목계정별 집행집중도 top
+            <FileSpreadsheet className="w-4 h-4 text-[#008f83]" /> 계정별 집행 현황
           </h3>
           <div className="h-[210px] w-full font-mono text-xs">
             <ResponsiveContainer width="100%" height="100%">
@@ -472,8 +472,8 @@ export default function ExecutionLedger() {
       <div className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden">
         <div className="p-5 border-b border-[#eef2ec] flex justify-between items-center bg-[#fcfdfe]">
           <div>
-            <h3 className="text-sm font-bold text-[#111111]">통제 실적 원장 개별 리스트 ({ledgerRows.length}개 항목)</h3>
-            <p className="text-[11px] text-[#647067] mt-0.5">조회 권한에 보정된 실제 집행 리스트 상세 내역 정보</p>
+            <h3 className="text-sm font-bold text-[#111111]">집행 내역 상세 리스트 ({ledgerRows.length}개 항목)</h3>
+            <p className="text-[11px] text-[#647067] mt-0.5">조회 권한 내 집행 리스트 상세 내역</p>
           </div>
         </div>
 
@@ -485,10 +485,10 @@ export default function ExecutionLedger() {
                 <th className="px-5 py-3">용도 부서명</th>
                 <th className="px-5 py-3">계정 품명 (코드)</th>
                 <th className="px-5 py-3">분류</th>
-                <th className="px-5 py-3 text-right">집행 한도액</th>
-                <th className="px-5 py-3 text-center">결재 검증상질</th>
-                <th className="px-5 py-3">적요 및 비고</th>
-                <th className="px-5 py-3 text-center">감사/수정</th>
+                <th className="px-5 py-3 text-right">집행 금액</th>
+                <th className="px-5 py-3 text-center">결재 상태</th>
+                <th className="px-5 py-3">적요/비고</th>
+                <th className="px-5 py-3 text-center">검토/수정</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
@@ -536,7 +536,7 @@ export default function ExecutionLedger() {
                           onClick={() => handleOpenReview(row)}
                           className="p-1 px-2 bg-white hover:bg-zinc-100 text-zinc-500 border border-[#dde5de] rounded-md hover:border-[#008f83] hover:text-[#008f83] cursor-pointer transition-all text-xs font-semibold"
                         >
-                          의견검증
+                          검토
                         </button>
                       </td>
                     </tr>

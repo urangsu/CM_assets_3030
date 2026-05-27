@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "lint:copy": "rg -n \"수행 상태|액션 상태|기본원본|기본 원본|집행상질|검증결재상질|관제|감사 데이터|감사 의견서|심사 의견|의견 개진|승인 가결|기각/반려|임시보류|통제 대상|정상 통제|초과 경보|Interactive Review Guard|Audit Board|Approval Portal|Review Guard|Logs\" src && exit 1 || exit 0"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

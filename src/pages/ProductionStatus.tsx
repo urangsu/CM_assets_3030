@@ -62,7 +62,7 @@ export default function ProductionStatus() {
       <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-xs bg-zinc-100 text-[#4e5968] px-2.5 py-0.5 rounded font-bold font-mono">Factory Floor</span>
-          <span className="text-xs bg-teal-50 text-[#008f83] px-2 py-0.5 rounded font-bold">실시간 생산 종합 관제</span>
+          <span className="text-xs bg-teal-50 text-[#008f83] px-2 py-0.5 rounded font-bold">실시간 생산 현황</span>
         </div>
         <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
           현업 라인별 생산량 및 회수율(Yield) 통제 센터

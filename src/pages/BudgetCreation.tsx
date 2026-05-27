@@ -1267,7 +1267,7 @@ export default function BudgetCreation() {
       {/* 2026 Navigation Flow Assist Card */}
       <div className="bg-[#fcfaf2] border border-[#f5ead2] p-4.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3.5 shadow-xs">
         <div>
-          <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded font-bold font-mono">FLOW CONSOLE</span>
+          <span className="text-xs bg-amber-600 text-white px-2 py-0.5 rounded font-bold font-mono">진행 단계</span>
           <h4 className="text-sm font-bold text-zinc-900 mt-1.5">📂 예산 작성 업무 흐름 제어판</h4>
           <p className="text-xs text-zinc-500 mt-0.5">예산 작성 전, 계정 체크 상태 및 실적 부서 귀속 설정을 먼저 완료하여 유기적으로 배포하십시오.</p>
         </div>

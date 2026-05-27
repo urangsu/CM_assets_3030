@@ -41,6 +41,7 @@ import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } fro
 import { classifyAccount, ACCOUNT_CLASS_OPTIONS } from '../lib/accountClassification';
 import ReviewDrawer, { ReviewItem } from '../components/budget/ReviewDrawer';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { getReviewStatusLabel, getApprovalStatusLabel, getExecutionStatusLabel } from '../lib/statusLabels';
 
 export default function BudgetStatus() {
   const location = useLocation();
@@ -181,7 +182,7 @@ export default function BudgetStatus() {
             burnRate: rate,
             anomalyType: anomaly,
             status: subStatus.status,
-            statusLabel: subStatus.status === 'LOCKED' ? '잠금 완료' : subStatus.status === 'APPROVED' ? '승인 완료' : subStatus.status === 'SUBMITTED' ? '검토 대기' : '작성 중'
+            statusLabel: getApprovalStatusLabel(subStatus.status)
           });
         });
       });
@@ -261,7 +262,7 @@ export default function BudgetStatus() {
             burnRate: rate,
             anomalyType: anomaly,
             status: subStatus.status,
-            statusLabel: subStatus.status === 'LOCKED' ? '잠금 완료' : subStatus.status === 'APPROVED' ? '승인 완료' : subStatus.status === 'SUBMITTED' ? '검토 대기' : '작성 중'
+            statusLabel: getApprovalStatusLabel(subStatus.status)
           });
         });
       });
@@ -274,7 +275,7 @@ export default function BudgetStatus() {
         return {
           ...row,
           status: activeReviews[row.id].status,
-          statusLabel: activeReviews[row.id].status === 'APPROVED' ? '계획 승인' : activeReviews[row.id].status === 'ACTION_REQ' ? '조치 요청' : activeReviews[row.id].status === 'REJECTED' ? '집행 반려' : '임시 보류'
+          statusLabel: getReviewStatusLabel(activeReviews[row.id].status)
         };
       }
       return row;
@@ -449,17 +450,17 @@ export default function BudgetStatus() {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-teal-50 text-[#008f83] px-2 py-0.5 rounded font-bold font-mono">
-              {activeTab === 'overview' ? '2026 Audit Board' : '2026 Approval Portal'}
+              {activeTab === 'overview' ? '예산 현황' : '제출·승인 현황'}
             </span>
             {isDemoMode && <span className="text-[10px] bg-[#fdf0e2] text-[#F7A059] border border-[#fbd6b4] px-1.5 py-0.5 rounded-md font-bold">화면 확인용 샘플 데이터</span>}
           </div>
           <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
-            {activeTab === 'overview' ? '부서별 예산 편성 대비 실적 현황' : '예산 조정 제출 및 심사 승인 현황'}
+            {activeTab === 'overview' ? '예산 대비 실적 현황' : '예산 제출·승인 현황'}
           </h2>
           <p className="text-xs text-[#647067] mt-1">
             {activeTab === 'overview' 
-              ? '부서 지정 경비 및 현장 제조 예산의 한도, 누적 실적, 실시간 잔액 및 통제 소진율을 통합 전도합니다.' 
-              : '각 부서에서 신청한 월별 세목의 편성 예산을 조정하고 최종 승인 가결 또는 보류/조치 요구 처리를 수행합니다.'
+              ? '부서별 편성 예산, 누적 실적, 잔여 한도와 집행률을 함께 조회합니다.' 
+              : '부서별 예산 제출 상태를 확인하고 승인, 반려, 조치 요청을 처리합니다.'
             }
           </p>
         </div>
@@ -481,7 +482,7 @@ export default function BudgetStatus() {
           }`}
         >
           <Award className="w-3.5 h-3.5" />
-          예산 현황 (Overview)
+          예산 현황
         </button>
         <button
           onClick={() => navigate('/budget-status?tab=approval')}
@@ -492,7 +493,7 @@ export default function BudgetStatus() {
           }`}
         >
           <CheckCircle className="w-3.5 h-3.5" />
-          예산 제출/승인 현황 (Approval Status)
+          제출·승인 현황
         </button>
       </div>
 
@@ -501,7 +502,7 @@ export default function BudgetStatus() {
         <div className="bg-[#fcf8f2] border border-[#fbd6b4] text-zinc-700 p-4.5 rounded-2xl text-xs flex items-center gap-3 shadow-xs">
           <AlertTriangle className="w-4.5 h-4.5 text-[#F7A059] flex-shrink-0" />
           <div>
-            <b>[결재 승인 관제 모드]</b> 현재 제출된 예산 조정안을 심사하고 승인 및 반려 처리하는 전용 관제 보기입니다. 아래 목록에서 각 세목 우측의 <b>\'검증\'</b> 버튼을 클릭하여 결재를 수행하십시오.
+            <b>[제출·승인 검토]</b> 제출된 예산을 확인하고 승인, 반려 또는 조치 요청을 처리합니다. 목록 우측의 <b>검토</b> 버튼을 눌러 상세 내용을 확인하세요.
           </div>
         </div>
       )}
@@ -607,27 +608,27 @@ export default function BudgetStatus() {
               className="w-full text-xs p-2.5 bg-white border border-rose-200 rounded-xl focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
             >
               <option value="all">전체 집행 상태</option>
-              <option value="OVERRUN">초과 경보 (OVERRUN)</option>
-              <option value="UNDERRUN">낮은 집행률 (UNDERRUN)</option>
-              <option value="UNBUDGETED">무예산 집행 (UNBUDGETED)</option>
-              <option value="NORMAL">정상 소진 (NORMAL)</option>
+              <option value="OVERRUN">초과</option>
+              <option value="UNDERRUN">미달</option>
+              <option value="UNBUDGETED">무예산</option>
+              <option value="NORMAL">정상</option>
             </select>
           </div>
 
           {/* Approval filter */}
           <div>
-            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">검증 결재 상태</label>
+            <label className="block text-[10px] font-bold text-[#647067] mb-1 font-sans">결재 상태</label>
             <select 
               value={selectedApproval}
               onChange={(e) => setSelectedApproval(e.target.value)}
               className="w-full text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none"
             >
               <option value="all">전체 결재상태</option>
-              <option value="DRAFT">임시 작성 중 (DRAFT)</option>
-              <option value="ACTION_REQ">조치 요청 접수</option>
-              <option value="APPROVED">계획 승인 가결 (APPROVED)</option>
-              <option value="REJECTED">집행 반려 상태 (REJECTED)</option>
-              <option value="LOCKED">잠금 완료 (LOCKED)</option>
+              <option value="DRAFT">작성중</option>
+              <option value="ACTION_REQ">조치 요청</option>
+              <option value="APPROVED">승인완료</option>
+              <option value="REJECTED">반려</option>
+              <option value="LOCKED">잠금</option>
             </select>
           </div>
         </div>
@@ -666,7 +667,7 @@ export default function BudgetStatus() {
         
         {/* Alerts count */}
         <div className="bg-amber-50/70 border border-[#fbd6b4] p-4.5 rounded-2xl shadow-xs text-center">
-          <span className="text-[10px] font-bold text-[#F7A059] uppercase block tracking-wider">초과 경보</span>
+          <span className="text-[10px] font-bold text-[#F7A059] uppercase block tracking-wider">초과</span>
           <span className="text-lg font-bold text-amber-600 mt-2 font-mono block">{kpis.overrunCount}건</span>
         </div>
         <div className="bg-zinc-50 border border-zinc-200 p-4.5 rounded-2xl shadow-xs text-center">
@@ -674,7 +675,7 @@ export default function BudgetStatus() {
           <span className="text-lg font-bold text-zinc-600 mt-2 font-mono block">{kpis.underrunCount}건</span>
         </div>
         <div className="bg-rose-50 border border-rose-200 p-4.5 rounded-2xl shadow-xs text-center col-span-2 md:col-span-1">
-          <span className="text-[10px] font-bold text-rose-500 block tracking-wider">무예산 집행</span>
+          <span className="text-[10px] font-bold text-rose-500 block tracking-wider">무예산</span>
           <span className="text-lg font-bold text-rose-600 mt-2 font-mono block">{kpis.unbudgetedCount}건</span>
         </div>
       </div>
@@ -738,14 +739,14 @@ export default function BudgetStatus() {
           <div>
             <h3 className="text-sm font-bold text-[#111111]">
               {activeTab === 'overview' 
-                ? `예산 집행 상세 감사 정보판 (${tableRows.length}건 정기 검증)` 
+                ? `예산 현황 상세 정보판 (${tableRows.length}건 정기 검증)` 
                 : `부서별 예산 조정안 결제 승인판 (${tableRows.length}건 대기)`
               }
             </h3>
             <p className="text-[11px] text-[#647067] mt-0.5">
               {activeTab === 'overview' 
                 ? '편성 예산 대비 누계 지출액 대조 상세 테이블' 
-                : '각 세목 우측의 검증 버튼을 클릭하여 최종 결재액 승인과 반려, 조치 요구 처리를 진행하십시오.'
+                : '각 세목 우측의 검토 버튼을 클릭하여 최종 결재액 승인과 반려, 조치 요구 처리를 진행하십시오.'
               }
             </p>
           </div>
@@ -757,22 +758,22 @@ export default function BudgetStatus() {
               <tr className="text-[10px] text-[#647067] font-bold uppercase tracking-wider">
                 <th className="px-5 py-3">부서명 (코드)</th>
                 <th className="px-5 py-3">계정명 (코드)</th>
-                <th className="px-5 py-3">계정구분</th>
+                <th className="px-5 py-3">비용 성격</th>
                 <th className="px-5 py-3">조회 기준</th>
                 <th className="px-5 py-3 text-right">예산</th>
                 <th className="px-5 py-3 text-right">실제 집행</th>
                 <th className="px-5 py-3 text-right">잔여 한도</th>
                 <th className="px-5 py-3 text-center">집행률</th>
-                <th className="px-5 py-3 text-center">집행상질</th>
-                <th className="px-5 py-3 text-center">검증결재상질</th>
-                <th className="px-5 py-3 text-center">상세</th>
+                <th className="px-5 py-3 text-center">집행 상태</th>
+                <th className="px-5 py-3 text-center">결재 상태</th>
+                <th className="px-5 py-3 text-center">검토</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
               {tableRows.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-5 py-12 text-center text-zinc-400 font-medium">
-                    해당 세목 조건에 매칭되는 예산 감사 데이터가 존재하지 않습니다.
+                    선택한 조건에 해당하는 예산·실적 데이터가 없습니다.
                   </td>
                 </tr>
               ) : (
@@ -812,7 +813,7 @@ export default function BudgetStatus() {
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
                           isOver ? 'bg-amber-50 text-[#F7A059] border border-[#fbd6b4]' : isUnb ? 'bg-rose-50 text-rose-700 border border-rose-150' : row.anomalyType === 'UNDERRUN' ? 'bg-zinc-100 text-[#4e5968]' : 'bg-emerald-50 text-[#008f83]'
                         }`}>
-                          {row.anomalyType === 'OVERRUN' ? '초과 경보' : row.anomalyType === 'UNDERRUN' ? '집행 미달' : row.anomalyType === 'UNBUDGETED' ? '무예산' : '정상 통제'}
+                          {getExecutionStatusLabel(row.anomalyType)}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 whitespace-nowrap text-center">
@@ -827,7 +828,7 @@ export default function BudgetStatus() {
                           onClick={() => handleOpenReview(row)}
                           className="p-1 px-2.5 bg-white hover:bg-zinc-100 text-zinc-600 border border-[#dde5de] rounded-md hover:border-teal-500 hover:text-teal-600 cursor-pointer font-semibold transition-all"
                         >
-                          검증
+                          검토
                         </button>
                       </td>
                     </tr>

@@ -90,26 +90,26 @@ export default function ReviewDrawer({ isOpen, onClose, item, onSave }: ReviewDr
       case 'ACTION_REQ':
         return <span className="bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans">조치 요청</span>;
       case 'APPROVED':
-        return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans">계획 승인</span>;
+        return <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans">승인</span>;
       case 'REJECTED':
-        return <span className="bg-rose-100 text-rose-700 border border-rose-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans font-mono">집행 반려</span>;
+        return <span className="bg-rose-100 text-rose-700 border border-rose-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans font-mono">반려</span>;
       case 'HELD':
-        return <span className="bg-zinc-100 text-zinc-600 border border-zinc-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans">보류 상태</span>;
+        return <span className="bg-zinc-100 text-zinc-600 border border-zinc-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans">보류</span>;
       default:
-        return <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans">작성 중</span>;
+        return <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full text-xs font-bold font-sans">작성중</span>;
     }
   };
 
   const getAnomalyTag = (type: string) => {
     switch (type) {
       case 'OVERRUN':
-        return <span className="bg-amber-50 text-[#F7A059] border border-[#fbd6b4] px-2 py-0.5 rounded text-[11px] font-bold">초과 주의</span>;
+        return <span className="bg-amber-50 text-[#F7A059] border border-[#fbd6b4] px-2 py-0.5 rounded text-[11px] font-bold">초과</span>;
       case 'UNDERRUN':
-        return <span className="bg-zinc-100 text-[#647067] border border-zinc-200 px-2 py-0.5 rounded text-[11px] font-bold">집행 미달</span>;
+        return <span className="bg-zinc-100 text-[#647067] border border-zinc-200 px-2 py-0.5 rounded text-[11px] font-bold">미달</span>;
       case 'UNBUDGETED':
-        return <span className="bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[11px] font-bold">무예산 집행</span>;
+        return <span className="bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[11px] font-bold">무예산</span>;
       default:
-        return <span className="bg-emerald-50 text-[#008f83] border border-emerald-100 px-2 py-0.5 rounded text-[11px] font-bold">정상 통제</span>;
+        return <span className="bg-emerald-50 text-[#008f83] border border-emerald-100 px-2 py-0.5 rounded text-[11px] font-bold">정상</span>;
     }
   };
 
@@ -125,10 +125,10 @@ export default function ReviewDrawer({ isOpen, onClose, item, onSave }: ReviewDr
         <div className="p-6 border-b border-[#eef2ec] bg-[#f7f9f7] flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono tracking-widest font-bold text-zinc-400 uppercase">Interactive Review Guard</span>
+              <span className="text-[10px] font-mono tracking-widest font-bold text-zinc-400 uppercase">검토</span>
               {getAnomalyTag(item.anomalyType)}
             </div>
-            <h3 className="text-lg font-bold text-[#111111] mt-1">집행 상세 검증 및 감사 의견서</h3>
+            <h3 className="text-lg font-bold text-[#111111] mt-1">검토 의견</h3>
           </div>
           <button 
             onClick={onClose}
@@ -144,7 +144,7 @@ export default function ReviewDrawer({ isOpen, onClose, item, onSave }: ReviewDr
           {/* Main Info Box */}
           <div className="bg-[#fcfdfe] rounded-xl border border-[#dde5de] p-5 space-y-4">
             <h4 className="text-xs font-bold text-[#647067] uppercase tracking-wider mb-2 flex items-center gap-1">
-              <Landmark className="w-3.5 h-3.5" /> 통제 대상 기본 정보
+              <Landmark className="w-3.5 h-3.5" /> 기본 정보
             </h4>
             <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 text-xs">
               <div>
@@ -213,26 +213,26 @@ export default function ReviewDrawer({ isOpen, onClose, item, onSave }: ReviewDr
 
           {/* Anomaly Review Form */}
           <div className="space-y-3.5">
-            <h4 className="text-xs font-bold text-[#647067] uppercase tracking-wider block">집행 심사 의견 개진</h4>
+            <h4 className="text-xs font-bold text-[#647067] uppercase tracking-wider block">검토 의견</h4>
             <div>
-              <label className="block text-[11px] text-zinc-400 mb-1">인사 관리자 및 감사 메모</label>
+              <label className="block text-[11px] text-zinc-400 mb-1">메모</label>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={4}
                 className="w-full text-xs p-3.5 border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none placeholder-zinc-300 font-sans"
-                placeholder="인시 통보, 예산 변경 전입전출 승인, 혹은 정산 사유 해명에 대한 내용을 입력하세요."
+                placeholder="내용을 입력하세요."
               />
             </div>
           </div>
 
-          {/* Audit Trail Logs */}
+          {/* Audit Trail */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-[#647067] uppercase tracking-wider block flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" /> 관제 심사 실시간 타임라인 Logs
+              <Clock className="w-3.5 h-3.5" /> 처리 이력
             </h4>
             {history.length === 0 ? (
-              <p className="text-[11px] text-zinc-400 italic">등록된 감사 변경 이력이 없습니다.</p>
+              <p className="text-[11px] text-zinc-400 italic">처리 이력이 없습니다.</p>
             ) : (
               <div className="space-y-3 border-l-2 border-[#eef2ec] pl-4 ml-1">
                 {history.map((log, lIdx) => (
@@ -264,21 +264,21 @@ export default function ReviewDrawer({ isOpen, onClose, item, onSave }: ReviewDr
             onClick={() => saveState('APPROVED', '조정안 최종 승인', note)}
             className="px-3 py-2 bg-[#008f83] hover:bg-[#007369] text-white rounded-lg text-xs font-bold cursor-pointer transition-colors text-center"
           >
-            승인 가결
+            승인
           </button>
 
           <button
             onClick={() => saveState('REJECTED', '집행 일시 반려', note)}
             className="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors text-center"
           >
-            기각/반려
+            반려
           </button>
 
           <button
             onClick={() => saveState('HELD', '임시 보류 조치', note)}
             className="px-3 py-2 bg-zinc-600 hover:bg-zinc-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors text-center col-span-2 sm:col-span-1"
           >
-            임시보류
+            보류
           </button>
         </div>
 
