@@ -16,6 +16,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "better-sqlite3": "^12.4.1",
     "clsx": "^2.1.1",
+    "domexception": "^4.0.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jspdf": "^4.2.0",
@@ -40,5 +41,8 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
+  },
+  "overrides": {
+    "fetch-blob": "4.0.0"
   }
 }
