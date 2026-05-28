@@ -279,6 +279,165 @@ export function getActualDominanceSignal(params: {
   return null;
 }
 
+export type AttributionExcludeReason =
+  | 'PAYROLL'
+  | 'TRAVEL'
+  | 'VEHICLE'
+  | 'WELFARE'
+  | 'TRAINING'
+  | 'MEETING'
+  | 'BUSINESS_ACTIVITY'
+  | 'OTHER_EXCLUDED';
+
+export interface AttributionExcludeResult {
+  excluded: boolean;
+  reason?: AttributionExcludeReason;
+  label?: string;
+  matchedKeyword?: string;
+}
+
+function normalizeForAttribution(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\s+/g, '')
+    .replace(/[()（）\-_]/g, '')
+    .toLowerCase();
+}
+
+const ATTRIBUTION_EXCLUDE_RULES: Array<{
+  reason: AttributionExcludeReason;
+  label: string;
+  keywords: string[];
+}> = [
+  {
+    reason: 'PAYROLL',
+    label: '급여성 계정',
+    keywords: [
+      '급여',
+      '임금',
+      '상여',
+      '성과금',
+      '경영성과금',
+      '퇴직금',
+      '퇴직급여',
+      '퇴직급여충당',
+      '직책수당',
+      '임원활동수당',
+      '임원급여',
+      '직원급여',
+      '인건비',
+      '연차수당',
+    ],
+  },
+  {
+    reason: 'VEHICLE',
+    label: '차량 관련 계정',
+    keywords: [
+      '차량유지비',
+      '차량유류지원비',
+      '차량유류비',
+      '유류비',
+      '주차비',
+      '통행료',
+      '하이패스',
+    ],
+  },
+  {
+    reason: 'TRAVEL',
+    label: '여비교통비 계정',
+    keywords: [
+      '여비교통비',
+      '국내여비',
+      '해외여비',
+      '출장비',
+      '교통비',
+      '숙박비',
+      '일비',
+    ],
+  },
+  {
+    reason: 'TRAINING',
+    label: '교육훈련 계정',
+    keywords: [
+      '교육훈련비',
+      '교육비',
+      '훈련비',
+      '세미나',
+      '워크숍',
+      '워크샵',
+    ],
+  },
+  {
+    reason: 'WELFARE',
+    label: '복리후생 계정',
+    keywords: [
+      '직원중식비',
+      '중식비',
+      '식대',
+      '복지카드비용',
+      '복지카드',
+      '복리후생비',
+      '자녀교육비',
+      '주택임차료',
+      '건강검진',
+      '경조사',
+    ],
+  },
+  {
+    reason: 'MEETING',
+    label: '회의·간담회 계정',
+    keywords: [
+      '회의비',
+      '직원간담회지원',
+      '간담회',
+      '부서별그룹활동지원',
+      '그룹활동지원',
+      '부서활동',
+      '부서별활동',
+    ],
+  },
+  {
+    reason: 'BUSINESS_ACTIVITY',
+    label: '업무활동경비 계정',
+    keywords: [
+      '업무활동경비',
+      '활동지원',
+      '업무추진',
+      '업무추진비',
+    ],
+  },
+];
+
+export function getAttributionExcludeResult(
+  accountCode: string,
+  accountName: string
+): AttributionExcludeResult {
+  const text = normalizeForAttribution(`${accountCode} ${accountName}`);
+
+  for (const rule of ATTRIBUTION_EXCLUDE_RULES) {
+    const matchedKeyword = rule.keywords.find(keyword =>
+      text.includes(normalizeForAttribution(keyword))
+    );
+
+    if (matchedKeyword) {
+      return {
+        excluded: true,
+        reason: rule.reason,
+        label: rule.label,
+        matchedKeyword,
+      };
+    }
+  }
+
+  return { excluded: false };
+}
+
+export function isExcludedFromAttributionRecommendation(
+  accountCode: string,
+  accountName: string
+): boolean {
+  return getAttributionExcludeResult(accountCode, accountName).excluded;
+}
+
 export function recommendAttributionForRow(params: {
   row: any;
   year: string;
@@ -297,8 +456,8 @@ export function recommendAttributionForRow(params: {
   const accountName = params.row.accountName;
   const originalDeptCode = params.row.usageCode;
 
-  // 급여 관련 계정은 추천에서 즉각 배제
-  if (accountName && (accountName.includes('급여') || accountName.includes('임금') || accountName.includes('상여'))) {
+  const excludeResult = getAttributionExcludeResult(accountCode, accountName);
+  if (excludeResult.excluded) {
     return null;
   }
 

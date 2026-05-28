@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Filter, 
@@ -25,6 +25,7 @@ import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
 import { usePermission } from '../lib/permissions';
 import { 
   recommendAttributionForRow, 
+  getAttributionExcludeResult,
   AttributionRecommendation, 
   AttributionAuditLog 
 } from '../lib/deptAttributionRecommender';
@@ -55,6 +56,24 @@ interface RecommendationRow {
   amount: number;
 }
 
+const DEFAULT_ATTRIBUTION_COL_WIDTHS = {
+  select: 44,
+  period: 64,
+  accountCode: 110,
+  accountName: 220,
+  originalDept: 180,
+  currentDept: 190,
+  recommendedDept: 190,
+  amount: 110,
+  confidence: 80,
+  status: 80,
+  actions: 110,
+};
+
+type AttributionColumnKey = keyof typeof DEFAULT_ATTRIBUTION_COL_WIDTHS;
+
+const ATTRIBUTION_COL_WIDTHS_KEY = 'hycm_attribution_column_widths';
+
 export default function DepartmentAssignment() {
   const navigate = useNavigate();
   const { currentUser } = usePermission();
@@ -71,6 +90,7 @@ export default function DepartmentAssignment() {
   const [selectedConfidence, setSelectedConfidence] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showExcludedAccounts, setShowExcludedAccounts] = useState(false);
 
   // Loaded Raw Data States
   const [actualRowsList, setActualRowsList] = useState<any[]>([]);
@@ -81,6 +101,62 @@ export default function DepartmentAssignment() {
 
   // Selected Row for Details (Master-Detail)
   const [selectedRowId, setSelectedRowId] = useState<string | number | null>(null);
+  const [editingAttributionRowId, setEditingAttributionRowId] = useState<string | number | null>(null);
+  const [draftAttributedDeptCode, setDraftAttributedDeptCode] = useState('');
+
+  const [columnWidths, setColumnWidths] = useState<Record<AttributionColumnKey, number>>(() => {
+    try {
+      const saved = localStorage.getItem(ATTRIBUTION_COL_WIDTHS_KEY);
+      return saved
+        ? { ...DEFAULT_ATTRIBUTION_COL_WIDTHS, ...JSON.parse(saved) }
+        : DEFAULT_ATTRIBUTION_COL_WIDTHS;
+    } catch {
+      return DEFAULT_ATTRIBUTION_COL_WIDTHS;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(ATTRIBUTION_COL_WIDTHS_KEY, JSON.stringify(columnWidths));
+  }, [columnWidths]);
+
+  const MIN_ATTRIBUTION_COL_WIDTHS: Record<AttributionColumnKey, number> = {
+    select: 40,
+    period: 52,
+    accountCode: 90,
+    accountName: 140,
+    originalDept: 120,
+    currentDept: 130,
+    recommendedDept: 130,
+    amount: 90,
+    confidence: 70,
+    status: 70,
+    actions: 90,
+  };
+
+  function resizeColumn(key: AttributionColumnKey, nextWidth: number) {
+    setColumnWidths(prev => ({
+      ...prev,
+      [key]: Math.max(MIN_ATTRIBUTION_COL_WIDTHS[key], Math.min(nextWidth, 640)),
+    }));
+  }
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+
+  function handleSelectDetailRow(rowId: string | number) {
+    setSelectedRowId(prev => {
+      const next = prev === rowId ? null : rowId;
+
+      if (next !== null) {
+        setTimeout(() => {
+          rowRefs.current[String(rowId)]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+          });
+        }, 0);
+      }
+
+      return next;
+    });
+  }
 
   // Bulk / Multi-Selection Keys
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string | number>>(new Set());
@@ -331,6 +407,60 @@ export default function DepartmentAssignment() {
     });
   }, [allRecommendationRows, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, selectedConfidence, selectedStatus, searchQuery]);
 
+  // Excluded Rows construction
+  const excludedRecommendationRows = useMemo(() => {
+    if (!showExcludedAccounts) return [];
+    
+    const result: any[] = [];
+    actualRowsList.forEach((row: any) => {
+      // 권한 부서 필터링 (사용자별 조회 가능 부서에 해당하는 실적만 대상으로 삼음)
+      const isViewable = viewableDepts.some(d => d.code === row.usageCode || (row.attributedDeptCode && d.code === row.attributedDeptCode));
+      if (!isViewable) return;
+
+      const excludeResult = getAttributionExcludeResult(row.accountCode, row.accountName);
+      if (excludeResult.excluded) {
+        // Apply Month filter
+        if (selectedMonth !== 'all') {
+          const monthIndex = getPeriodMonthIndex(row.period || row.month);
+          if (monthMode === 'YTD') {
+            if (monthIndex > Number(selectedMonth)) return;
+          } else {
+            if (monthIndex !== Number(selectedMonth)) return;
+          }
+        }
+
+        // Original Dept filter
+        if (selectedWriterDept !== 'all' && row.usageCode !== selectedWriterDept) return;
+
+        // Search Query filter
+        if (searchQuery) {
+          const query = searchQuery.toLowerCase();
+          const codeMatch = row.accountCode.includes(query);
+          const nameMatch = row.accountName.toLowerCase().includes(query);
+          const origCodeMatch = row.usageCode.includes(query);
+
+          if (!codeMatch && !nameMatch && !origCodeMatch) {
+            return;
+          }
+        }
+
+        result.push({
+          rowId: row.id,
+          period: row.period || row.month || '12월',
+          accountCode: row.accountCode,
+          accountName: row.accountName,
+          originalDeptCode: row.usageCode,
+          originalDeptName: row.usageDept || row.usageCode,
+          amount: Number(row.completed || row.amount || 0),
+          excludeReason: excludeResult.label,
+          matchedKeyword: excludeResult.matchedKeyword,
+        });
+      }
+    });
+
+    return result;
+  }, [actualRowsList, viewableDepts, showExcludedAccounts, selectedMonth, monthMode, selectedWriterDept, searchQuery]);
+
   // Selected Detail Row reference
   const activeDetailRow = useMemo(() => {
     if (selectedRowId === null) return null;
@@ -514,7 +644,7 @@ export default function DepartmentAssignment() {
         beforeAttributedDeptName: matchRec.currentAttributedDeptName,
         afterAttributedDeptCode: undefined,
         afterAttributedDeptName: '추천 제외됨 (사용자 무시)',
-        reasons: ['사용자 추천 제외 등록 수동 수행'],
+        reasons: ['추천 무시'],
         score: matchRec.score,
       });
     }
@@ -729,7 +859,7 @@ export default function DepartmentAssignment() {
 
     setFeedbackMsg({
       type: 'success',
-      text: `${targets.length}건의 항목이 무시 처리 제외 완료되었습니다.`
+      text: `${targets.length}건의 항목이 추천 무시 처리되었습니다.`
     });
     setSelectedRowIds(new Set());
     setTimeout(() => setFeedbackMsg(null), 3000);
@@ -785,6 +915,7 @@ export default function DepartmentAssignment() {
     setSelectedConfidence('all');
     setSelectedStatus('all');
     setSearchQuery('');
+    setShowExcludedAccounts(false);
   };
 
   if (viewableDepts.length === 0) {
@@ -914,7 +1045,7 @@ export default function DepartmentAssignment() {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
             >
-              <option value="all">전체 YTD</option>
+              <option value="all">전체 누계</option>
               {Array.from({ length: 12 }, (_, i) => (
                 <option key={i} value={String(i + 1)}>{i + 1}월</option>
               ))}
@@ -1030,12 +1161,35 @@ export default function DepartmentAssignment() {
 
         {/* Clear Filter / Control Buttons row */}
         <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-zinc-100">
-          <button 
-            onClick={handleResetFilters}
-            className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-800 transition font-bold"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> 필터 초기화
-          </button>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={handleResetFilters}
+              className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-800 transition font-bold cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> 필터 초기화
+            </button>
+            <span className="text-zinc-300">|</span>
+            <button
+              type="button"
+              onClick={() => {
+                setColumnWidths(DEFAULT_ATTRIBUTION_COL_WIDTHS);
+                localStorage.removeItem(ATTRIBUTION_COL_WIDTHS_KEY);
+              }}
+              className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-800 transition font-bold cursor-pointer"
+            >
+              컬럼 너비 초기화
+            </button>
+            <span className="text-zinc-300">|</span>
+            <label className="flex items-center gap-1.5 text-[11px] text-[#008f83] hover:text-[#00746b] transition font-bold cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showExcludedAccounts}
+                onChange={(e) => setShowExcludedAccounts(e.target.checked)}
+                className="rounded accent-[#008f83] cursor-pointer"
+              />
+              추천 제외 계정 보기
+            </label>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
@@ -1082,63 +1236,170 @@ export default function DepartmentAssignment() {
         </div>
       </div>
 
-      {/* 4. Main Contents Area: Multi Columns split layout for Master-Detail UI */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      {/* 4. Main Contents Area: Full width table representation with inline detail rows */}
+      <div className="flex flex-col gap-4">
         
-        {/* Left Column representing the Single-Row Table list */}
-        <div className={`flex flex-col gap-4 ${activeDetailRow ? 'lg:col-span-8' : 'lg:col-span-12'} transition-all`}>
-          <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-700">귀속 추천 목록</span>
-              <span className="text-[11.5px] font-mono text-zinc-500">
-                조회 결과: <strong>{filteredRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
-              </span>
-            </div>
+        {/* Table list is full width */}
+        <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
+            <span className="text-xs font-bold text-zinc-700">귀속 추천 목록</span>
+            <span className="text-[11.5px] font-mono text-zinc-500">
+              조회 결과: <strong>{filteredRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
+            </span>
+          </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-250 text-zinc-450 font-bold text-[10.5px] select-none">
-                    <th className="py-2.5 px-3 w-8 text-center">
-                      <input 
-                        type="checkbox"
-                        checked={
-                          filteredRecommendationRows.length > 0 &&
-                          filteredRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId))
-                        }
-                        onChange={handleToggleAllSelect}
-                        className="rounded accent-[#008f83]"
-                      />
-                    </th>
-                    <th className="py-2.5 px-2 text-center w-12">기간</th>
-                    <th className="py-2.5 px-3 w-24">계정코드</th>
-                    <th className="py-2.5 px-3">계정명</th>
-                    <th className="py-2.5 px-3">원 사용처</th>
-                    <th className="py-2.5 px-3">현재 귀속부서</th>
-                    <th className="py-2.5 px-3">추천 귀속부서</th>
-                    <th className="py-2.5 px-3 text-right">실적 금액</th>
-                    <th className="py-2.5 px-2 text-center">신뢰도</th>
-                    <th className="py-2.5 px-2 text-center">사유수</th>
-                    <th className="py-2.5 px-2 text-center w-16">상태</th>
-                    <th className="py-2.5 px-3 text-center w-24">작업</th>
+          <div className="overflow-x-auto">
+            <table
+              className="table-fixed border-collapse text-xs text-left"
+              style={{
+                width: (Object.keys(columnWidths) as AttributionColumnKey[]).reduce((sum, key) => sum + columnWidths[key], 0),
+                minWidth: (Object.keys(columnWidths) as AttributionColumnKey[]).reduce((sum, key) => sum + columnWidths[key], 0)
+              }}
+            >
+              <colgroup>
+                <col style={{ width: columnWidths.select }} />
+                <col style={{ width: columnWidths.period }} />
+                <col style={{ width: columnWidths.accountCode }} />
+                <col style={{ width: columnWidths.accountName }} />
+                <col style={{ width: columnWidths.originalDept }} />
+                <col style={{ width: columnWidths.currentDept }} />
+                <col style={{ width: columnWidths.recommendedDept }} />
+                <col style={{ width: columnWidths.amount }} />
+                <col style={{ width: columnWidths.confidence }} />
+                <col style={{ width: columnWidths.status }} />
+                <col style={{ width: columnWidths.actions }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-zinc-50 border-b border-zinc-250 text-zinc-450 font-bold text-[10.5px] select-none">
+                  <th className="p-0 text-center">
+                    <ResizableAttributionHeader
+                      title={
+                        <input 
+                          type="checkbox"
+                          checked={
+                            filteredRecommendationRows.length > 0 &&
+                            filteredRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId))
+                          }
+                          onChange={handleToggleAllSelect}
+                          className="rounded accent-[#008f83] cursor-pointer"
+                        />
+                      }
+                      columnKey="select"
+                      align="center"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="기간"
+                      columnKey="period"
+                      align="center"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="계정코드"
+                      columnKey="accountCode"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="계정명"
+                      columnKey="accountName"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="원 사용처"
+                      columnKey="originalDept"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="현재 귀속부서"
+                      columnKey="currentDept"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="추천 귀속부서"
+                      columnKey="recommendedDept"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="실적 금액"
+                      columnKey="amount"
+                      align="right"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="신뢰도"
+                      columnKey="confidence"
+                      align="center"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="상태"
+                      columnKey="status"
+                      align="center"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                  <th className="p-0">
+                    <ResizableAttributionHeader
+                      title="작업"
+                      columnKey="actions"
+                      align="center"
+                      columnWidths={columnWidths}
+                      onResize={resizeColumn}
+                    />
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-150 font-sans">
+                {filteredRecommendationRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="py-14 text-center text-zinc-400">
+                      지정된 조건에 부합하는 귀속 추천 항목이 없습니다.
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-150 font-sans">
-                  {filteredRecommendationRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="py-14 text-center text-zinc-400">
-                        지정된 조건에 부합하는 귀속 추천 항목이 없습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRecommendationRows.map(item => {
-                      const isSelected = selectedRowId === item.rowId;
-                      const isChecked = selectedRowIds.has(item.rowId);
+                ) : (
+                  filteredRecommendationRows.map(item => {
+                    const isSelected = selectedRowId === item.rowId;
+                    const isChecked = selectedRowIds.has(item.rowId);
 
-                      return (
+                    return (
+                      <React.Fragment key={item.rowId}>
                         <tr 
-                          key={item.rowId}
-                          onClick={() => setSelectedRowId(item.rowId)}
+                          ref={(el) => {
+                            rowRefs.current[String(item.rowId)] = el;
+                          }}
+                          onClick={() => {
+                            setEditingAttributionRowId(null);
+                            setDraftAttributedDeptCode('');
+                            handleSelectDetailRow(item.rowId);
+                          }}
                           className={`hover:bg-zinc-50/60 transition-all cursor-pointer ${
                             isSelected ? 'bg-emerald-50/20 border-l-2 border-[#008f83]' : ''
                           }`}
@@ -1157,26 +1418,127 @@ export default function DepartmentAssignment() {
                           </td>
                           <td className="py-3 px-2 text-center font-mono font-medium text-zinc-500">{item.period}</td>
                           <td className="py-3 px-3 font-mono font-bold text-zinc-700">{item.accountCode}</td>
-                          <td className="py-3 px-3 font-bold text-zinc-900 truncate max-w-[140px]" title={item.accountName}>
-                            {item.accountName}
-                          </td>
-                          <td className="py-3 px-3 text-zinc-600 truncate max-w-[120px]" title={item.originalDeptName}>
-                            [{item.originalDeptCode}] {item.originalDeptName}
+                          <td className="py-3 px-3">
+                            <span className="block truncate font-bold text-zinc-900" title={item.accountName}>
+                              {item.accountName}
+                            </span>
                           </td>
                           <td className="py-3 px-3">
-                            {item.currentAttributedDeptCode ? (
-                              <span className="text-[#008f83] font-semibold truncate block max-w-[120px]" title={item.currentAttributedDeptName}>
-                                [{item.currentAttributedDeptCode}] {item.currentAttributedDeptName}
-                              </span>
+                            <span className="block truncate text-zinc-600" title={`[${item.originalDeptCode}] ${item.originalDeptName}`}>
+                              [{item.originalDeptCode}] {item.originalDeptName}
+                            </span>
+                          </td>
+                          <td
+                            className="py-3 px-3"
+                            onClick={(e) => {
+                              e.stopPropagation();
+
+                              setSelectedRowId(null);
+
+                              setEditingAttributionRowId(prev => {
+                                const next = prev === item.rowId ? null : item.rowId;
+
+                                if (next !== null) {
+                                  setDraftAttributedDeptCode(
+                                    item.currentAttributedDeptCode ||
+                                    item.originalDeptCode ||
+                                    ''
+                                  );
+                                }
+
+                                return next;
+                              });
+                            }}
+                          >
+                            {editingAttributionRowId === item.rowId ? (
+                              <div className="min-w-[220px] rounded-lg border border-[#008f83]/30 bg-white p-2 shadow-sm">
+                                <div className="mb-1 text-[10px] font-bold text-zinc-500">
+                                  현재 귀속부서 변경
+                                </div>
+
+                                <select
+                                  value={draftAttributedDeptCode}
+                                  onChange={(e) => setDraftAttributedDeptCode(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-full rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium outline-none focus:border-[#008f83]"
+                                >
+                                  <option value={item.originalDeptCode}>
+                                    원 사용처 기준 [{item.originalDeptCode}] {item.originalDeptName}
+                                  </option>
+
+                                  {allDepts.map(dept => (
+                                    <option key={dept.code} value={dept.code}>
+                                      [{dept.code}] {dept.name}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <div className="mt-2 flex justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingAttributionRowId(null);
+                                      setDraftAttributedDeptCode('');
+                                    }}
+                                    className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-bold text-zinc-500 hover:bg-zinc-50 cursor-pointer"
+                                  >
+                                    취소
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+
+                                      if (!draftAttributedDeptCode) return;
+
+                                      if (draftAttributedDeptCode === item.originalDeptCode) {
+                                        handleRevertAttribution(item.rowId);
+                                      } else {
+                                        handleApplyManualChange(item.rowId, draftAttributedDeptCode);
+                                      }
+
+                                      setEditingAttributionRowId(null);
+                                      setDraftAttributedDeptCode('');
+                                    }}
+                                    className="rounded bg-[#008f83] px-2 py-0.5 text-[10px] font-bold text-white hover:bg-[#00746b] cursor-pointer"
+                                  >
+                                    적용
+                                  </button>
+                                </div>
+                              </div>
                             ) : (
-                              <span className="text-zinc-400 font-medium font-sans">원 사용처 기준</span>
+                              <button
+                                type="button"
+                                className="group flex max-w-[160px] items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-emerald-50 cursor-pointer"
+                                title="현재 귀속부서 변경"
+                              >
+                                {item.currentAttributedDeptCode ? (
+                                  <span className="block truncate font-semibold text-[#008f83]">
+                                    [{item.currentAttributedDeptCode}] {item.currentAttributedDeptName}
+                                  </span>
+                                ) : (
+                                  <span className="font-medium text-zinc-400">
+                                    원 사용처 기준
+                                  </span>
+                                )}
+
+                                <span className="text-[10px] text-zinc-300 group-hover:text-[#008f83] shrink-0">
+                                  변경
+                                </span>
+                              </button>
                             )}
                           </td>
                           <td className="py-3 px-3">
                             {item.recommendedDeptCode ? (
-                              <span className="text-[#008f83] font-bold truncate block max-w-[120px]" title={item.recommendedDeptName}>
+                              <button
+                                type="button"
+                                className="block truncate text-left font-bold text-[#008f83] hover:underline cursor-pointer"
+                                title="귀속 추천 상세 보기"
+                              >
                                 [{item.recommendedDeptCode}] {item.recommendedDeptName}
-                              </span>
+                              </button>
                             ) : (
                               <span className="text-zinc-400 font-mono">-</span>
                             )}
@@ -1199,7 +1561,7 @@ export default function DepartmentAssignment() {
                               <span className="text-zinc-400 font-mono text-[10px]">-</span>
                             )}
                           </td>
-                          <td className="py-3 px-2 text-center font-mono font-bold text-zinc-500">{item.reasons.length}개</td>
+
                           <td className="py-3 px-2 text-center">
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                               item.status === '적용됨' 
@@ -1231,7 +1593,7 @@ export default function DepartmentAssignment() {
                                   </button>
                                   <button
                                     onClick={() => handleIgnoreRecommendation(item.rowId)}
-                                    className="px-1.5 py-0.5 bg-zinc-150 border border-zinc-200 hover:bg-zinc-200 text-zinc-600 rounded font-bold transition text-[10px] select-none cursor-pointer"
+                                    className="px-1.5 py-0.5 bg-zinc-150 border border-zinc-200 hover:bg-zinc-200 text-zinc-650 rounded font-bold transition text-[10px] select-none cursor-pointer"
                                   >
                                     무시
                                   </button>
@@ -1249,7 +1611,7 @@ export default function DepartmentAssignment() {
                               {item.status === '무시됨' && (
                                 <button
                                   onClick={() => handleUndoIgnore(item.rowId)}
-                                  className="px-1.5 py-0.5 border border-zinc-300 text-zinc-600 hover:bg-zinc-100 rounded font-semibold transition text-[10px] select-none cursor-pointer"
+                                  className="px-1.5 py-0.5 border border-zinc-300 text-zinc-650 hover:bg-zinc-100 rounded font-semibold transition text-[10px] select-none cursor-pointer"
                                 >
                                   무시취소
                                 </button>
@@ -1257,191 +1619,105 @@ export default function DepartmentAssignment() {
                             </div>
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+
+                        {isSelected && (
+                          <tr className="bg-emerald-50/5 hover:bg-emerald-50/5 pointer-events-auto">
+                            <td colSpan={11} className="p-0 border-t border-b border-emerald-100/50">
+                              <InlineAttributionDetailRow
+                                item={item}
+                                allDepts={allDepts}
+                                onClose={() => setSelectedRowId(null)}
+                                onApply={() => handleApplyRecommendation(
+                                  item.rowId, 
+                                  item.recommendedDeptCode, 
+                                  item.recommendedDeptName, 
+                                  item.reasons.map(r => r.label), 
+                                  item.score
+                                )}
+                                onManualChange={(deptCode) => handleApplyManualChange(item.rowId, deptCode)}
+                                onRevert={() => handleRevertAttribution(item.rowId)}
+                                onIgnore={() => handleIgnoreRecommendation(item.rowId)}
+                                onUndoIgnore={() => handleUndoIgnore(item.rowId)}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Right Column: Detailed Recommendation Drawer panel */}
-        {activeDetailRow && (
-          <div className="lg:col-span-4 flex flex-col gap-4 animate-in slide-in-from-right duration-250">
-            <div className="bg-white border border-zinc-200 rounded-xl shadow-md overflow-hidden flex flex-col">
-              <div className="px-4 py-3 bg-[#008f83] text-white font-bold text-xs flex items-center justify-between">
-                <span>귀속 추천 상세</span>
-                <button 
-                  onClick={() => setSelectedRowId(null)}
-                  className="text-white.80 hover:text-white p-0.5 rounded transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-4 flex flex-col gap-4 text-xs font-sans">
-                
-                {/* Account Section */}
-                <div className="flex flex-col gap-2 border-b pb-3 border-zinc-100">
-                  <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">계정 정보</div>
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex items-start justify-between">
-                      <span className="text-zinc-500 font-medium">계정코드</span>
-                      <span className="font-mono font-bold text-zinc-800">{activeDetailRow.accountCode}</span>
-                    </div>
-                    <div className="flex items-start justify-between">
-                      <span className="text-zinc-500 font-medium">계정과목명</span>
-                      <span className="font-bold text-zinc-800 text-right">{activeDetailRow.accountName}</span>
-                    </div>
-                    <div className="flex items-start justify-between">
-                      <span className="text-zinc-500 font-medium">발생 기간</span>
-                      <span className="font-bold text-zinc-700">{activeDetailRow.period} 실적</span>
-                    </div>
-                    <div className="flex items-start justify-between">
-                      <span className="text-zinc-500 font-medium">실적금액</span>
-                      <span className="font-mono font-black text-[#008f83] text-sm">
-                        {activeDetailRow.amount.toLocaleString()}원
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Departments Comparison */}
-                <div className="flex flex-col gap-2 border-b pb-3 border-zinc-100">
-                  <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">부서 정보</div>
-                  <div className="flex flex-col gap-1.5 bg-zinc-50 p-2.5 rounded border border-zinc-150">
-                    <div className="flex justify-between items-center text-[11px]">
-                      <span className="text-zinc-500">원 사용처</span>
-                      <span className="font-bold text-zinc-700">
-                        [{activeDetailRow.originalDeptCode}] {activeDetailRow.originalDeptName}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] pt-1">
-                      <span className="text-zinc-500">현재 귀속부서</span>
-                      <span className="font-bold text-zinc-800">
-                        {activeDetailRow.currentAttributedDeptCode ? (
-                          <span className="text-[#008f83]">
-                            [{activeDetailRow.currentAttributedDeptCode}] {activeDetailRow.currentAttributedDeptName}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-450">원 사용처 기준 동일</span>
-                        )}
-                      </span>
-                    </div>
-                    {activeDetailRow.recommendedDeptCode && (
-                      <div className="flex justify-between items-center text-[11px] border-t border-dashed border-zinc-200 mt-1.5 pt-1.5">
-                        <span className="text-zinc-500 font-bold text-[#008f83]">추천 귀속부서</span>
-                        <span className="font-extrabold text-[#008f83]">
-                          [{activeDetailRow.recommendedDeptCode}] {activeDetailRow.recommendedDeptName}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Score and Reasons Section */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">귀속 추천 사유</div>
-                    {activeDetailRow.score > 0 && (
-                      <span className="text-[10.5px] font-mono text-[#008f83] font-bold">
-                        추천 점수: {activeDetailRow.score}점 ({getConfidenceLabel(activeDetailRow.confidence)})
-                      </span>
-                    )}
-                  </div>
-                  <ul className="flex flex-col gap-1.5">
-                    {activeDetailRow.reasons.map((rs, i) => (
-                      <li key={i} className="bg-zinc-50/50 p-2 rounded border border-zinc-150 text-[10.5px] text-zinc-650 flex items-start gap-1">
-                        <span className="text-emerald-500 font-semibold">•</span>
-                        <div>
-                          <span>{rs.label}</span>
-                          {rs.weight > 0 && (
-                            <strong className="text-zinc-700 ml-1">+{rs.weight}점</strong>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Operational Actions */}
-                <div className="flex flex-col gap-2 pt-3 border-t border-zinc-150">
-                  <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-1">보정 작업 처리</div>
-                  
-                  {activeDetailRow.status === '대기' && activeDetailRow.recommendedDeptCode && (
-                    <button
-                      onClick={() => handleApplyRecommendation(
-                        activeDetailRow.rowId, 
-                        activeDetailRow.recommendedDeptCode, 
-                        activeDetailRow.recommendedDeptName, 
-                        activeDetailRow.reasons.map(r => r.label), 
-                        activeDetailRow.score
-                      )}
-                      className="w-full py-2 bg-[#008f83] hover:bg-[#00746b] text-white font-bold rounded transition text-center select-none cursor-pointer shadow-xs"
-                    >
-                      추천 적용
-                    </button>
-                  )}
-
-                  {/* Manual Dropdown Selector */}
-                  <div className="flex flex-col gap-1.5 mt-1.5 p-2 bg-zinc-50 rounded border border-zinc-150">
-                    <span className="text-[10px] font-semibold text-zinc-500">수동 변경 부서 선택</span>
-                    <div className="flex gap-1">
-                      <select
-                        id="manual-dept-select"
-                        className="flex-1 text-[11px] py-1 border border-zinc-200 bg-white rounded outline-none font-medium text-zinc-700 focus:border-[#008f83]"
-                        defaultValue=""
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val) {
-                            handleApplyManualChange(activeDetailRow.rowId, val);
-                            e.target.value = ""; // Reset index
-                          }
-                        }}
-                      >
-                        <option value="">수동 변경할 부서 선택</option>
-                        {allDepts.map(dp => (
-                          <option key={dp.code} value={dp.code}>{dp.name} ({dp.code})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {activeDetailRow.status === '대기' && (
-                      <button
-                        onClick={() => handleIgnoreRecommendation(activeDetailRow.rowId)}
-                        className="py-1.5 border border-zinc-250 hover:bg-zinc-100 text-zinc-600 font-bold rounded transition text-center select-none cursor-pointer"
-                      >
-                        추천 무시
-                      </button>
-                    )}
-                    {activeDetailRow.status === '무시됨' && (
-                      <button
-                        onClick={() => handleUndoIgnore(activeDetailRow.rowId)}
-                        className="col-span-2 py-1.5 border border-[#008f83] text-[#008f83] hover:bg-emerald-50 rounded font-bold transition text-center select-none cursor-pointer"
-                      >
-                        무시 취소
-                      </button>
-                    )}
-                    {(activeDetailRow.status === '적용됨' || activeDetailRow.status === '수동 변경') && (
-                      <button
-                        onClick={() => handleRevertAttribution(activeDetailRow.rowId)}
-                        className="col-span-2 py-1.5 border border-red-200 hover:bg-red-50 text-red-600 font-bold rounded transition text-center select-none cursor-pointer"
-                      >
-                        귀속 원복
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </div>
-        )}
-
       </div>
+
+      {/* Dynamic Excluded Accounts section */}
+      {showExcludedAccounts && (
+        <div className="bg-white border border-red-150 rounded-xl shadow-xs overflow-hidden mt-3 p-4 animate-in fade-in duration-200">
+          <div className="flex flex-wrap items-center justify-between border-b border-zinc-100 pb-2.5 mb-3 gap-2">
+            <h3 className="text-xs font-bold text-red-650 flex items-center gap-1.5">
+              <X className="w-4 h-4 text-red-500" />
+              추천 제외 대상 계정 실적 ({excludedRecommendationRows.length}건)
+            </h3>
+            <span className="text-[10.5px] text-zinc-500 font-medium">※ 사람, 복지, 출장, 간담회 등 오탐 방지를 위해 추천 대상에서 분류 배제된 실적입니다.</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-100 border-b border-zinc-200 text-zinc-500 font-bold text-[10.5px] select-none">
+                  <th className="py-2 px-3 w-16 text-center">기간</th>
+                  <th className="py-2 px-3 w-24">계정코드</th>
+                  <th className="py-2 px-3 w-48">계정명</th>
+                  <th className="py-2 px-3">원 사용처</th>
+                  <th className="py-2 px-3 text-right w-28">실적 금액</th>
+                  <th className="py-2 px-3 text-center w-36">제외 사유</th>
+                  <th className="py-2 px-3 text-center w-36">매칭 키워드</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 font-sans">
+                {excludedRecommendationRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-zinc-400">
+                      필터에 해당하는 추천 제외 대상 실적이 없습니다.
+                    </td>
+                  </tr>
+                ) : (
+                  excludedRecommendationRows.map((item) => (
+                    <tr key={item.rowId} className="hover:bg-zinc-50 transition">
+                      <td className="py-2.5 px-3 text-center font-mono text-zinc-500">{item.period}</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-zinc-700">{item.accountCode}</td>
+                      <td className="py-2.5 px-3 font-bold text-zinc-900 truncate max-w-[180px]" title={item.accountName}>
+                        {item.accountName}
+                      </td>
+                      <td className="py-2.5 px-3 text-zinc-650 truncate max-w-[200px]" title={item.originalDeptName}>
+                        [{item.originalDeptCode}] {item.originalDeptName}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-zinc-800">
+                        {item.amount.toLocaleString()}원
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className="inline-block px-2 py-0.5 bg-red-50 border border-red-100 text-red-700 font-bold text-[10px] rounded-sm">
+                          {item.excludeReason}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className="inline-block px-1.5 py-0.5 bg-zinc-100 text-zinc-600 font-mono text-[10px] rounded">
+                          {item.matchedKeyword}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+
 
       {/* 5. Audit History Log Table representation (Collapsible Section) */}
       {showHistory && (
@@ -1527,6 +1803,285 @@ export default function DepartmentAssignment() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+function ResizableAttributionHeader({
+  title,
+  columnKey,
+  align = 'left',
+  columnWidths,
+  onResize,
+}: {
+  title: React.ReactNode;
+  columnKey: AttributionColumnKey;
+  align?: 'left' | 'center' | 'right';
+  columnWidths: Record<AttributionColumnKey, number>;
+  onResize: (key: AttributionColumnKey, width: number) => void;
+}) {
+  const startXRef = React.useRef(0);
+  const startWidthRef = React.useRef(0);
+  const [resizing, setResizing] = React.useState(false);
+
+  const width = columnWidths[columnKey];
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    startXRef.current = e.clientX;
+    startWidthRef.current = width;
+    setResizing(true);
+  };
+
+  React.useEffect(() => {
+    if (!resizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - startXRef.current;
+      onResize(columnKey, startWidthRef.current + diff);
+    };
+
+    const handleMouseUp = () => {
+      setResizing(false);
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizing, columnKey, onResize]);
+
+  return (
+    <div
+      className={[
+        'relative flex h-full items-center px-2 py-2 select-none',
+        align === 'center' ? 'justify-center text-center' : '',
+        align === 'right' ? 'justify-end text-right' : '',
+        align === 'left' ? 'justify-start text-left' : '',
+      ].join(' ')}
+      style={{ width }}
+    >
+      <span className="truncate">{title}</span>
+
+      <button
+        type="button"
+        aria-label={`${title} 컬럼 너비 조정`}
+        onMouseDown={handleMouseDown}
+        className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-[#008f83]/30"
+      />
+    </div>
+  );
+}
+
+function InlineAttributionDetailRow({
+  item,
+  allDepts,
+  onClose,
+  onApply,
+  onManualChange,
+  onRevert,
+  onIgnore,
+  onUndoIgnore,
+}: {
+  item: any;
+  allDepts: any[];
+  onClose: () => void;
+  onApply: () => void;
+  onManualChange: (deptCode: string) => void;
+  onRevert: () => void;
+  onIgnore: () => void;
+  onUndoIgnore: () => void;
+}) {
+  const [manualDeptCode, setManualDeptCode] = useState('');
+
+  // Confidence helper
+  const getConfidenceLabel = (conf: string) => {
+    if (conf === 'HIGH') return '높음';
+    if (conf === 'MEDIUM') return '보통';
+    return '낮음';
+  };
+
+  return (
+    <div className="mx-3 my-3 rounded-xl border border-emerald-150 bg-white shadow-md overflow-hidden animate-in slide-in-from-top duration-200">
+      <div className="flex items-center justify-between px-4 py-3 bg-[#008f83] text-white">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold font-sans">귀속 추천 상세</span>
+          <span className="text-[11px] font-mono opacity-80">
+            {item.period} · {item.accountCode}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-white hover:text-emerald-100 p-0.5 rounded transition text-xs font-bold"
+        >
+          상세 닫기
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 p-4 text-xs font-sans">
+        {/* Info Column 1: Account Info */}
+        <section className="rounded-lg border border-zinc-150 bg-zinc-50/50 p-3">
+          <h4 className="mb-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">계정 정보</h4>
+          <InfoLine label="계정코드" value={item.accountCode} />
+          <InfoLine label="계정과목명" value={item.accountName} />
+          <InfoLine label="발생 기간" value={`${item.period} 실적`} />
+          <InfoLine label="실적금액" value={`${item.amount.toLocaleString()}원`} strong />
+        </section>
+
+        {/* Info Column 2: Department Comparison */}
+        <section className="rounded-lg border border-zinc-150 bg-zinc-50/50 p-3">
+          <h4 className="mb-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">부서 정보</h4>
+          <InfoLine label="원 사용처" value={`[${item.originalDeptCode}] ${item.originalDeptName}`} />
+          <InfoLine
+            label="현재 귀속부서"
+            value={
+              item.currentAttributedDeptCode
+                ? `[${item.currentAttributedDeptCode}] ${item.currentAttributedDeptName}`
+                : '원 사용처 기준 동일'
+            }
+          />
+          <InfoLine
+            label="추천 귀속부서"
+            value={
+              item.recommendedDeptCode
+                ? `[${item.recommendedDeptCode}] ${item.recommendedDeptName}`
+                : '-'
+            }
+            strong
+          />
+        </section>
+
+        {/* Info Column 3: Recommendations Reasons */}
+        <section className="rounded-lg border border-zinc-150 bg-zinc-50/50 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">귀속 추천 사유</h4>
+            {item.score > 0 && (
+              <span className="text-[10.5px] font-mono font-bold text-[#008f83]">
+                {item.score}점 ({getConfidenceLabel(item.confidence)})
+              </span>
+            )}
+          </div>
+          <ul className="space-y-1.5 max-h-[140px] overflow-y-auto">
+            {item.reasons && item.reasons.length > 0 ? (
+              item.reasons.map((r: any, index: number) => (
+                <li key={index} className="rounded border border-zinc-150 bg-white px-2 py-1.5 text-[10.5px] text-zinc-600 flex items-start gap-1">
+                  <span className="text-emerald-500 font-semibold">•</span>
+                  <div>
+                    <span>{r.label}</span>
+                    {r.weight > 0 && <strong className="ml-1 text-zinc-700">+{r.weight}점</strong>}
+                  </div>
+                </li>
+              ))
+            ) : (
+              <li className="text-zinc-400 text-center py-4">사유가 분석되지 않았습니다.</li>
+            )}
+          </ul>
+        </section>
+      </div>
+
+      {/* Footer block: Manual change dropdown and action buttons */}
+      <div className="flex flex-col gap-3 border-t border-zinc-150 bg-zinc-50/80 px-4 py-3 xl:flex-row xl:items-center xl:justify-between font-sans">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="shrink-0 text-[10px] font-bold text-zinc-500">수동 변경 부서 선택</span>
+          <select
+            value={manualDeptCode}
+            onChange={(e) => setManualDeptCode(e.target.value)}
+            className="h-8 max-w-xs rounded border border-zinc-200 bg-white px-2 text-[11px] font-medium text-zinc-700 focus:border-[#008f83] outline-none"
+          >
+            <option value="">수동 변경할 부서 선택</option>
+            {allDepts.map(dept => (
+              <option key={dept.code} value={dept.code}>
+                [{dept.code}] {dept.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!manualDeptCode}
+            onClick={() => {
+              onManualChange(manualDeptCode);
+              setManualDeptCode('');
+            }}
+            className="h-8 rounded bg-zinc-800 hover:bg-zinc-900 px-3 text-xs font-bold text-white transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            변경 적용
+          </button>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 shrink-0">
+          <span className="text-[10px] text-zinc-400 font-bold mr-2 uppercase">처리</span>
+
+          {item.status === '대기' && item.recommendedDeptCode && (
+            <button
+              type="button"
+              onClick={onApply}
+              className="h-8 rounded bg-[#008f83] hover:bg-[#00746b] px-3.5 text-xs font-bold text-white transition cursor-pointer shadow-xs"
+            >
+              추천 적용
+            </button>
+          )}
+
+          {item.status === '대기' && (
+            <button
+              type="button"
+              onClick={onIgnore}
+              className="h-8 rounded border border-zinc-250 bg-white hover:bg-zinc-50 px-3 text-xs font-bold text-zinc-650 transition cursor-pointer"
+            >
+              추천 무시
+            </button>
+          )}
+
+          {(item.status === '적용됨' || item.status === '수동 변경') && (
+            <button
+              type="button"
+              onClick={onRevert}
+              className="h-8 rounded border border-red-200 bg-white hover:bg-red-50 px-3 text-xs font-bold text-red-650 transition cursor-pointer"
+            >
+              귀속 원복
+            </button>
+          )}
+
+          {item.status === '무시됨' && (
+            <button
+              type="button"
+              onClick={onUndoIgnore}
+              className="h-8 rounded border border-emerald-500 bg-emerald-50 text-emerald-700 font-bold hover:bg-emerald-100 px-3 text-xs transition cursor-pointer"
+            >
+              추천 무시 취소
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoLine({
+  label,
+  value,
+  strong = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  strong?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1 font-sans text-xs">
+      <span className="shrink-0 text-zinc-550 font-medium">{label}</span>
+      <span className={`text-right truncate max-w-[180px] ${strong ? 'font-black text-[#008f83] text-[12px]' : 'font-bold text-zinc-800'}`}>
+        {value}
+      </span>
     </div>
   );
 }
