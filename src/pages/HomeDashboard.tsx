@@ -86,6 +86,46 @@ function MiniMetricCard({
   );
 }
 
+const getDefaultDashboardBasePeriod = () => {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth(); // JS 기준: 현재월 - 1. 5월이면 4
+
+  if (month === 0) {
+    year -= 1;
+    month = 12;
+  }
+
+  return {
+    year: String(year),
+    month,
+  };
+};
+
+const defaultBasePeriod = getDefaultDashboardBasePeriod();
+
+function getMonthNumberFromActualRow(row: any): number {
+  if (row.month) {
+    const n = Number(row.month);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  if (row.period) {
+    const match = String(row.period).match(/(\d{1,2})월/);
+    if (match) return Number(match[1]);
+  }
+
+  return 0;
+}
+
+function toCumulative(values: number[]): number[] {
+  let sum = 0;
+  return values.map(v => {
+    sum += Number(v) || 0;
+    return sum;
+  });
+}
+
 export default function HomeDashboard() {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -100,6 +140,23 @@ export default function HomeDashboard() {
     lockedDeptsCount: 0,
     viewableDeptsCount: 0,
     overrunDeptsCount: 0
+  });
+
+  // 1. Setup Dashboard Year and Month Selectors
+  const [dashboardYear, setDashboardYear] = useState(() => {
+    return localStorage.getItem('hycm_dashboard_year') || defaultBasePeriod.year;
+  });
+
+  const [dashboardBaseMonth, setDashboardBaseMonth] = useState(() => {
+    return Number(localStorage.getItem('hycm_dashboard_base_month') || defaultBasePeriod.month);
+  });
+
+  const [appliedDashboardYear, setAppliedDashboardYear] = useState(dashboardYear);
+  const [appliedDashboardBaseMonth, setAppliedDashboardBaseMonth] = useState(dashboardBaseMonth);
+
+  const [dashboardDiagnostics, setDashboardDiagnostics] = useState({
+    unassignedActualCount: 0,
+    unassignedActualAmount: 0,
   });
 
   // Department Submission Progress Feed List
@@ -122,12 +179,13 @@ export default function HomeDashboard() {
     const u = JSON.parse(savedUser);
     setUser(u);
 
-    const year = '2026';
+    const year = appliedDashboardYear;
     const planType = '경영계획';
+    const baseMonth = appliedDashboardBaseMonth;
     const depts = getViewableDepts(u.code);
     
-    // Check if real actual data is present in localStorage
-    const rawActuals = localStorage.getItem('cleanmetal_actual_data_2026');
+    // Check if real actual data is present in localStorage (Use getActualDataKey(year)!)
+    const rawActuals = localStorage.getItem(getActualDataKey(year));
     let realActualRows: any[] = [];
     let hasRealActual = false;
 
@@ -163,7 +221,7 @@ export default function HomeDashboard() {
       let deptBudgetSum = 0;
       budgetRows.forEach((row: any) => {
         if (row.values) {
-          row.values.forEach((v: any) => {
+          row.values.slice(0, baseMonth).forEach((v: any) => {
             deptBudgetSum += (Number(v) || 0);
           });
         }
@@ -173,7 +231,11 @@ export default function HomeDashboard() {
       // Actual data for this dept
       let deptActualSum = 0;
       if (hasRealActual) {
-        realActualRows.filter((r: any) => (r.attributedDeptCode || r.usageCode) === dept.code).forEach((r: any) => {
+        realActualRows.filter((r: any) => {
+          const effectiveDeptCode = r.attributedDeptCode || r.usageCode;
+          const monthNum = getMonthNumberFromActualRow(r);
+          return effectiveDeptCode === dept.code && monthNum >= 1 && monthNum <= baseMonth;
+        }).forEach((r: any) => {
           deptActualSum += (Number(r.completed) || 0);
           // If actual + planned exceeds allowed budget (including transfers/carried over or initial amount)
           const totalAllowed = (Number(r.amount) || 0) + (Number(r.additional) || 0) + (Number(r.transferred) || 0) + (Number(r.carriedOver) || 0);
@@ -207,8 +269,10 @@ export default function HomeDashboard() {
     computedDeptList.sort((a, b) => b.budgetSum - a.budgetSum);
     setDeptFeed(computedDeptList);
 
-    // 2. Render Chart Data
+    // Diagnostics calculation & Chart Data
+    let unassignedActualCount = 0;
     let unassignedActualAmount = 0;
+
     if (hasRealActual && calculatedTotalBudget > 0) {
       // Compute monthly distribution from real data
       const monthlyPlan = Array(12).fill(0);
@@ -229,28 +293,24 @@ export default function HomeDashboard() {
 
       // Distribute Actual completions month by month if month column or period is available
       realActualRows.forEach((r: any) => {
-        let monthNum = 0;
-        if (r.month) {
-          monthNum = Number(r.month);
-        } else if (r.period) {
-          const match = r.period.match(/(\d+)월/);
-          if (match) {
-            monthNum = parseInt(match[1]);
-          }
-        }
+        const monthNum = getMonthNumberFromActualRow(r);
 
         if (monthNum >= 1 && monthNum <= 12) {
           monthlyAct[monthNum - 1] += (Number(r.completed) || 0);
         } else {
+          unassignedActualCount += 1;
           unassignedActualAmount += (Number(r.completed) || 0);
         }
       });
 
-      // Build Monthly Trend
-      const trendData = Array.from({ length: 12 }, (_, i) => ({
+      // Build Monthly Cumulative Trend (1 to baseMonth)
+      const cumulativePlan = toCumulative(monthlyPlan.slice(0, baseMonth));
+      const cumulativeActual = toCumulative(monthlyAct.slice(0, baseMonth));
+
+      const trendData = Array.from({ length: baseMonth }, (_, i) => ({
         month: `${i + 1}월`,
-        '예산 계획': monthlyPlan[i],
-        '실제 집행': monthlyAct[i],
+        '누계 예산': cumulativePlan[i],
+        '누계 실적': cumulativeActual[i],
       }));
       setMonthlyTrendData(trendData);
 
@@ -270,14 +330,18 @@ export default function HomeDashboard() {
         viewableDeptsCount: depts.length,
         overrunDeptsCount: calculatedOverrunCount
       });
+
+      setDashboardDiagnostics({
+        unassignedActualCount,
+        unassignedActualAmount,
+      });
     } else {
       // Fallback Seed Data (Demo Simulation for high UX)
-      // Standard corporate budget trend & department stats for 2026
-      const mockMonthlyTrend = [
+      const mockMonthlyTrendFull = [
         { month: '1월', '예산 계획': 85000000, '실제 집행': 72400000 },
         { month: '2월', '예산 계획': 85000000, '실제 집행': 79200000 },
         { month: '3월', '예산 계획': 90000000, '실제 집행': 88400000 },
-        { month: '4월', '예산 계획': 90000000, '실제 집행': 92100000 },
+        { month: '4월', '예산 계획': 90000000, '실제 GH': 92100000, '실제 집행': 92100000 },
         { month: '5월', '예산 계획': 95000000, '실제 집행': 41200000 }, // Mid-year
         { month: '6월', '예산 계획': 95000000, '실제 집행': 0 },
         { month: '7월', '예산 계획': 80000000, '실제 집행': 0 },
@@ -287,6 +351,18 @@ export default function HomeDashboard() {
         { month: '11월', '예산 계획': 110000000, '실제 집행': 0 },
         { month: '12월', '예산 계획': 120000000, '실제 집행': 0 }
       ];
+
+      const monthlyPlanSample = mockMonthlyTrendFull.map(item => item['예산 계획']);
+      const monthlyActSample = mockMonthlyTrendFull.map(item => item['실제 집행'] || 0);
+
+      const cumulativePlanSample = toCumulative(monthlyPlanSample.slice(0, baseMonth));
+      const cumulativeActualSample = toCumulative(monthlyActSample.slice(0, baseMonth));
+
+      const mockMonthlyTrend = Array.from({ length: baseMonth }, (_, i) => ({
+        month: `${i + 1}월`,
+        '누계 예산': cumulativePlanSample[i],
+        '누계 실적': cumulativeActualSample[i],
+      }));
       setMonthlyTrendData(mockMonthlyTrend);
 
       const mockDeptContrast = [
@@ -297,11 +373,22 @@ export default function HomeDashboard() {
         { name: '품질기술부', '편성 예산': 75000000, '실제 집행': 34800000 },
         { name: '안전환경센터', '편성 예산': 62000000, '실제 집행': 21400000 }
       ];
-      setDeptContrastData(mockDeptContrast);
+
+      // Slcing top 6 demo departments with some dummy scaling if needed
+      const mockDeptContrastFiltered = mockDeptContrast.map(md => {
+        // scale based on month
+        const factor = baseMonth / 12;
+        return {
+          name: md.name,
+          '편성 예산': Math.round(md['편성 예산'] * factor),
+          '실제 집행': Math.round(md['실제 집행'] * (baseMonth <= 5 ? (baseMonth / 5) : 1) * 0.75)
+        };
+      });
+      setDeptContrastData(mockDeptContrastFiltered);
 
       // In Demo, if calculated budget is 0, give standard simulated numbers
       const demoBudget = calculatedTotalBudget || 707000000;
-      const demoActual = 373300000;
+      const demoActual = Math.round(demoBudget * 0.528 * (baseMonth / 12));
       setStats({
         totalBudget: demoBudget,
         totalActual: demoActual,
@@ -309,6 +396,11 @@ export default function HomeDashboard() {
         lockedDeptsCount: calculatedLockedCount || 3,
         viewableDeptsCount: depts.length || 18,
         overrunDeptsCount: calculatedOverrunCount || 1
+      });
+
+      setDashboardDiagnostics({
+        unassignedActualCount: 0,
+        unassignedActualAmount: 0,
       });
     }
 
@@ -320,7 +412,7 @@ export default function HomeDashboard() {
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [appliedDashboardYear, appliedDashboardBaseMonth]);
 
   if (isLoading || !user) {
     return (
@@ -341,7 +433,7 @@ export default function HomeDashboard() {
   return (
     <div className="space-y-6">
       {/* 1. Header Control Section */}
-      <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -355,15 +447,52 @@ export default function HomeDashboard() {
           </p>
         </div>
         
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full xl:w-auto">
           {/* Refresh Action */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f7f9f7] rounded-xl text-xs text-[#647067] border border-[#dde5de] font-mono">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f7f9f7] rounded-xl text-xs text-[#647067] border border-[#dde5de] font-mono justify-center">
             <Clock className="w-3.5 h-3.5 text-zinc-400" />
             <span>집계: {dataUpdateTime}</span>
           </div>
+
+          {/* New Selector UI Control */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl text-xs border border-[#dde5de] shadow-sm justify-center">
+            <span className="font-bold text-[#647067]">집계 기준:</span>
+            <select
+              value={dashboardYear}
+              onChange={(e) => setDashboardYear(e.target.value)}
+              className="h-7 rounded-lg border border-[#dde5de] bg-white px-2 text-xs font-semibold outline-none focus:border-[#008f83]"
+            >
+              <option value="2025">2025년</option>
+              <option value="2026">2026년</option>
+              <option value="2027">2027년</option>
+            </select>
+            <select
+              value={dashboardBaseMonth}
+              onChange={(e) => setDashboardBaseMonth(Number(e.target.value))}
+              className="h-7 rounded-lg border border-[#dde5de] bg-white px-2 text-xs font-semibold outline-none focus:border-[#008f83]"
+            >
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {i + 1}월까지
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                setAppliedDashboardYear(dashboardYear);
+                setAppliedDashboardBaseMonth(dashboardBaseMonth);
+                localStorage.setItem('hycm_dashboard_year', dashboardYear);
+                localStorage.setItem('hycm_dashboard_base_month', String(dashboardBaseMonth));
+              }}
+              className="h-7 rounded-lg bg-[#008f83] px-3 text-xs font-bold text-white hover:bg-[#00746b] cursor-pointer transition-all shrink-0"
+            >
+              조회
+            </button>
+          </div>
+
           <button 
             onClick={loadDashboardData}
-            className="flex items-center justify-center p-2 bg-white text-[#4e5968] border border-[#dde5de] rounded-xl text-xs font-bold hover:bg-[#f7f9f7] hover:border-[#c4cfc5] transition-all cursor-pointer shadow-sm"
+            className="flex items-center justify-center p-2 bg-white text-[#4e5968] border border-[#dde5de] rounded-xl text-xs font-bold hover:bg-[#f7f9f7] hover:border-[#c4cfc5] transition-all cursor-pointer shadow-sm h-9 md:h-auto"
             title="업데이트 데이터 동기화"
           >
             <RefreshCw className="w-4 h-4" />
@@ -395,17 +524,29 @@ export default function HomeDashboard() {
         </div>
       )}
 
+      {/* Diagnostics / Warning message banner for unassigned month actuals */}
+      {dashboardDiagnostics.unassignedActualCount > 0 && (
+        <div className="bg-[#fdfcf5] border border-[#e1dbb3] p-4 rounded-2xl flex items-start gap-3 shadow-xs">
+          <div className="p-1 px-2 bg-amber-100 rounded text-amber-700 font-mono text-[10px] font-bold shrink-0">
+            진단 로그
+          </div>
+          <div className="text-xs text-amber-800 leading-normal">
+            회수된 실적 원장 데이터 중 <strong>월(Month) 정보가 누락/미지정된 항목 {dashboardDiagnostics.unassignedActualCount}건</strong>(집계 금액: {formatWon(dashboardDiagnostics.unassignedActualAmount)})이 발견되어, 현재{appliedDashboardYear}년 {appliedDashboardBaseMonth}월까지의 기간 분석 및 누계 집계에서 보수적으로 자동 차감/제외 분류되었습니다.
+          </div>
+        </div>
+      )}
+
       {/* 3. Operational Metrics Matrix (Bento Grid) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MiniMetricCard 
-          title="2026 전사 편성 예산" 
+          title={`${appliedDashboardYear}년 ${appliedDashboardBaseMonth}월까지 편성 예산`} 
           value={formatMillionWon(stats.totalBudget)} 
           subValue={formatWon(stats.totalBudget)}
           icon={Calculator}
           colorClass="text-[#008f83] bg-teal-50"
         />
         <MiniMetricCard 
-          title="누적 실적 집행량" 
+          title={`${appliedDashboardYear}년 1~${appliedDashboardBaseMonth}월 누적 실적`} 
           value={formatMillionWon(stats.totalActual)} 
           subValue={formatWon(stats.totalActual)}
           icon={FileSpreadsheet}
@@ -415,7 +556,7 @@ export default function HomeDashboard() {
         />
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col justify-between hover:shadow-md transition-all duration-200">
           <div className="flex justify-between items-start">
-            <span className="text-xs font-semibold text-[#647067] uppercase tracking-wider">전체 예산 집행률</span>
+            <span className="text-xs font-semibold text-[#647067] uppercase tracking-wider">누적 예산 집행률</span>
             <div className={`p-2 rounded-xl text-brand-600 bg-brand-50`}>
               <BarChart3 className="w-4 h-4" />
             </div>
@@ -452,10 +593,10 @@ export default function HomeDashboard() {
           <div>
             <div className="flex items-center justify-between border-b border-[#eef2ec] pb-3 mb-4">
               <div>
-                <h3 className="text-base font-bold text-[#111111]">전사 분기별 예산 계획 vs 실제 집행 추이</h3>
-                <p className="text-xs text-[#8b95a1] mt-0.5">2026 회계연도 기준 월간 현황</p>
+                <h3 className="text-base font-bold text-[#111111]">전사 예산 대비 실적 누계 추이</h3>
+                <p className="text-xs text-[#8b95a1] mt-0.5">{appliedDashboardYear}년 1월~{appliedDashboardBaseMonth}월 기준 누계 현황</p>
               </div>
-              <span className="text-[10px] font-mono bg-[#eef2ec] px-2 py-0.5 rounded text-[#647067] uppercase">Interactive</span>
+              <span className="text-[10px] font-mono bg-[#eef2ec] px-2 py-0.5 rounded text-[#647067] uppercase">누계 기준</span>
             </div>
             <div className="h-[260px] w-full font-mono text-xs">
               <ResponsiveContainer width="100%" height="100%">
@@ -484,8 +625,8 @@ export default function HomeDashboard() {
                     contentStyle={{ border: '1px solid #dde5de', borderRadius: '12px', fontSize: '12px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Area type="monotone" name="분기 예산 계획" dataKey="예산 계획" stroke="#8ca38d" strokeWidth={1.5} fillOpacity={1} fill="url(#colorPlan)" />
-                  <Area type="monotone" name="실제 집행 누계" dataKey="실제 집행" stroke="#008f83" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAct)" />
+                  <Area type="monotone" name="누계 예산" dataKey="누계 예산" stroke="#8ca38d" strokeWidth={1.5} fillOpacity={1} fill="url(#colorPlan)" />
+                  <Area type="monotone" name="누계 실적" dataKey="누계 실적" stroke="#008f83" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAct)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -497,10 +638,10 @@ export default function HomeDashboard() {
           <div>
             <div className="flex items-center justify-between border-b border-[#eef2ec] pb-3 mb-4">
               <div>
-                <h3 className="text-base font-bold text-[#111111]">집행 및 편성 예산 순위 분석 (Top 6 부서)</h3>
-                <p className="text-xs text-[#8b95a1] mt-0.5">부서별 편성 예산 대비 집행비율 대비</p>
+                <h3 className="text-base font-bold text-[#111111]">부서별 예산 대비 실적 Top 6</h3>
+                <p className="text-xs text-[#8b95a1] mt-0.5">{appliedDashboardYear}년 1월~{appliedDashboardBaseMonth}월 누계 기준</p>
               </div>
-              <span className="text-[10px] font-mono bg-[#eef2ec] px-2 py-0.5 rounded text-[#647067] uppercase">Recharts Rendering</span>
+              <span className="text-[10px] font-mono bg-[#eef2ec] px-2 py-0.5 rounded text-[#647067] uppercase">Top 6</span>
             </div>
             <div className="h-[260px] w-full font-mono text-xs">
               <ResponsiveContainer width="100%" height="100%">
@@ -513,8 +654,8 @@ export default function HomeDashboard() {
                     contentStyle={{ border: '1px solid #dde5de', borderRadius: '12px', fontSize: '12px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Bar name="편성 예산" dataKey="편성 예산" fill="#c4cfc5" radius={[0, 4, 4, 0]} barSize={8} />
-                  <Bar name="실제 집행" dataKey="실제 집행" fill="#008f83" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar name="편성 예산 누계" dataKey="편성 예산" fill="#c4cfc5" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar name="실제 집행 누계" dataKey="실제 집행" fill="#008f83" radius={[0, 4, 4, 0]} barSize={8} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -524,7 +665,7 @@ export default function HomeDashboard() {
 
       {/* 5. Highly Professional App Workflow Roadmap Guide */}
       <div className="bg-white border border-[#dde5de] p-6 rounded-2xl shadow-sm">
-        <h3 className="text-base font-bold text-[#111111] mb-1">2026년 기업 계획 및 통합 통제 업무 수행 맵</h3>
+        <h3 className="text-base font-bold text-[#111111] mb-1">{appliedDashboardYear}년 기업 계획 및 통합 통제 업무 수행 맵</h3>
         <p className="text-xs text-[#8b95a1] mb-5">효과적인 예산 집행 관리를 위해 아래 단계순으로 업무를 진행해 주시기 바랍니다.</p>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative">

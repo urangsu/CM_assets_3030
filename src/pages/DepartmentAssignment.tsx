@@ -318,6 +318,50 @@ export default function DepartmentAssignment() {
     });
   }
 
+  // Reusable inline Alert/Confirm State & Helpers
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    confirmText: string;
+    onConfirm: () => void;
+    isAlert?: boolean;
+  }>({
+    open: false,
+    title: '',
+    description: '',
+    confirmText: '확인',
+    onConfirm: () => {},
+    isAlert: false
+  });
+
+  const showConfirm = (title: string, description: string, onConfirm: () => void, confirmText = '확인') => {
+    setConfirmState({
+      open: true,
+      title,
+      description,
+      confirmText,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmState(prev => ({ ...prev, open: false }));
+      },
+      isAlert: false
+    });
+  };
+
+  const showAlert = (title: string, description: string) => {
+    setConfirmState({
+      open: true,
+      title,
+      description,
+      confirmText: '확인',
+      onConfirm: () => {
+        setConfirmState(prev => ({ ...prev, open: false }));
+      },
+      isAlert: true
+    });
+  };
+
   // Loaded Raw Data States
   const [actualRowsList, setActualRowsList] = useState<any[]>([]);
   const [overrides, setOverrides] = useState<any[]>([]);
@@ -1152,72 +1196,75 @@ export default function DepartmentAssignment() {
       return r.status === '대기' && r.confidence === 'HIGH' && r.recommendedDeptCode && r.recommendedDeptCode !== effectiveCurrentDeptCode;
     });
     if (highPending.length === 0) {
-      alert('권장 항목 일괄 적용 대상이 없습니다.');
+      showAlert('권장 항목 일괄 적용', '적용 가능한 권장 항목이 없습니다.');
       return;
     }
 
-    if (!window.confirm(`권장 항목 ${highPending.length}건을 추천 귀속부서로 적용하시겠습니까?`)) {
-      return;
-    }
+    showConfirm(
+      '권장 항목 일괄 적용',
+      `권장 항목 ${highPending.length}건을 추천 귀속부서로 적용하시겠습니까?`,
+      () => {
+        const actKey = getActualDataKey(year);
+        const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+        const opName = currentUser?.name || '기획재무담당';
+        const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
+        let updateCount = 0;
+        const newLogs: any[] = [];
 
-    const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
-    const opName = currentUser?.name || '기획재무담당';
-    const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
-    let updateCount = 0;
-    const newLogs: any[] = [];
+        const updated = storedActuals.map((row: any) => {
+          const isHigh = highPending.find(h => h.rowId === row.id);
+          if (isHigh) {
+            updateCount++;
+            const reasons = isHigh.reasons.map(r => r.label);
 
-    const updated = storedActuals.map((row: any) => {
-      const isHigh = highPending.find(h => h.rowId === row.id);
-      if (isHigh) {
-        updateCount++;
-        const reasons = isHigh.reasons.map(r => r.label);
+            newLogs.push({
+              id: `${Date.now()}_bulk_${Math.random().toString(36).substring(2, 7)}`,
+              time: new Date().toLocaleString(),
+              action: '추천 적용 (일괄)',
+              accountCode: row.accountCode,
+              accountName: row.accountName,
+              originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+              beforeAttributedDeptName: row.attributedDeptCode 
+                ? `[${row.attributedDeptCode}] ${row.attributedDeptName}` 
+                : '원 사용처 기준',
+              afterAttributedDeptName: `[${isHigh.recommendedDeptCode}] ${isHigh.recommendedDeptName}`,
+              user: opName,
+              reason: `[권장 항목 일괄] ${reasons.join(', ')}`,
+            });
 
-        newLogs.push({
-          id: `${Date.now()}_bulk_${Math.random().toString(36).substring(2, 7)}`,
-          time: new Date().toLocaleString(),
-          action: '추천 적용 (일괄)',
-          accountCode: row.accountCode,
-          accountName: row.accountName,
-          originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
-          beforeAttributedDeptName: row.attributedDeptCode 
-            ? `[${row.attributedDeptCode}] ${row.attributedDeptName}` 
-            : '원 사용처 기준',
-          afterAttributedDeptName: `[${isHigh.recommendedDeptCode}] ${isHigh.recommendedDeptName}`,
-          user: opName,
-          reason: `[높은 신뢰도 일괄] ${reasons.join(', ')}`,
+            return {
+              ...row,
+              usageCode: row.usageCode,
+              usageDept: row.usageDept,
+              attributedDeptCode: isHigh.recommendedDeptCode,
+              attributedDeptName: isHigh.recommendedDeptName,
+              attributionSource: 'recommendation',
+              attributionScore: isHigh.score,
+              attributionReasons: reasons,
+              attributionUpdatedAt: new Date().toISOString(),
+            };
+          }
+          return row;
         });
 
-        return {
-          ...row,
-          usageCode: row.usageCode,
-          usageDept: row.usageDept,
-          attributedDeptCode: isHigh.recommendedDeptCode,
-          attributedDeptName: isHigh.recommendedDeptName,
-          attributionSource: 'recommendation',
-          attributionScore: isHigh.score,
-          attributionReasons: reasons,
-          attributionUpdatedAt: new Date().toISOString(),
-        };
-      }
-      return row;
-    });
+        localStorage.setItem(actKey, JSON.stringify(updated));
+        localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
 
-    localStorage.setItem(actKey, JSON.stringify(updated));
-    localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
-
-    setFeedbackMsg({
-      type: 'success',
-      text: `총 ${updateCount}건에 대해 실적 귀속부서 일괄 적용했습니다.`
-    });
-    setTimeout(() => setFeedbackMsg(null), 3000);
-    loadData();
+        setFeedbackMsg({
+          type: 'success',
+          text: `총 ${updateCount}건에 대해 실적 귀속부서 일괄 적용했습니다.`
+        });
+        setTimeout(() => setFeedbackMsg(null), 3000);
+        loadData();
+      },
+      '적용'
+    );
   };
 
   // Actions: Bulk Action Applied Selected
   const handleApplySelectedRows = () => {
     if (selectedRowIds.size === 0) {
-      alert('선택한 항목이 없습니다.');
+      showAlert('선택 항목 적용', '선택한 항목이 없습니다.');
       return;
     }
 
@@ -1226,73 +1273,76 @@ export default function DepartmentAssignment() {
     );
 
     if (targets.length === 0) {
-      alert('선택한 항목 중 적용 가능한 추천 건이 없습니다.');
+      showAlert('선택 항목 적용', '선택한 항목 중 적용 가능한 추천 건이 없습니다.');
       return;
     }
 
-    if (!window.confirm(`선택한 ${targets.length}건을 추천 귀속부서로 적용하시겠습니까?`)) {
-      return;
-    }
+    showConfirm(
+      '선택 항목 적용',
+      `선택한 ${targets.length}건을 추천 귀속부서로 적용하시겠습니까?`,
+      () => {
+        const actKey = getActualDataKey(year);
+        const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+        const opName = currentUser?.name || '기획재무담당';
+        const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
+        const newLogs: any[] = [];
+        let count = 0;
 
-    const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
-    const opName = currentUser?.name || '기획재무담당';
-    const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
-    const newLogs: any[] = [];
-    let count = 0;
+        const updated = storedActuals.map((row: any) => {
+          const match = targets.find(t => t.rowId === row.id);
+          if (match) {
+            count++;
+            const reasons = match.reasons.map(r => r.label);
 
-    const updated = storedActuals.map((row: any) => {
-      const match = targets.find(t => t.rowId === row.id);
-      if (match) {
-        count++;
-        const reasons = match.reasons.map(r => r.label);
+            newLogs.push({
+              id: `${Date.now()}_sel_${Math.random().toString(36).substring(2, 7)}`,
+              time: new Date().toLocaleString(),
+              action: '추천 적용 (선택)',
+              accountCode: row.accountCode,
+              accountName: row.accountName,
+              originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+              beforeAttributedDeptName: row.attributedDeptCode 
+                ? `[${row.attributedDeptCode}] ${row.attributedDeptName}` 
+                : '원 사용처 기준',
+              afterAttributedDeptName: `[${match.recommendedDeptCode}] ${match.recommendedDeptName}`,
+              user: opName,
+              reason: reasons.join(', '),
+            });
 
-        newLogs.push({
-          id: `${Date.now()}_sel_${Math.random().toString(36).substring(2, 7)}`,
-          time: new Date().toLocaleString(),
-          action: '추천 적용 (선택)',
-          accountCode: row.accountCode,
-          accountName: row.accountName,
-          originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
-          beforeAttributedDeptName: row.attributedDeptCode 
-            ? `[${row.attributedDeptCode}] ${row.attributedDeptName}` 
-            : '원 사용처 기준',
-          afterAttributedDeptName: `[${match.recommendedDeptCode}] ${match.recommendedDeptName}`,
-          user: opName,
-          reason: reasons.join(', '),
+            return {
+              ...row,
+              usageCode: row.usageCode,
+              usageDept: row.usageDept,
+              attributedDeptCode: match.recommendedDeptCode,
+              attributedDeptName: match.recommendedDeptName,
+              attributionSource: 'recommendation',
+              attributionScore: match.score,
+              attributionReasons: reasons,
+              attributionUpdatedAt: new Date().toISOString(),
+            };
+          }
+          return row;
         });
 
-        return {
-          ...row,
-          usageCode: row.usageCode,
-          usageDept: row.usageDept,
-          attributedDeptCode: match.recommendedDeptCode,
-          attributedDeptName: match.recommendedDeptName,
-          attributionSource: 'recommendation',
-          attributionScore: match.score,
-          attributionReasons: reasons,
-          attributionUpdatedAt: new Date().toISOString(),
-        };
-      }
-      return row;
-    });
+        localStorage.setItem(actKey, JSON.stringify(updated));
+        localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
 
-    localStorage.setItem(actKey, JSON.stringify(updated));
-    localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
-
-    setFeedbackMsg({
-      type: 'success',
-      text: `선택하신 ${count}건에 대해 실적 귀속부서를 적용했습니다.`
-    });
-    setSelectedRowIds(new Set());
-    setTimeout(() => setFeedbackMsg(null), 3000);
-    loadData();
+        setFeedbackMsg({
+          type: 'success',
+          text: `선택하신 ${count}건에 대해 실적 귀속부서를 적용했습니다.`
+        });
+        setSelectedRowIds(new Set());
+        setTimeout(() => setFeedbackMsg(null), 3000);
+        loadData();
+      },
+      '적용'
+    );
   };
 
   // Actions: Bulk Action Ignore Selected
   const handleIgnoreSelectedRows = () => {
     if (selectedRowIds.size === 0) {
-      alert('선택한 항목이 없습니다.');
+      showAlert('선택 항목 무시', '선택한 항목이 없습니다.');
       return;
     }
 
@@ -1301,46 +1351,49 @@ export default function DepartmentAssignment() {
     );
 
     if (targets.length === 0) {
-      alert('선택한 항목 중 무시 처리 가능한 추천 건이 없습니다.');
+      showAlert('선택 항목 무시', '선택한 항목 중 무시 처리 가능한 추천 건이 없습니다.');
       return;
     }
 
-    if (!window.confirm(`선택한 ${targets.length}건을 추천 귀속에서 제외하시겠습니까?`)) {
-      return;
-    }
+    showConfirm(
+      '선택 항목 무시',
+      `선택한 ${targets.length}건을 추천 귀속에서 제외하시겠습니까?`,
+      () => {
+        const nextSet = new Set<string | number>(excludedRowIds);
+        const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
+        const newLogs: any[] = [];
 
-    const nextSet = new Set<string | number>(excludedRowIds);
-    const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
-    const newLogs: any[] = [];
+        targets.forEach(item => {
+          nextSet.add(item.rowId);
+          newLogs.push({
+            id: `${Date.now()}_selig_${Math.random().toString(36).substring(2, 7)}`,
+            time: new Date().toLocaleString(),
+            action: '추천 무시 (선택)',
+            accountCode: item.accountCode,
+            accountName: item.accountName,
+            originalDeptName: `[${item.originalDeptCode}] ${item.originalDeptName}`,
+            beforeAttributedDeptName: item.currentAttributedDeptCode 
+              ? `[${item.currentAttributedDeptCode}] ${item.currentAttributedDeptName}` 
+              : '원 사용처 기준',
+            afterAttributedDeptName: '사용자 추천 제외 처리 (숨김)',
+            user: currentUser?.name || '업무담당자',
+            reason: '목록 선택 일괄 추천 무시 제외 등록',
+          });
+        });
 
-    targets.forEach(item => {
-      nextSet.add(item.rowId);
-      newLogs.push({
-        id: `${Date.now()}_selig_${Math.random().toString(36).substring(2, 7)}`,
-        time: new Date().toLocaleString(),
-        action: '추천 무시 (선택)',
-        accountCode: item.accountCode,
-        accountName: item.accountName,
-        originalDeptName: `[${item.originalDeptCode}] ${item.originalDeptName}`,
-        beforeAttributedDeptName: item.currentAttributedDeptCode 
-          ? `[${item.currentAttributedDeptCode}] ${item.currentAttributedDeptName}` 
-          : '원 사용처 기준',
-        afterAttributedDeptName: '사용자 추천 제외 처리 (숨김)',
-        user: currentUser?.name || '업무담당자',
-        reason: '목록 선택 일괄 추천 무시 제외 등록',
-      });
-    });
+        saveExcludedRowIds(nextSet);
+        localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
 
-    saveExcludedRowIds(nextSet);
-    localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
-
-    setFeedbackMsg({
-      type: 'success',
-      text: `${targets.length}건의 항목이 추천 무시 처리되었습니다.`
-    });
-    setSelectedRowIds(new Set());
-    setTimeout(() => setFeedbackMsg(null), 3000);
-    loadData();
+        setFeedbackMsg({
+          type: 'success',
+          text: `${targets.length}건의 항목이 추천 무시 처리되었습니다.`
+        });
+        setSelectedRowIds(new Set());
+        setTimeout(() => setFeedbackMsg(null), 3000);
+        loadData();
+      },
+      '무시'
+    );
   };
 
   // Formatting helpers
@@ -1586,21 +1639,6 @@ export default function DepartmentAssignment() {
               {ACCOUNT_CLASS_OPTIONS.map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
-            </select>
-          </div>
-
-          {/* Confidence */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-zinc-400">신뢰도</span>
-            <select
-              value={selectedConfidence}
-              onChange={(e) => setSelectedConfidence(e.target.value)}
-              className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
-            >
-              <option value="all">전체 신뢰도</option>
-              <option value="HIGH">높음</option>
-              <option value="MEDIUM">중간</option>
-              <option value="LOW">낮음</option>
             </select>
           </div>
 
@@ -2599,10 +2637,15 @@ export default function DepartmentAssignment() {
             </span>
             <button
               onClick={() => {
-                if (window.confirm('모든 로컬 이력을 비우시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-                  localStorage.removeItem('hycm_attribution_audit_log');
-                  setAuditLogs([]);
-                }
+                showConfirm(
+                  '이력 전체 비우기',
+                  '모든 로컬 보정 이력을 비우시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+                  () => {
+                    localStorage.removeItem('hycm_attribution_audit_log');
+                    setAuditLogs([]);
+                  },
+                  '비우기'
+                );
               }}
               className="text-red-300 hover:text-red-200 font-semibold"
             >
@@ -2669,6 +2712,43 @@ export default function DepartmentAssignment() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Overlay Confirm / Alert Modal */}
+      {confirmState.open && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200" id="att-confirm-modal-overlay">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden border border-zinc-150 shadow-2xl animate-in zoom-in-95 duration-200" id="att-confirm-modal-card">
+            <div className="p-5" id="att-confirm-modal-body">
+              <div className="flex items-center gap-2.5 mb-2.5" id="att-confirm-modal-header">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#008f83]" />
+                <h3 className="text-[13px] font-black tracking-tight text-zinc-900">{confirmState.title}</h3>
+              </div>
+              <p className="text-xs text-zinc-650 leading-relaxed font-medium">
+                {confirmState.description}
+              </p>
+            </div>
+            <div className="bg-zinc-50 border-t border-zinc-150 px-4 py-3 flex justify-end gap-2" id="att-confirm-modal-footer">
+              {!confirmState.isAlert && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmState(prev => ({ ...prev, open: false }))}
+                  className="px-3 py-1.5 bg-[#f0f0f0] hover:bg-[#e4e4e4] text-zinc-700 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                  id="att-btn-cancel"
+                >
+                  취소
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={confirmState.onConfirm}
+                className="px-3 py-1.5 bg-[#008f83] hover:bg-[#007b71] text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-xs"
+                id="att-btn-confirm"
+              >
+                {confirmState.confirmText}
+              </button>
+            </div>
           </div>
         </div>
       )}
