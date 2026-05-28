@@ -143,9 +143,12 @@ export default function ExecutionLedger() {
     } else {
       // Real Data parsing
       rawActualRows.forEach((r: any, idx: number) => {
+        const effectiveDeptCode = r.attributedDeptCode || r.usageCode;
+        const effectiveDeptName = r.attributedDeptName || r.usageDept;
+        
         // Find dept name
-        const matchDept = depts.find(d => d.code === r.usageCode);
-        if (currentUser.code !== '99999' && !viewableDeptCodes.includes(r.usageCode)) {
+        const matchDept = depts.find(d => d.code === effectiveDeptCode);
+        if (currentUser.code !== '99999' && !viewableDeptCodes.includes(effectiveDeptCode)) {
           return; // skip non-viewable
         }
 
@@ -166,8 +169,8 @@ export default function ExecutionLedger() {
           accountCode: r.accountCode,
           accountName: resolvedAccountName,
           controlType: classifyAccount(r.accountCode, resolvedAccountName),
-          usageCode: r.usageCode,
-          usageDept: matchDept ? matchDept.name : (r.usageDept || '외부 위탁부서'),
+          usageCode: effectiveDeptCode,
+          usageDept: effectiveDeptName || (matchDept ? matchDept.name : (r.usageDept || '외부 위탁부서')),
           amount: Number(r.completed || r.amount || 0),
           remarks: r.remarks || '',
           status: 'DRAFT',

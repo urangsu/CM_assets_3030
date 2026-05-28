@@ -214,8 +214,7 @@ export default function VarianceComparison() {
       });
 
       actualData.forEach((item: any) => {
-        const overriddenDeptCode = savedActualsMap.get(`${item.usageCode}_${item.accountCode}`);
-        const effectiveDeptCode = overriddenDeptCode || item.usageCode;
+        const effectiveDeptCode = item.attributedDeptCode || savedActualsMap.get(`${item.usageCode}_${item.accountCode}`) || item.usageCode;
         
         if (!deptCodes.includes(effectiveDeptCode)) return;
 

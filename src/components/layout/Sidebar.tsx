@@ -164,8 +164,13 @@ const NAV_GROUPS_DEF: NavGroup[] = [
     items: [
       { id: 'actual-upload', label: '실적 업로드', icon: 'upload', href: '/plan-actual-upload' },
       { id: 'account-selection', label: '계정 선택', icon: 'tag', href: '/account-selection' },
-      { id: 'department-assignment', label: '부서 귀속 변경', icon: 'convert', href: '/department-assignment' },
       { id: 'account-management', label: '계정/부서 기준 확인', icon: 'list', href: '/account-management' }
+    ]
+  },
+  {
+    group: "실적 관리",
+    items: [
+      { id: 'department-assignment', label: '실적 귀속부서 관리', icon: 'convert', href: '/department-assignment' }
     ]
   },
   {

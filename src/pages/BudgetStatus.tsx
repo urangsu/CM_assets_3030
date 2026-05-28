@@ -196,7 +196,7 @@ export default function BudgetStatus() {
         const budgetRows = JSON.parse(localStorage.getItem(budgetKey) || '[]');
 
         // 2. Fetch Actuals for this dept
-        const deptActuals = rawActualRows.filter((r: any) => r.usageCode === dept.code);
+        const deptActuals = rawActualRows.filter((r: any) => (r.attributedDeptCode || r.usageCode) === dept.code);
 
         // Track budget accounts
         const deptAccountBudgets = new Map<string, any>();

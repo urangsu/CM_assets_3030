@@ -173,7 +173,7 @@ export default function HomeDashboard() {
       // Actual data for this dept
       let deptActualSum = 0;
       if (hasRealActual) {
-        realActualRows.filter((r: any) => r.usageCode === dept.code).forEach((r: any) => {
+        realActualRows.filter((r: any) => (r.attributedDeptCode || r.usageCode) === dept.code).forEach((r: any) => {
           deptActualSum += (Number(r.completed) || 0);
           // If actual + planned exceeds allowed budget (including transfers/carried over or initial amount)
           const totalAllowed = (Number(r.amount) || 0) + (Number(r.additional) || 0) + (Number(r.transferred) || 0) + (Number(r.carriedOver) || 0);

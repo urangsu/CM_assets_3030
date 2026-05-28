@@ -133,7 +133,7 @@ export default function BudgetOverrunCheck() {
 
     setDiagnostics({
       budgetRowCount: budgetRows.length,
-      actualRowCount: actualRows.filter(r => deptCodes.includes(r.usageCode)).length,
+      actualRowCount: actualRows.filter(r => deptCodes.includes(r.attributedDeptCode || r.usageCode)).length,
       actualOnlyCount: rawData.filter(r => r.status === '무예산 집행').length,
     });
 
