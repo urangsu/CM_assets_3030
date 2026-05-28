@@ -575,7 +575,10 @@ export function recommendAttributionForRow(params: {
 
   const best = sorted[0];
 
-  if (best.deptCode === originalDeptCode && best.score < 80) {
+  const effectiveCurrentDeptCode =
+    params.row.attributedDeptCode || originalDeptCode;
+
+  if (best.deptCode === effectiveCurrentDeptCode) {
     return null;
   }
 

@@ -59,15 +59,14 @@ interface RecommendationRow {
 const DEFAULT_ATTRIBUTION_COL_WIDTHS = {
   select: 44,
   period: 64,
-  accountCode: 110,
-  accountName: 220,
-  originalDept: 180,
-  currentDept: 190,
-  recommendedDept: 190,
-  amount: 110,
-  confidence: 80,
-  status: 80,
-  actions: 110,
+  accountCode: 120,
+  accountName: 300,
+  originalDept: 220,
+  currentDept: 230,
+  recommendedDept: 230,
+  amount: 120,
+  status: 90,
+  actions: 120,
 };
 
 type AttributionColumnKey = keyof typeof DEFAULT_ATTRIBUTION_COL_WIDTHS;
@@ -88,9 +87,10 @@ export default function DepartmentAssignment() {
   const [selectedAccountingType, setSelectedAccountingType] = useState('전체');
   const [selectedAccountClass, setSelectedAccountClass] = useState('전체');
   const [selectedConfidence, setSelectedConfidence] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('대기');
   const [searchQuery, setSearchQuery] = useState('');
   const [showExcludedAccounts, setShowExcludedAccounts] = useState(false);
+  const [isRecommendationListOpen, setIsRecommendationListOpen] = useState(true);
 
   // Loaded Raw Data States
   const [actualRowsList, setActualRowsList] = useState<any[]>([]);
@@ -128,7 +128,6 @@ export default function DepartmentAssignment() {
     currentDept: 130,
     recommendedDept: 130,
     amount: 90,
-    confidence: 70,
     status: 70,
     actions: 90,
   };
@@ -358,6 +357,12 @@ export default function DepartmentAssignment() {
   // Apply UI Filters
   const filteredRecommendationRows = useMemo(() => {
     return allRecommendationRows.filter(item => {
+      const effectiveCurrentDeptCode =
+        item.currentAttributedDeptCode || item.originalDeptCode;
+
+      if (!item.recommendedDeptCode) return false;
+      if (item.recommendedDeptCode === effectiveCurrentDeptCode) return false;
+
       // Month
       if (selectedMonth !== 'all') {
         const monthIndex = getPeriodMonthIndex(item.period);
@@ -467,15 +472,78 @@ export default function DepartmentAssignment() {
     return allRecommendationRows.find(r => r.rowId === selectedRowId) || null;
   }, [allRecommendationRows, selectedRowId]);
 
+  // Filter for manual selection list (independent of wait status or recommendations)
+  const filteredActualRowsForManualGrid = useMemo(() => {
+    return actualRowsList.filter((row: any) => {
+      const isViewable = viewableDepts.some(d => d.code === row.usageCode || (row.attributedDeptCode && d.code === row.attributedDeptCode));
+      if (!isViewable) return false;
+
+      if (selectedMonth !== 'all') {
+        const monthIndex = getPeriodMonthIndex(row.period);
+        if (monthMode === 'YTD') {
+          if (monthIndex > Number(selectedMonth)) return false;
+        } else {
+          if (monthIndex !== Number(selectedMonth)) return false;
+        }
+      }
+
+      if (selectedWriterDept !== 'all' && row.usageCode !== selectedWriterDept) {
+        return false;
+      }
+
+      if (selectedAttributedDept !== 'all') {
+        const effectiveDept = row.attributedDeptCode || row.usageCode;
+        if (effectiveDept !== selectedAttributedDept) return false;
+      }
+
+      const accountingType = getAccountingType(row.accountCode, row.accountName);
+      const accountClass = classifyAccount(row.accountCode, row.accountName);
+
+      if (selectedAccountingType !== '전체' && accountingType !== selectedAccountingType) return false;
+      if (selectedAccountClass !== '전체' && accountClass !== selectedAccountClass) return false;
+
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const codeMatch = (row.accountCode || '').includes(query);
+        const nameMatch = (row.accountName || '').toLowerCase().includes(query);
+        const origCodeMatch = (row.usageCode || '').includes(query);
+        const origNameMatch = (row.usageDept || '').toLowerCase().includes(query);
+        const attrCodeMatch = (row.attributedDeptCode || '').includes(query);
+        const attrNameMatch = (row.attributedDeptName || '').toLowerCase().includes(query);
+
+        if (!codeMatch && !nameMatch && !origCodeMatch && !origNameMatch && !attrCodeMatch && !attrNameMatch) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [actualRowsList, viewableDepts, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, searchQuery]);
+
   // Dynamic Statistics Counters
   const stats = useMemo(() => {
+    const actionableCount = allRecommendationRows.filter(row => {
+      const effectiveCurrentDeptCode = row.currentAttributedDeptCode || row.originalDeptCode;
+      return row.recommendedDeptCode && row.recommendedDeptCode !== effectiveCurrentDeptCode && row.status === '대기';
+    }).length;
+
+    const totalActualsCount = actualRowsList.length;
+    const appliedCount = actualRowsList.filter(row => row.attributedDeptCode).length;
+    const ignoredCount = excludedRowIds.size;
+
+    const highConfidenceCount = allRecommendationRows.filter(row => {
+      const effectiveCurrentDeptCode = row.currentAttributedDeptCode || row.originalDeptCode;
+      return row.recommendedDeptCode && row.recommendedDeptCode !== effectiveCurrentDeptCode && row.status === '대기' && row.confidence === 'HIGH';
+    }).length;
+
     return {
-      totalPending: allRecommendationRows.filter(r => r.status === '대기').length,
-      highConfidence: allRecommendationRows.filter(r => r.status === '대기' && r.confidence === 'HIGH').length,
-      applied: allRecommendationRows.filter(r => r.status === '적용됨' || r.status === '수동 변경').length,
-      ignored: allRecommendationRows.filter(r => r.status === '무시됨').length,
+      totalPending: actionableCount,
+      allActuals: totalActualsCount,
+      applied: appliedCount,
+      ignored: ignoredCount,
+      highConfidence: highConfidenceCount,
     };
-  }, [allRecommendationRows]);
+  }, [allRecommendationRows, actualRowsList, excludedRowIds]);
 
   // Actions: Apply recommended department attribution
   const handleApplyRecommendation = (rowId: string | number, recDeptCode: string, recDeptName: string, reasons: string[], score: number) => {
@@ -673,13 +741,16 @@ export default function DepartmentAssignment() {
 
   // Actions: Higher confidence bulk apply
   const handleBulkApplyHighConfidence = () => {
-    const highPending = allRecommendationRows.filter(r => r.status === '대기' && r.confidence === 'HIGH');
+    const highPending = allRecommendationRows.filter(r => {
+      const effectiveCurrentDeptCode = r.currentAttributedDeptCode || r.originalDeptCode;
+      return r.status === '대기' && r.confidence === 'HIGH' && r.recommendedDeptCode && r.recommendedDeptCode !== effectiveCurrentDeptCode;
+    });
     if (highPending.length === 0) {
-      alert('높은 신뢰도 추천 항목이 없습니다.');
+      alert('권장 항목 일괄 적용 대상이 없습니다.');
       return;
     }
 
-    if (!window.confirm(`높은 신뢰도 추천 ${highPending.length}건을 적용하시겠습니까?`)) {
+    if (!window.confirm(`권장 항목 ${highPending.length}건을 추천 귀속부서로 적용하시겠습니까?`)) {
       return;
     }
 
@@ -913,7 +984,7 @@ export default function DepartmentAssignment() {
     setSelectedAccountingType('전체');
     setSelectedAccountClass('전체');
     setSelectedConfidence('all');
-    setSelectedStatus('all');
+    setSelectedStatus('대기');
     setSearchQuery('');
     setShowExcludedAccounts(false);
   };
@@ -982,15 +1053,15 @@ export default function DepartmentAssignment() {
           <span className="text-xl font-black text-zinc-800">{stats.totalPending}건</span>
         </div>
         <div className="flex flex-col gap-1 border-l border-zinc-250 md:pl-4">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase">신뢰도 높음</span>
-          <span className="text-xl font-black text-emerald-600">{stats.highConfidence}건</span>
+          <span className="text-[11px] font-bold text-zinc-400 uppercase">전체 실적</span>
+          <span className="text-xl font-black text-zinc-800">{stats.allActuals}건</span>
         </div>
         <div className="flex flex-col gap-1 border-l border-zinc-250 md:pl-4">
           <span className="text-[11px] font-bold text-zinc-400 uppercase">보정 적용됨</span>
           <span className="text-xl font-black text-[#008f83]">{stats.applied}건</span>
         </div>
         <div className="flex flex-col gap-1 border-l border-zinc-250 md:pl-4">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase">무시/제외됨</span>
+          <span className="text-[11px] font-bold text-zinc-400 uppercase">무시됨</span>
           <span className="text-xl font-black text-zinc-500">{stats.ignored}건</span>
         </div>
       </div>
@@ -1135,7 +1206,7 @@ export default function DepartmentAssignment() {
               onChange={(e) => setSelectedStatus(e.target.value)}
               className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
             >
-              <option value="all">전체 상태</option>
+              <option value="all">전체</option>
               <option value="대기">대기</option>
               <option value="적용됨">적용됨</option>
               <option value="무시됨">무시됨</option>
@@ -1200,7 +1271,7 @@ export default function DepartmentAssignment() {
               }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              높은 신뢰도 일괄 적용 ({stats.highConfidence}건)
+              권장 항목 일괄 적용 ({stats.highConfidence}건)
             </button>
 
             <button
@@ -1243,144 +1314,145 @@ export default function DepartmentAssignment() {
         <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
             <span className="text-xs font-bold text-zinc-700">귀속 추천 목록</span>
-            <span className="text-[11.5px] font-mono text-zinc-500">
-              조회 결과: <strong>{filteredRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
-            </span>
+            <div className="flex items-center gap-2.5">
+              <span className="text-[11.5px] font-mono text-zinc-500">
+                조회 결과: <strong>{filteredRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
+              </span>
+              <span className="text-zinc-300">|</span>
+              <button
+                type="button"
+                onClick={() => setIsRecommendationListOpen(prev => !prev)}
+                className="text-xs font-bold text-[#008f83] hover:underline cursor-pointer select-none"
+              >
+                {isRecommendationListOpen ? '접기' : '펼치기'}
+              </button>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table
-              className="table-fixed border-collapse text-xs text-left"
-              style={{
-                width: (Object.keys(columnWidths) as AttributionColumnKey[]).reduce((sum, key) => sum + columnWidths[key], 0),
-                minWidth: (Object.keys(columnWidths) as AttributionColumnKey[]).reduce((sum, key) => sum + columnWidths[key], 0)
-              }}
-            >
-              <colgroup>
-                <col style={{ width: columnWidths.select }} />
-                <col style={{ width: columnWidths.period }} />
-                <col style={{ width: columnWidths.accountCode }} />
-                <col style={{ width: columnWidths.accountName }} />
-                <col style={{ width: columnWidths.originalDept }} />
-                <col style={{ width: columnWidths.currentDept }} />
-                <col style={{ width: columnWidths.recommendedDept }} />
-                <col style={{ width: columnWidths.amount }} />
-                <col style={{ width: columnWidths.confidence }} />
-                <col style={{ width: columnWidths.status }} />
-                <col style={{ width: columnWidths.actions }} />
-              </colgroup>
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-250 text-zinc-450 font-bold text-[10.5px] select-none">
-                  <th className="p-0 text-center">
-                    <ResizableAttributionHeader
-                      title={
-                        <input 
-                          type="checkbox"
-                          checked={
-                            filteredRecommendationRows.length > 0 &&
-                            filteredRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId))
-                          }
-                          onChange={handleToggleAllSelect}
-                          className="rounded accent-[#008f83] cursor-pointer"
-                        />
-                      }
-                      columnKey="select"
-                      align="center"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="기간"
-                      columnKey="period"
-                      align="center"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="계정코드"
-                      columnKey="accountCode"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="계정명"
-                      columnKey="accountName"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="원 사용처"
-                      columnKey="originalDept"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="현재 귀속부서"
-                      columnKey="currentDept"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="추천 귀속부서"
-                      columnKey="recommendedDept"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="실적 금액"
-                      columnKey="amount"
-                      align="right"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="신뢰도"
-                      columnKey="confidence"
-                      align="center"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="상태"
-                      columnKey="status"
-                      align="center"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                  <th className="p-0">
-                    <ResizableAttributionHeader
-                      title="작업"
-                      columnKey="actions"
-                      align="center"
-                      columnWidths={columnWidths}
-                      onResize={resizeColumn}
-                    />
-                  </th>
-                </tr>
-              </thead>
+          {isRecommendationListOpen && (
+            <div className="overflow-x-auto">
+              <table
+                className="table-fixed border-collapse text-xs text-left"
+                style={{
+                  width: (Object.keys(columnWidths) as AttributionColumnKey[]).reduce((sum, key) => sum + columnWidths[key], 0),
+                  minWidth: (Object.keys(columnWidths) as AttributionColumnKey[]).reduce((sum, key) => sum + columnWidths[key], 0)
+                }}
+              >
+                <colgroup>
+                  <col style={{ width: columnWidths.select }} />
+                  <col style={{ width: columnWidths.period }} />
+                  <col style={{ width: columnWidths.accountCode }} />
+                  <col style={{ width: columnWidths.accountName }} />
+                  <col style={{ width: columnWidths.originalDept }} />
+                  <col style={{ width: columnWidths.currentDept }} />
+                  <col style={{ width: columnWidths.recommendedDept }} />
+                  <col style={{ width: columnWidths.amount }} />
+                  <col style={{ width: columnWidths.status }} />
+                  <col style={{ width: columnWidths.actions }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-250 text-zinc-450 font-bold text-[10.5px] select-none">
+                    <th className="p-0 text-center">
+                      <ResizableAttributionHeader
+                        title={
+                          <input 
+                            type="checkbox"
+                            checked={
+                              filteredRecommendationRows.length > 0 &&
+                              filteredRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId))
+                            }
+                            onChange={handleToggleAllSelect}
+                            className="rounded accent-[#008f83] cursor-pointer"
+                          />
+                        }
+                        columnKey="select"
+                        align="center"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="기간"
+                        columnKey="period"
+                        align="center"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="계정코드"
+                        columnKey="accountCode"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="계정명"
+                        columnKey="accountName"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="원 사용처"
+                        columnKey="originalDept"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="현재 귀속부서"
+                        columnKey="currentDept"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="추천 귀속부서"
+                        columnKey="recommendedDept"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="실적 금액"
+                        columnKey="amount"
+                        align="right"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="상태"
+                        columnKey="status"
+                        align="center"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                    <th className="p-0">
+                      <ResizableAttributionHeader
+                        title="작업"
+                        columnKey="actions"
+                        align="center"
+                        columnWidths={columnWidths}
+                        onResize={resizeColumn}
+                      />
+                    </th>
+                  </tr>
+                </thead>
               <tbody className="divide-y divide-zinc-150 font-sans">
                 {filteredRecommendationRows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-14 text-center text-zinc-400">
+                    <td colSpan={10} className="py-14 text-center text-zinc-400">
                       지정된 조건에 부합하는 귀속 추천 항목이 없습니다.
                     </td>
                   </tr>
@@ -1546,21 +1618,6 @@ export default function DepartmentAssignment() {
                           <td className="py-3 px-3 text-right font-mono font-bold text-zinc-800" title={`${item.amount.toLocaleString()}원`}>
                             {formatMillionWon(item.amount)}
                           </td>
-                          <td className="py-3 px-2 text-center">
-                            {item.recommendedDeptCode ? (
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
-                                item.confidence === 'HIGH' 
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                                  : item.confidence === 'MEDIUM' 
-                                  ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                                  : 'bg-zinc-100 text-zinc-600 border-zinc-200'
-                              }`}>
-                                {getConfidenceLabel(item.confidence)}
-                              </span>
-                            ) : (
-                              <span className="text-zinc-400 font-mono text-[10px]">-</span>
-                            )}
-                          </td>
 
                           <td className="py-3 px-2 text-center">
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
@@ -1622,7 +1679,7 @@ export default function DepartmentAssignment() {
 
                         {isSelected && (
                           <tr className="bg-emerald-50/5 hover:bg-emerald-50/5 pointer-events-auto">
-                            <td colSpan={11} className="p-0 border-t border-b border-emerald-100/50">
+                            <td colSpan={10} className="p-0 border-t border-b border-emerald-100/50">
                               <InlineAttributionDetailRow
                                 item={item}
                                 allDepts={allDepts}
@@ -1649,8 +1706,112 @@ export default function DepartmentAssignment() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
 
+      </div>
+
+      {/* 4.5 실적 귀속부서 직접 수정 (Directly Modify Actual Department Assignment grid) */}
+      <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden mt-4">
+        <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-zinc-700">실적 귀속부서 수동 직접 보정</span>
+            <span className="inline-block px-1.5 py-0.5 bg-[#008f83]/10 text-[#008f83] text-[10px] font-bold rounded">전체 실적 대상</span>
+          </div>
+          <span className="text-[11.5px] font-mono text-zinc-500">
+            필터링 결과: <strong>{filteredActualRowsForManualGrid.length}</strong>건 / 전체 <strong>{actualRowsList.length}</strong>건
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs min-w-[1020px]">
+            <thead>
+              <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-bold text-[10.5px] select-none">
+                <th className="py-2.5 px-3 w-16 text-center">기간</th>
+                <th className="py-2.5 px-3 w-28">계정코드</th>
+                <th className="py-2.5 px-3">계정명</th>
+                <th className="py-2.5 px-3">원 사용처 (발생부서)</th>
+                <th className="py-2.5 px-3">현재 귀속부서</th>
+                <th className="py-2.5 px-3 w-64">귀속부서 수동 지정</th>
+                <th className="py-2.5 px-3 text-right w-36">실적 금액</th>
+                <th className="py-2.5 px-3 text-center w-24">작업</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-150 font-sans">
+              {filteredActualRowsForManualGrid.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-zinc-400">
+                    지정된 필터 조건에 부합하는 실적 데이터가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                filteredActualRowsForManualGrid.map((row) => {
+                  return (
+                    <tr key={row.id} className="hover:bg-zinc-50/75 transition">
+                      <td className="py-2 px-3 text-center font-mono text-zinc-500">
+                        {row.period || row.month || '12월'}
+                      </td>
+                      <td className="py-2 px-3 font-mono font-bold text-zinc-700">
+                        {row.accountCode}
+                      </td>
+                      <td className="py-2 px-3 font-bold text-zinc-900 truncate max-w-[160px]" title={row.accountName}>
+                        {row.accountName}
+                      </td>
+                      <td className="py-2 px-3 text-zinc-650 truncate max-w-[180px]" title={`[${row.usageCode}] ${row.usageDept || row.usageCode}`}>
+                        [{row.usageCode}] {row.usageDept || row.usageCode}
+                      </td>
+                      <td className="py-2 px-3 truncate max-w-[180px]">
+                        {row.attributedDeptCode ? (
+                          <span className="font-bold text-emerald-700" title={`[${row.attributedDeptCode}] ${row.attributedDeptName}`}>
+                            [{row.attributedDeptCode}] {row.attributedDeptName}
+                          </span>
+                        ) : (
+                          <span className="text-zinc-400 font-medium font-sans">원 사용처 기준 동일</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        <select
+                          value={row.attributedDeptCode || ''}
+                          onChange={(e) => {
+                            if (e.target.value === '') {
+                              handleRevertAttribution(row.id);
+                            } else {
+                              handleApplyManualChange(row.id, e.target.value);
+                            }
+                          }}
+                          className="h-7 w-full max-w-[220px] rounded border border-zinc-200 bg-white px-1.5 text-[11px] font-medium text-zinc-700 focus:border-[#008f83] outline-none"
+                        >
+                          <option value="">원 사용처 기준 (부서 미선택)</option>
+                          {allDepts.map(dept => (
+                            <option key={dept.code} value={dept.code}>
+                              [{dept.code}] {dept.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-zinc-800">
+                        {Number(row.completed || row.amount || 0).toLocaleString()}원
+                      </td>
+                      <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        {row.attributedDeptCode ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRevertAttribution(row.id)}
+                            className="px-2 py-0.5 border border-red-200 hover:bg-red-50 text-red-600 rounded font-bold transition text-[10px] select-none cursor-pointer"
+                          >
+                            원복
+                          </button>
+                        ) : (
+                          <span className="text-zinc-300 font-mono text-[10px]">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Dynamic Excluded Accounts section */}
