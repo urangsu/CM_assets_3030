@@ -166,6 +166,7 @@ export function parseWideMonthlyRows(params: {
   year: string;
   existingCount: number;
   planType?: string;
+  uploadKind?: string;
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
