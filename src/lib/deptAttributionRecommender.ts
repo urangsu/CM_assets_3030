@@ -297,6 +297,11 @@ export function recommendAttributionForRow(params: {
   const accountName = params.row.accountName;
   const originalDeptCode = params.row.usageCode;
 
+  // 급여 관련 계정은 추천에서 즉각 배제
+  if (accountName && (accountName.includes('급여') || accountName.includes('임금') || accountName.includes('상여'))) {
+    return null;
+  }
+
   const dominance = getBudgetDominanceSignal({
     accountCode,
     departments: params.departments,

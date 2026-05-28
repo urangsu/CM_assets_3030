@@ -160,21 +160,21 @@ const NAV_GROUPS_DEF: NavGroup[] = [
     ]
   },
   {
-    group: "1단계. 예산 준비",
+    group: "1단계. 실적 관리",
     items: [
       { id: 'actual-upload', label: '실적 업로드', icon: 'upload', href: '/plan-actual-upload' },
+      { id: 'department-assignment', label: '실적 귀속부서 관리', icon: 'convert', href: '/department-assignment' }
+    ]
+  },
+  {
+    group: "2단계. 예산 준비",
+    items: [
       { id: 'account-selection', label: '계정 선택', icon: 'tag', href: '/account-selection' },
       { id: 'account-management', label: '계정/부서 기준 확인', icon: 'list', href: '/account-management' }
     ]
   },
   {
-    group: "실적 관리",
-    items: [
-      { id: 'department-assignment', label: '실적 귀속부서 관리', icon: 'convert', href: '/department-assignment' }
-    ]
-  },
-  {
-    group: "2단계. 예산 작성",
+    group: "3단계. 예산 작성",
     items: [
       { id: 'budget-write', label: '예산 작성', icon: 'plus', href: '/budget-creation' },
       { id: 'business-activity', label: '업무활동경비 산출', icon: 'wallet', href: '/business-activity-budget' },
@@ -182,7 +182,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
     ]
   },
   {
-    group: "3단계. 예산 검토",
+    group: "4단계. 예산 검토",
     items: [
       { id: 'budget-status-review', label: '예산 현황', icon: 'list', href: '/budget-status?tab=overview' },
       { id: 'execution-ledger', label: '집행 내역', icon: 'list', href: '/execution-ledger' },
@@ -191,7 +191,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
     ]
   },
   {
-    group: "4단계. 비교분석",
+    group: "5단계. 비교분석",
     items: [
       { id: 'variance', label: '비교분석', icon: 'trend', href: '/variance-comparison' },
       { id: 'compare-time', label: '시점 vs 시점 비교', icon: 'compare', href: '/variance-comparison?tab=time' },
@@ -200,7 +200,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
     ]
   },
   {
-    group: "5단계. 운영 모듈",
+    group: "6단계. 운영 모듈",
     items: [
       { id: 'purchase-status', label: '원료 구매', icon: 'cube', href: '/purchase-status' },
       { id: 'sales-status', label: '판매 현황', icon: 'bar', href: '/sales-status' },
@@ -324,15 +324,22 @@ export default function Sidebar() {
 
   const filteredNavGroups = NAV_GROUPS_DEF.map(groupDef => {
     const filteredItems = groupDef.items.filter(item => {
-      // Basic protection limits for raw uploads and administrative profile managers
-      const isRestricted = item.href?.startsWith('/plan-actual-upload') || 
-                           item.href?.startsWith('/user-management') || 
-                           item.href?.startsWith('/department-management') ||
-                           item.href?.startsWith('/department-assignment') ||
-                           item.id === 'account-master-direct';
-      if (isRestricted) {
-        return currentUser && (currentUser.code === '99999' || currentUser.code === '32100');
+      const isAdminOnly =
+        item.href?.startsWith('/user-management') ||
+        item.href?.startsWith('/department-management') ||
+        item.id === 'account-master-direct';
+
+      const isFinanceOrAdmin =
+        item.href?.startsWith('/plan-actual-upload');
+
+      if (isAdminOnly) {
+        return currentUser && currentUser.code === '99999';
       }
+
+      if (isFinanceOrAdmin) {
+        return currentUser && ['99999', '32100'].includes(currentUser.code);
+      }
+
       return true;
     });
 
@@ -346,8 +353,8 @@ export default function Sidebar() {
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
     const s = new Set<string>();
-    s.add("1단계. 예산 준비");
-    s.add("2단계. 예산 작성");
+    s.add("1단계. 실적 관리");
+    s.add("2단계. 예산 준비");
     if (activeGroupName) s.add(activeGroupName);
     return s;
   });

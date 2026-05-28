@@ -20,7 +20,7 @@ import {
   SlidersHorizontal,
   FileCheck
 } from 'lucide-react';
-import { getAllDepartments } from '../constants';
+import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
 import { usePermission } from '../lib/permissions';
 import { 
@@ -28,6 +28,12 @@ import {
   AttributionRecommendation, 
   AttributionAuditLog 
 } from '../lib/deptAttributionRecommender';
+import {
+  classifyAccount,
+  getAccountingType,
+  ACCOUNT_CLASS_OPTIONS,
+  ACCOUNTING_TYPE_OPTIONS,
+} from '../lib/accountClassification';
 
 interface RecommendationRow {
   rowId: string | number;
@@ -55,11 +61,13 @@ export default function DepartmentAssignment() {
 
   // Filter States
   const [year, setYear] = useState('2026');
+  const [planType, setPlanType] = useState<'경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('경영계획');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [monthMode, setMonthMode] = useState<'SINGLE' | 'YTD'>('YTD');
   const [selectedWriterDept, setSelectedWriterDept] = useState('all');
   const [selectedAttributedDept, setSelectedAttributedDept] = useState('all');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedAccountingType, setSelectedAccountingType] = useState('전체');
+  const [selectedAccountClass, setSelectedAccountClass] = useState('전체');
   const [selectedConfidence, setSelectedConfidence] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,11 +97,17 @@ export default function DepartmentAssignment() {
 
   const allDepts = useMemo(() => getAllDepartments(), []);
 
+  const viewableDepts = useMemo(() => {
+    if (!currentUser) return [];
+    if (['99999', '32100'].includes(currentUser.code)) return getAllDepartments();
+    return getViewableDepts(currentUser.code);
+  }, [currentUser]);
+
   // Budget Rows cache to score recommendations
   const budgetRowsByDept = useMemo(() => {
     const map = new Map<string, any[]>();
     allDepts.forEach(d => {
-      const bKey = getBudgetDataKey(d.code, year, '경영계획');
+      const bKey = getBudgetDataKey(d.code, year, planType);
       const savedData = localStorage.getItem(bKey);
       if (savedData) {
         try {
@@ -104,7 +118,7 @@ export default function DepartmentAssignment() {
       }
     });
     return map;
-  }, [allDepts, year]);
+  }, [allDepts, year, planType]);
 
   // Load Initial Storage Data
   const loadData = () => {
@@ -204,16 +218,23 @@ export default function DepartmentAssignment() {
   // Construct All Recommendation rows dynamically
   const allRecommendationRows = useMemo(() => {
     const result: RecommendationRow[] = [];
+    if (!currentUser) return [];
+
+    const isFinanceOrAdmin = ['99999', '32100'].includes(currentUser.code);
+    const recDepts = isFinanceOrAdmin ? allDepts : viewableDepts;
 
     actualRowsList.forEach((row: any) => {
-      // Avoid planType constraints for actuals recommender
+      // 권한 부서 필터링 (사용자별 조회 가능 부서에 해당하는 실적만 대상으로 삼음)
+      const isViewable = viewableDepts.some(d => d.code === row.usageCode || (row.attributedDeptCode && d.code === row.attributedDeptCode));
+      if (!isViewable) return;
+
       const rec = recommendAttributionForRow({
         row,
         year,
-        planType: '경영계획',
-        monthMode: 'YTD',
-        selectedMonth: 12,
-        departments: allDepts,
+        planType,
+        monthMode: monthMode === 'SINGLE' ? 'MONTH' : 'YTD',
+        selectedMonth: selectedMonth === 'all' ? 12 : Number(selectedMonth),
+        departments: recDepts,
         budgetRowsByDept,
         actualRows: actualRowsList,
         previousOverrides: overrides,
@@ -256,7 +277,7 @@ export default function DepartmentAssignment() {
     });
 
     return result.sort((a, b) => b.score - a.score);
-  }, [actualRowsList, year, allDepts, budgetRowsByDept, overrides, excludedRowIds]);
+  }, [actualRowsList, year, allDepts, viewableDepts, planType, monthMode, selectedMonth, budgetRowsByDept, overrides, excludedRowIds, currentUser]);
 
   // Apply UI Filters
   const filteredRecommendationRows = useMemo(() => {
@@ -277,12 +298,12 @@ export default function DepartmentAssignment() {
       // Recommended Dept
       if (selectedAttributedDept !== 'all' && item.recommendedDeptCode !== selectedAttributedDept) return false;
 
-      // Cost Nature (비용 성격)
-      if (selectedCategory !== 'all') {
-        const isMfg = item.accountCode.startsWith('5') || item.accountCode.startsWith('6');
-        if (selectedCategory === '제조' && !isMfg) return false;
-        if (selectedCategory === '판관' && isMfg) return false;
-      }
+      // Accounting Type & Account Class Filter (회계 구분, 비용 성격)
+      const accountingType = getAccountingType(item.accountCode, item.accountName);
+      const accountClass = classifyAccount(item.accountCode, item.accountName);
+
+      if (selectedAccountingType !== '전체' && accountingType !== selectedAccountingType) return false;
+      if (selectedAccountClass !== '전체' && accountClass !== selectedAccountClass) return false;
 
       // Confidence
       if (selectedConfidence !== 'all' && item.confidence !== selectedConfidence) return false;
@@ -308,7 +329,7 @@ export default function DepartmentAssignment() {
 
       return true;
     });
-  }, [allRecommendationRows, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedCategory, selectedConfidence, selectedStatus, searchQuery]);
+  }, [allRecommendationRows, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, selectedConfidence, selectedStatus, searchQuery]);
 
   // Selected Detail Row reference
   const activeDetailRow = useMemo(() => {
@@ -524,11 +545,11 @@ export default function DepartmentAssignment() {
   const handleBulkApplyHighConfidence = () => {
     const highPending = allRecommendationRows.filter(r => r.status === '대기' && r.confidence === 'HIGH');
     if (highPending.length === 0) {
-      alert('일괄 적용 가능한 "높음" 신뢰도의 대기 상태 추천 항목이 정의되어 있지 않습니다.');
+      alert('높은 신뢰도 추천 항목이 없습니다.');
       return;
     }
 
-    if (!window.confirm(`높은 신뢰도 추천 ${highPending.length}건을 적용하시겠습니까?\n\n원 사용처는 변경하지 않고, 분석용 귀속부서만 적용됩니다.\n적용 결과는 예산현황, 비교분석, 초과·미달 항목 집계에 반영됩니다.`)) {
+    if (!window.confirm(`높은 신뢰도 추천 ${highPending.length}건을 적용하시겠습니까?`)) {
       return;
     }
 
@@ -580,7 +601,7 @@ export default function DepartmentAssignment() {
 
     setFeedbackMsg({
       type: 'success',
-      text: `총 ${updateCount}건의 높은 신뢰도 추천 항목을 실적 데이터에 일괄 보정 결전 처리했습니다.`
+      text: `총 ${updateCount}건에 대해 실적 귀속부서 일괄 적용했습니다.`
     });
     setTimeout(() => setFeedbackMsg(null), 3000);
     loadData();
@@ -589,7 +610,7 @@ export default function DepartmentAssignment() {
   // Actions: Bulk Action Applied Selected
   const handleApplySelectedRows = () => {
     if (selectedRowIds.size === 0) {
-      alert('적용할 항목들을 먼저 테이블 좌측 체크박스 형태로 선택해 주세요.');
+      alert('선택한 항목이 없습니다.');
       return;
     }
 
@@ -598,11 +619,11 @@ export default function DepartmentAssignment() {
     );
 
     if (targets.length === 0) {
-      alert('선택된 항목 중 적용할 대기 상태 추천 건이 없습니다.');
+      alert('선택한 항목 중 적용 가능한 추천 건이 없습니다.');
       return;
     }
 
-    if (!window.confirm(`선택한 추천 ${targets.length}건을 일개 부서 귀속 처리하시겠습니까?`)) {
+    if (!window.confirm(`선택한 ${targets.length}건을 추천 귀속부서로 적용하시겠습니까?`)) {
       return;
     }
 
@@ -654,7 +675,7 @@ export default function DepartmentAssignment() {
 
     setFeedbackMsg({
       type: 'success',
-      text: `선택하신 ${count}건에 대해 실적 귀속부서 추천을 안전 보정 적용했습니다.`
+      text: `선택하신 ${count}건에 대해 실적 귀속부서를 적용했습니다.`
     });
     setSelectedRowIds(new Set());
     setTimeout(() => setFeedbackMsg(null), 3000);
@@ -664,7 +685,7 @@ export default function DepartmentAssignment() {
   // Actions: Bulk Action Ignore Selected
   const handleIgnoreSelectedRows = () => {
     if (selectedRowIds.size === 0) {
-      alert('추천을 무시할 항목들을 체크박스 형태로 선택해 주세요.');
+      alert('선택한 항목이 없습니다.');
       return;
     }
 
@@ -673,11 +694,11 @@ export default function DepartmentAssignment() {
     );
 
     if (targets.length === 0) {
-      alert('선택된 항목 중 무시 처리(숨김)할 대기 상태 추천 건이 없습니다.');
+      alert('선택한 항목 중 무시 처리 가능한 추천 건이 없습니다.');
       return;
     }
 
-    if (!window.confirm(`선택한 추천 ${targets.length}건을 무시 처리하여 제외시키겠습니까?`)) {
+    if (!window.confirm(`선택한 ${targets.length}건을 추천 귀속에서 제외하시겠습니까?`)) {
       return;
     }
 
@@ -754,15 +775,27 @@ export default function DepartmentAssignment() {
 
   // Reset Filters
   const handleResetFilters = () => {
+    setPlanType('경영계획');
     setSelectedMonth('all');
     setMonthMode('YTD');
     setSelectedWriterDept('all');
     setSelectedAttributedDept('all');
-    setSelectedCategory('all');
+    setSelectedAccountingType('전체');
+    setSelectedAccountClass('전체');
     setSelectedConfidence('all');
     setSelectedStatus('all');
     setSearchQuery('');
   };
+
+  if (viewableDepts.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[440px] border border-zinc-200 rounded-xl bg-zinc-50 p-8 text-center font-sans gap-3">
+        <AlertCircle className="w-10 h-10 text-zinc-400" />
+        <h3 className="text-base font-bold text-zinc-800">조회 가능한 실적 귀속 데이터가 없습니다.</h3>
+        <p className="text-xs text-zinc-500 max-w-sm">소속 부서 또는 권한 설정을 확인해주세요.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5 p-1 font-sans">
@@ -838,7 +871,22 @@ export default function DepartmentAssignment() {
           상세 필터 조정
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-2.5">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-2.5">
+          {/* Plan Type (계획 구분) */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-zinc-400">계획 구분</span>
+            <select
+              value={planType}
+              onChange={(e) => setPlanType(e.target.value as any)}
+              className="px-2 py-1 text-xs border border-[#008f83] rounded bg-white font-medium text-zinc-800"
+            >
+              <option value="경영계획">경영계획</option>
+              <option value="수정경영계획">수정경영계획</option>
+              <option value="1차 RP">1차 RP</option>
+              <option value="2차 RP">2차 RP</option>
+            </select>
+          </div>
+
           {/* Month Mode Selector */}
           <div className="flex flex-col gap-1">
             <span className="text-[10px] font-bold text-zinc-400">조회 기준</span>
@@ -882,7 +930,7 @@ export default function DepartmentAssignment() {
               className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
             >
               <option value="all">전체 부서</option>
-              {allDepts.map(d => (
+              {(['99999', '32100'].includes(currentUser?.code || '') ? allDepts : viewableDepts).map(d => (
                 <option key={d.code} value={d.code}>{d.name}</option>
               ))}
             </select>
@@ -897,23 +945,39 @@ export default function DepartmentAssignment() {
               className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
             >
               <option value="all">전체 부서</option>
-              {allDepts.map(d => (
+              {(['99999', '32100'].includes(currentUser?.code || '') ? allDepts : viewableDepts).map(d => (
                 <option key={d.code} value={d.code}>{d.name}</option>
               ))}
             </select>
           </div>
 
-          {/* Category */}
+          {/* Accounting Type (회계 구분) */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold text-zinc-400">회계 구분</span>
+            <select
+              value={selectedAccountingType}
+              onChange={(e) => setSelectedAccountingType(e.target.value)}
+              className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
+            >
+              <option value="전체">전체</option>
+              {ACCOUNTING_TYPE_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Account Class (비용 성격) */}
           <div className="flex flex-col gap-1">
             <span className="text-[10px] font-bold text-zinc-400">비용 성격</span>
             <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              value={selectedAccountClass}
+              onChange={(e) => setSelectedAccountClass(e.target.value)}
               className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
             >
-              <option value="all">전체 성격</option>
-              <option value="제조">제조 비용</option>
-              <option value="판관">판관 비용</option>
+              <option value="전체">전체</option>
+              {ACCOUNT_CLASS_OPTIONS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
             </select>
           </div>
 
@@ -926,9 +990,9 @@ export default function DepartmentAssignment() {
               className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
             >
               <option value="all">전체 신뢰도</option>
-              <option value="HIGH">높음 (HIGH)</option>
-              <option value="MEDIUM">중간 (MEDIUM)</option>
-              <option value="LOW">낮음 (LOW)</option>
+              <option value="HIGH">높음</option>
+              <option value="MEDIUM">중간</option>
+              <option value="LOW">낮음</option>
             </select>
           </div>
 
@@ -949,12 +1013,12 @@ export default function DepartmentAssignment() {
           </div>
 
           {/* Text Search */}
-          <div className="flex flex-col gap-1 lg:col-span-2">
+          <div className="flex flex-col gap-1 lg:col-span-1">
             <span className="text-[10px] font-bold text-zinc-400">검색</span>
             <div className="relative">
               <input
                 type="text"
-                placeholder="계정코드, 명, 부서, 사유 검색..."
+                placeholder="계정코드, 계정명, 부서, 사유 검색"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full text-xs py-1.5 pl-7 pr-3 border border-zinc-200 rounded focus:border-[#008f83] outline-none font-medium"
@@ -1027,7 +1091,7 @@ export default function DepartmentAssignment() {
             <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
               <span className="text-xs font-bold text-zinc-700">귀속 추천 목록</span>
               <span className="text-[11.5px] font-mono text-zinc-500">
-                조회 결과: <strong>{filteredRecommendationRows.length}</strong>건 / 유효 {allRecommendationRows.length}건
+                조회 결과: <strong>{filteredRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
               </span>
             </div>
 
@@ -1282,7 +1346,7 @@ export default function DepartmentAssignment() {
                     <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">귀속 추천 사유</div>
                     {activeDetailRow.score > 0 && (
                       <span className="text-[10.5px] font-mono text-[#008f83] font-bold">
-                        수렴 점수: {activeDetailRow.score}점 ({getConfidenceLabel(activeDetailRow.confidence)})
+                        추천 점수: {activeDetailRow.score}점 ({getConfidenceLabel(activeDetailRow.confidence)})
                       </span>
                     )}
                   </div>
