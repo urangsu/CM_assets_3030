@@ -39,6 +39,8 @@ export interface ActualData {
   accountCode: string;
   accountName?: string;
   usageCode: string;
+  attributedDeptCode?: string;
+  attributedDeptName?: string;
   amount: number;
   completed: number; 
   // ... other fields
@@ -207,10 +209,11 @@ export function aggregateByDeptAccount(params: {
     if (monthIndex === null) return; // Skip invalid periods
     
     const isQuarter = months.includes(monthIndex);
-    const key = `${a.usageCode}_${a.accountCode}`;
+    const effDeptCode = a.attributedDeptCode || a.usageCode;
+    const key = `${effDeptCode}_${a.accountCode}`;
     
     // Only union if the dept is allowed (preventing random dept leakage via actuals)
-    if (allowedDeptCodes.includes(a.usageCode)) {
+    if (allowedDeptCodes.includes(effDeptCode)) {
       unionKeys.add(key);
     }
 
