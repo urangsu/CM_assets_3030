@@ -181,9 +181,8 @@ const NAV_GROUPS_DEF: NavGroup[] = [
     items: [
       { id: 'budget-status-review', label: '예산 현황', icon: 'list', href: '/budget-status?tab=overview' },
       { id: 'execution-ledger', label: '집행 내역', icon: 'list', href: '/execution-ledger' },
-      { id: 'overrun', label: '예산 한도 점검', icon: 'alert', href: '/overrun-check' },
-      { id: 'underrun', label: '미달 항목', icon: 'down', href: '/underrun-check' },
-      { id: 'unbudgeted', label: '무예산 집행', icon: 'up', href: '/unbudgeted-check' }
+      { id: 'overrun', label: '초과·미달 항목', icon: 'alert', href: '/overrun-check' },
+      { id: 'unbudgeted', label: '무예산 집행', icon: 'up', href: '/overrun-check?status=unbudgeted' }
     ]
   },
   {

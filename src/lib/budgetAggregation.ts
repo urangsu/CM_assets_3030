@@ -248,7 +248,7 @@ export function aggregateByDeptAccount(params: {
     let status: '정상' | '초과' | '무예산 집행' | '미달' = '정상';
     if (qBudget === 0 && qActual > 0) status = '무예산 집행';
     else if (qActual > qBudget) status = '초과';
-    else if (qBudget > 0 && qActual < qBudget) status = '미달';
+    else if (qBudget > 0 && (qActual / qBudget) < 0.3) status = '미달';
 
     const monthlyDetails: MonthlyDetail[] = [];
     const overrunMonths: number[] = [];
@@ -269,7 +269,7 @@ export function aggregateByDeptAccount(params: {
       let mStatus: '정상' | '초과' | '무예산 집행' | '미달' = '정상';
       if (b === 0 && a > 0) mStatus = '무예산 집행';
       else if (a > b) mStatus = '초과';
-      else if (b > 0 && a < b) mStatus = '미달';
+      else if (b > 0 && (a / b) < 0.3) mStatus = '미달';
 
       if (mStatus === '초과' || mStatus === '무예산 집행') {
         overrunMonths.push(m + 1); // 1-based month

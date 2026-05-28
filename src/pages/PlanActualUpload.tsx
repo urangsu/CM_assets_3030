@@ -7,7 +7,7 @@ import {
   normalizeHeader,
   findHeaderRowIndex,
   parsePastedText,
-  detectUploadFormat,
+  detectUploadType,
   isProbablyHeaderlessMonthlyRow,
   buildHeaderlessMonthlyHeaders
 } from '../lib/actualUploadParser';
@@ -265,6 +265,9 @@ export default function PlanActualUpload() {
   const [month, setMonth] = useState('all');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState('all');
   const [viewPlanType, setViewPlanType] = useState('실적');
+  
+  type UploadKind = "monthlyActual" | "managementPlan" | "";
+  const [uploadKind, setUploadKind] = useState<UploadKind>("");
   const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
   const [pasteText, setPasteText] = useState('');
   const [firstRowIsHeader, setFirstRowIsHeader] = useState(true);
@@ -457,9 +460,9 @@ export default function PlanActualUpload() {
     setVisibleCount(100);
   }, [year, viewPlanType, currentUser]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!uploadTarget) {
-      setAlertModal({ isOpen: true, message: '업로드 대상을 먼저 선택해주세요. 실적인지 경영계획 등인지 선택해야 저장 위치가 결정됩니다.' });
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!uploadTarget || !uploadKind) {
+      setAlertModal({ isOpen: true, message: '업로드 대상을 먼저 선택해주세요. 실적 또는 경영계획 등을 선택해야 저장 위치가 결정됩니다.' });
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -467,21 +470,49 @@ export default function PlanActualUpload() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      if (!wb.SheetNames || wb.SheetNames.length === 0) {
-        setAlertModal({ isOpen: true, message: '엑셀 파일에서 시트를 찾을 수 없습니다.' });
+    // requirement: API payload
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("uploadKind", uploadKind);
+    formData.append("year", year);
+    formData.append("companyCode", "1000"); // mockup
+
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      if (!data.success) {
+        setAlertModal({ isOpen: true, message: data.error || '업로드 중 오류가 발생했습니다.' });
+        if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
       
-      processImportedData(jsonData);
-    };
-    reader.readAsBinaryString(file);
+      // Continue with local preview rendering to keep UI exactly the same
+      if (data.rows && data.rows.length > 0) {
+        processImportedData(data.rows);
+      }
+    } catch (err) {
+      console.error("API error, falling back to local fallback", err);
+      // Fallback for purely client environment testing
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        if (!wb.SheetNames || wb.SheetNames.length === 0) {
+          setAlertModal({ isOpen: true, message: '엑셀 파일에서 시트를 찾을 수 없습니다.' });
+          return;
+        }
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        
+        processImportedData(jsonData);
+      };
+      reader.readAsBinaryString(file);
+    }
+    
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -553,7 +584,8 @@ export default function PlanActualUpload() {
         existingCount: data.length,
         currentUser,
         viewableDeptCodes,
-        planType: uploadTarget
+        planType: uploadTarget,
+        uploadKind: uploadKind
     });
 
     // Check locks ONLY for affected departments
@@ -1464,11 +1496,16 @@ export default function PlanActualUpload() {
             </select>
           </div>
           {uploadTarget && (
-            <p className="text-[11px] text-[#8b95a1] max-w-[280px] text-right">
+            <div className="flex flex-col gap-1 text-[11px] text-[#8b95a1] max-w-[280px] text-right">
               {uploadTarget === '실적' 
-                ? '실적DB 저장은 예산 잠금 상태와 무관하게 저장됩니다.' 
-                : '제출/승인/잠금 상태의 부서는 덮어쓸 수 없습니다.'}
-            </p>
+                ? <p>현재 선택: 월 실적<br/>이 파일은 실적 데이터로 업로드됩니다.</p>
+                : <p>현재 선택: 경영계획<br/>이 파일은 예산 데이터로 업로드됩니다.</p>}
+              <p className="opacity-80">
+                {uploadTarget === '실적' 
+                  ? '실적DB 저장은 예산 잠금 상태와 무관하게 저장됩니다.' 
+                  : '제출/승인/잠금 상태의 부서는 덮어쓸 수 없습니다.'}
+              </p>
+            </div>
           )}
           <div className="flex gap-2 mt-1">
             <button 

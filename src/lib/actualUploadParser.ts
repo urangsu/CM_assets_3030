@@ -105,7 +105,7 @@ function countMonthlyActualHeaders(normalized: string[]): number {
   return normalized.filter(h => /^\d+월(실적|예산|계획|금액)?$/.test(h) || /^0?\d월$/.test(h) || /^m\d{2}$/.test(h) || h === 'jan' || h === 'feb' || h === 'mar' || h === 'apr' || h === 'may' || h === 'jun' || h === 'jul' || h === 'aug' || h === 'sep' || h === 'oct' || h === 'nov' || h === 'dec').length;
 }
 
-export function detectUploadFormat(headers: string[]): UploadFormat {
+export function detectUploadType(headers: string[]): UploadFormat {
   const normalized = headers.map(normalizeHeader);
 
   const hasDeptCode = hasAny(normalized, HEADER_ALIASES.deptCode);
@@ -222,7 +222,7 @@ export function parseWideMonthlyRows(params: {
         const numericVal = parseAmount(val);
         
         if (numericVal !== 0) {
-            const isActual = params.planType === '실적';
+            const isActual = params.uploadKind === 'monthlyActual' || params.planType === '실적';
             actualRows.push({
                 id: params.existingCount + actualRows.length + 1,
                 year: params.year,
@@ -361,8 +361,14 @@ export function parseUploadRecords(params: {
   currentUser?: any;
   viewableDeptCodes?: string[];
   planType: string;
+  uploadKind?: string;
 }): UploadParseResult {
-    const format = detectUploadFormat(params.headers);
+    // The format check is only for validation now.
+    // However, detectUploadType is used here to see if it's wide or flat.
+    const format = detectUploadType(params.headers);
+    
+    // We shouldn't let detectUploadType override the uploadKind saving behavior.
+    // For wide format: it behaves according to uploadKind or planType properly.
     if (format === 'MONTHLY_WIDE') return parseWideMonthlyRows(params);
     if (format === 'FLAT') return parseFlatRows(params);
     
@@ -373,7 +379,7 @@ export function parseUploadRecords(params: {
 export function findHeaderRowIndex(rows: any[][]): number {
   for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const headers = (rows[i] || []).map(String);
-    const format = detectUploadFormat(headers);
+    const format = detectUploadType(headers);
     if (format !== 'UNKNOWN') return i;
   }
   return -1;

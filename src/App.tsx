@@ -46,8 +46,8 @@ export default function App() {
         <Route path="/execution-ledger" element={<Layout><ExecutionLedger /></Layout>} />
 
         {/* 2. 점검 및 통제 */}
-        <Route path="/underrun-check" element={<Layout><UnderrunCheck /></Layout>} />
-        <Route path="/unbudgeted-check" element={<Layout><UnbudgetedCheck /></Layout>} />
+        <Route path="/underrun-check" element={<Navigate to="/overrun-check?status=underrun" replace />} />
+        <Route path="/unbudgeted-check" element={<Navigate to="/overrun-check?status=unbudgeted" replace />} />
 
         {/* 4. 마스터 정보 및 시스템 설정 */}
         <Route path="/account-management" element={<Layout><AccountManagement /></Layout>} />
@@ -69,8 +69,8 @@ export default function App() {
         <Route path="/review" element={<Navigate to="/overrun-check" replace />} />
         <Route path="/compare" element={<Navigate to="/variance-comparison" replace />} />
         <Route path="/overrun" element={<Navigate to="/overrun-check" replace />} />
-        <Route path="/underrun" element={<Navigate to="/underrun-check" replace />} />
-        <Route path="/unbudgeted" element={<Navigate to="/unbudgeted-check" replace />} />
+        <Route path="/underrun" element={<Navigate to="/overrun-check?status=underrun" replace />} />
+        <Route path="/unbudgeted" element={<Navigate to="/overrun-check?status=unbudgeted" replace />} />
         <Route path="/plan-create" element={<Navigate to="/budget-creation" replace />} />
         <Route path="/comparison" element={<Navigate to="/variance-comparison" replace />} />
         <Route path="/account-master" element={<Navigate to="/account-management" replace />} />

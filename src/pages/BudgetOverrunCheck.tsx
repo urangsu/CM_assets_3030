@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AlertTriangle, Download, Search, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { getAllDepartments } from '../constants';
 import { getBudgetDataKey } from '../lib/storageKeys';
@@ -34,16 +34,28 @@ const QUARTERS: Record<string, number[]> = {
 const MONTHS = Array.from({ length: 12 }, (_, i) => i);
 
 export default function BudgetOverrunCheck() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialStatus = searchParams.get('status');
+
+  const getInitialFilter = () => {
+    if (initialStatus === 'underrun') return '미달 항목만';
+    if (initialStatus === 'unbudgeted') return '무예산 집행만';
+    if (initialStatus === 'normal') return '정상 항목만';
+    return '초과 항목만';
+  };
+
   const [year, setYear] = useState('2026');
   const [planType, setPlanType] = useState('경영계획');
   const [monthMode, setMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedDeptCode, setSelectedDeptCode] = useState('전체');
   const [accountCategory, setAccountCategory] = useState('전체');
-  const [overrunFilter, setOverrunFilter] = useState('초과 항목만');
+  const [overrunFilter, setOverrunFilter] = useState(getInitialFilter);
   const [results, setResults] = useState<any[]>([]);
   const [searched, setSearched] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [diagnostics, setDiagnostics] = useState({ budgetRowCount: 0, actualRowCount: 0, actualOnlyCount: 0 });
 
   // Drawer
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -82,6 +94,20 @@ export default function BudgetOverrunCheck() {
     return months.map(m => `${m}월`).join(', ');
   };
 
+  const getEmptyDescription = () => {
+    if (overrunFilter === '초과 항목만') return '선택한 조건에서 예산을 초과한 항목이 없습니다.';
+    if (overrunFilter === '미달 항목만') return '선택한 조건에서 집행률이 낮은 항목이 없습니다.';
+    if (overrunFilter === '무예산 집행만') return '선택한 계획에는 예산이 없고 실적만 존재하는 항목이 없습니다. 연도, 계획구분, 기준 월을 확인하세요.';
+    return '선택한 조건에 해당하는 예산·실적 점검 항목이 없습니다.';
+  };
+
+  const getIssueMonths = (row: any) => {
+    if (row.status === '미달') return formatListMonths(row.shortfallMonths);
+    if (row.status === '초과') return formatListMonths(row.overrunMonths);
+    if (row.status === '무예산 집행') return formatListMonths(row.overrunMonths); // 무예산도 overrunMonths에 들어감
+    return '-';
+  };
+
   const handleSearch = () => {
     const deptCodes = selectedDeptCode === '전체' 
       ? viewableDeptCodes 
@@ -103,6 +129,12 @@ export default function BudgetOverrunCheck() {
       months: qMonths,
       allowedDeptCodes: deptCodes,
       canViewSalary: salaryAccess
+    });
+
+    setDiagnostics({
+      budgetRowCount: budgetRows.length,
+      actualRowCount: actualRows.filter(r => deptCodes.includes(r.usageCode)).length,
+      actualOnlyCount: rawData.filter(r => r.status === '무예산 집행').length,
     });
 
     const overrunData = rawData.filter(row => {
@@ -210,8 +242,8 @@ export default function BudgetOverrunCheck() {
   return (
     <div className="p-6">
       <PageHeader 
-        title={<><AlertTriangle className="inline-block w-6 h-6 text-[#F7A059] mr-2 -mt-1"/>예산 한도 점검</>}
-        description="선택한 기간의 예산·실적을 비교하여 초과, 미달, 무예산 집행 항목을 확인합니다."
+        title={<><AlertTriangle className="inline-block w-6 h-6 text-[#F7A059] mr-2 -mt-1"/>초과·미달 항목</>}
+        description="선택한 계획과 실적을 비교하여 초과, 미달, 무예산 집행 항목을 확인합니다."
       />
       
       <FilterBar 
@@ -281,15 +313,22 @@ export default function BudgetOverrunCheck() {
         </FilterItem>
       </FilterBar>
 
-      <div className="mb-4 rounded-xl border border-lithium-200 bg-lithium-50 px-4 py-2 text-[12px] text-lithium-600 leading-relaxed">
-        조회 권한이 있는 부서만 표시되며, 급여성 계정은 권한 보유자에게만 노출됩니다.
+      <div className="mb-4 rounded-xl border border-lithium-200 bg-lithium-50 px-4 py-2 text-[12px] text-lithium-600 leading-relaxed flex justify-between items-center">
+        <span>조회 권한이 있는 부서만 표시되며, 급여성 계정은 권한 보유자에게만 노출됩니다.</span>
+        {searched && (
+          <span className="font-medium bg-white px-2 py-0.5 rounded border border-lithium-200 shadow-sm text-zinc-700">
+            예산 {diagnostics.budgetRowCount.toLocaleString()}건 ·
+            실적 {diagnostics.actualRowCount.toLocaleString()}건 ·
+            무예산 후보 {diagnostics.actualOnlyCount.toLocaleString()}건
+          </span>
+        )}
       </div>
 
       {!searched && (
         <EmptyState 
           icon={AlertCircle} 
           title="조회 대기 중" 
-          description="필터 조건을 선택한 후 조회 버튼을 눌러 예산 초과 현황을 확인하세요."
+          description="필터 조건을 선택한 후 조회 버튼을 눌러 점검 현황을 확인하세요."
         />
       )}
 
@@ -297,28 +336,28 @@ export default function BudgetOverrunCheck() {
         <EmptyState 
           icon={Search} 
           title="결과 없음" 
-          description="해당 조건의 예산 내역이 존재하지 않습니다."
+          description={getEmptyDescription()}
         />
       )}
       
       {searched && results.length > 0 && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-3 mb-5">
-            <MetricCard size="compact" title="초과 계정" value={`${results.filter(r => r.status === '초과').length}건`} variant="warning" />
+            <MetricCard size="compact" title="초과 항목" value={`${results.filter(r => r.status === '초과').length}건`} variant="warning" />
             <MetricCard
               size="compact"
               title="초과 금액"
               value={<BudgetAmount value={results.reduce((sum, r) => sum + r.overrunAmount, 0)} displayUnit="million" showTooltip />}
               variant="warning"
             />
-            <MetricCard size="compact" title="미달 계정" value={`${results.filter(r => r.status === '미달').length}건`} variant="success" />
+            <MetricCard size="compact" title="미달 항목" value={`${results.filter(r => r.status === '미달').length}건`} variant="success" />
             <MetricCard
               size="compact"
               title="미달 금액"
               value={<BudgetAmount value={results.reduce((sum, r) => sum + r.shortfallAmount, 0)} displayUnit="million" showTooltip />}
               variant="success"
             />
-            <MetricCard size="compact" title="무예산" value={`${results.filter(r => r.status === '무예산 집행').length}건`} />
+            <MetricCard size="compact" title="무예산 항목" value={`${results.filter(r => r.status === '무예산 집행').length}건`} />
             <MetricCard size="compact" title="조회 부서" value={`${new Set(results.map(r => r.deptCode)).size}개`} />
           </div>
           
@@ -349,7 +388,11 @@ export default function BudgetOverrunCheck() {
                      <AppTableCell className="px-3 py-2 text-zinc-800">{depts.find(d => d.code === r.deptCode)?.name}</AppTableCell>
                      <AppTableCell className="px-3 py-2 text-zinc-500">{r.accountCode}</AppTableCell>
                      <AppTableCell className="px-3 py-2">{r.accountName}</AppTableCell>
-                     <AppTableCell className={`px-3 py-2 font-bold ${r.status === '미달' ? "text-emerald-600" : "text-rose-600"}`}>{r.status === '미달' ? formatListMonths(r.shortfallMonths) : formatListMonths(r.overrunMonths)}</AppTableCell>
+                     <AppTableCell className={`px-3 py-2 font-bold ${
+                       r.status === '미달' ? 'text-emerald-600' : (r.status === '정상' ? 'text-zinc-500' : 'text-rose-600')
+                     }`}>
+                       {getIssueMonths(r)}
+                     </AppTableCell>
                      <AppTableCell className="px-3 py-2 text-right"><BudgetAmount value={r.qBudget} displayUnit="million" showTooltip /></AppTableCell>
                      <AppTableCell className="px-3 py-2 text-right"><BudgetAmount value={r.qActual} displayUnit="million" showTooltip /></AppTableCell>
                      <AppTableCell className="px-3 py-2 text-right">
@@ -455,22 +498,21 @@ export default function BudgetOverrunCheck() {
         onSave={handleSearch}
       />
 
-      {/* Flow Assist Bridge Panel */}
       <div className="bg-[#fcfdfe] p-6 rounded-2xl border border-teal-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mt-6">
         <div>
           <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
             <span className="flex h-2 w-2 rounded-full bg-teal-500 animate-pulse"></span>
-            비즈니스 중요 플로우 연속성 가이드
+            다음 단계
           </h4>
           <p className="text-xs text-[#647067] mt-1">
-            조직의 한도 오버런 및 무예산 항목 조사가 끝났습니까? 마지막 대미를 장식할 단계는 전사 계획과 실적을 부서/월/계정 단위로 정밀 비교 시각화하는 <strong className="text-teal-700">실적 및 계획 대비 비교분석</strong> 페이지입니다.
+            점검 항목 검토 후 비교분석 화면에서 부서·계정별 차이를 확인할 수 있습니다.
           </p>
         </div>
         <button
           onClick={() => navigate('/variance-comparison')}
           className="px-5 py-2.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shrink-0"
         >
-          실적-계획 비교분석 단계로 이동 →
+          비교분석으로 이동 →
         </button>
       </div>
     </div>
