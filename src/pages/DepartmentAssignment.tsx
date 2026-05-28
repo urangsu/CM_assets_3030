@@ -36,6 +36,189 @@ import {
   ACCOUNTING_TYPE_OPTIONS,
 } from '../lib/accountClassification';
 
+type SortDirection = 'asc' | 'desc';
+
+interface SortConfig<T extends string> {
+  key: T;
+  direction: SortDirection;
+}
+
+type RecommendationSortKey =
+  | 'period'
+  | 'accountCode'
+  | 'accountName'
+  | 'originalDept'
+  | 'currentDept'
+  | 'recommendedDept'
+  | 'amount'
+  | 'status';
+
+type ManualSortKey =
+  | 'period'
+  | 'accountCode'
+  | 'accountName'
+  | 'originalDept'
+  | 'currentDept'
+  | 'amount'
+  | 'status';
+
+function parsePeriodValue(value: unknown): number {
+  const text = String(value ?? '').trim();
+  const match = text.match(/(\d{1,2})/);
+  if (match) return Number(match[1]);
+  return 999;
+}
+
+function parseMillionAmount(value: string): number | null {
+  const cleaned = String(value || '').replace(/,/g, '').trim();
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n * 1_000_000 : null;
+}
+
+function getAttributionState(row: any) {
+  if (!row.attributedDeptCode) return '원 사용처 기준';
+  if (row.attributionSource === 'manual') return '수동 변경';
+  if (row.attributionSource === 'recommendation') return '추천 적용';
+  return '귀속 변경';
+}
+
+function SortIcon<T extends string>({
+  sort,
+  columnKey,
+}: {
+  sort: SortConfig<T> | null;
+  columnKey: T;
+}) {
+  if (!sort || sort.key !== columnKey) {
+    return <span className="ml-1 text-zinc-300">↕</span>;
+  }
+
+  return (
+    <span className="ml-1 text-[#008f83]">
+      {sort.direction === 'asc' ? '↑' : '↓'}
+    </span>
+  );
+}
+
+function SortableFilterHeader<T extends string>({
+  title,
+  columnKey,
+  sort,
+  onSort,
+  filterValue,
+  onFilterChange,
+  filterType = 'text',
+  options = [],
+  align = 'left',
+}: {
+  title: string;
+  columnKey: T;
+  sort: SortConfig<T> | null;
+  onSort: (key: T) => void;
+  filterValue?: string;
+  onFilterChange?: (value: string) => void;
+  filterType?: 'text' | 'select' | 'none';
+  options?: Array<{ value: string; label: string }>;
+  align?: 'left' | 'center' | 'right';
+}) {
+  return (
+    <div className="flex flex-col gap-1 px-2 py-1.5 min-w-0 w-full h-full justify-between">
+      <button
+        type="button"
+        onClick={() => onSort(columnKey)}
+        className={[
+          'flex items-center gap-0.5 text-[10.5px] font-bold text-zinc-500 hover:text-zinc-900 w-full cursor-pointer select-none',
+          align === 'right' ? 'justify-end text-right' : '',
+          align === 'center' ? 'justify-center text-center' : '',
+          align === 'left' ? 'justify-start text-left' : '',
+        ].join(' ')}
+      >
+        <span className="truncate">{title}</span>
+        <SortIcon sort={sort} columnKey={columnKey} />
+      </button>
+
+      {filterType === 'text' && onFilterChange && (
+        <input
+          value={filterValue || ''}
+          onChange={(e) => onFilterChange(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          placeholder="필터"
+          className="h-6 w-full rounded border border-zinc-200 bg-white px-1.5 text-[10px] outline-none focus:border-[#008f83] font-normal text-zinc-800"
+        />
+      )}
+
+      {filterType === 'select' && onFilterChange && (
+        <select
+          value={filterValue || ''}
+          onChange={(e) => onFilterChange(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          className="h-6 w-full rounded border border-zinc-200 bg-white px-1 text-[10px] outline-none focus:border-[#008f83] font-medium text-zinc-700"
+        >
+          <option value="">전체</option>
+          {options.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+function AmountRangeHeader<T extends string>({
+  title,
+  columnKey,
+  sort,
+  onSort,
+  minValue,
+  maxValue,
+  onMinChange,
+  onMaxChange,
+}: {
+  title: string;
+  columnKey: T;
+  sort: SortConfig<T> | null;
+  onSort: (key: T) => void;
+  minValue: string;
+  maxValue: string;
+  onMinChange: (value: string) => void;
+  onMaxChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1 px-2 py-1.5 min-w-0 w-full h-full justify-between">
+      <button
+        type="button"
+        onClick={() => onSort(columnKey)}
+        className="flex items-center justify-end gap-0.5 text-[10.5px] font-bold text-zinc-500 hover:text-zinc-900 w-full cursor-pointer select-none"
+      >
+        <span className="truncate">{title}</span>
+        <SortIcon sort={sort} columnKey={columnKey} />
+      </button>
+
+      <div className="flex gap-1">
+        <input
+          value={minValue}
+          onChange={(e) => onMinChange(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          placeholder="이상(백만)"
+          inputMode="numeric"
+          className="h-6 w-1/2 rounded border border-zinc-200 px-1 text-[10px] text-right outline-none focus:border-[#008f83] font-normal text-zinc-800"
+        />
+        <input
+          value={maxValue}
+          onChange={(e) => onMaxChange(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          placeholder="이하(백만)"
+          inputMode="numeric"
+          className="h-6 w-1/2 rounded border border-zinc-200 px-1 text-[10px] text-right outline-none focus:border-[#008f83] font-normal text-zinc-800"
+        />
+      </div>
+    </div>
+  );
+}
+
 interface RecommendationRow {
   rowId: string | number;
   row: any;
@@ -91,6 +274,49 @@ export default function DepartmentAssignment() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showExcludedAccounts, setShowExcludedAccounts] = useState(false);
   const [isRecommendationListOpen, setIsRecommendationListOpen] = useState(true);
+  const [isManualGridOpen, setIsManualGridOpen] = useState(false);
+  const [manualRowsLoaded, setManualRowsLoaded] = useState(false);
+
+  const [recommendationSort, setRecommendationSort] = useState<SortConfig<RecommendationSortKey> | null>(null);
+  const [manualSort, setManualSort] = useState<SortConfig<ManualSortKey> | null>(null);
+
+  const [recommendationColumnFilters, setRecommendationColumnFilters] = useState({
+    period: '',
+    accountCode: '',
+    accountName: '',
+    originalDept: '',
+    currentDept: '',
+    recommendedDept: '',
+    amountMin: '',
+    amountMax: '',
+    status: '',
+  });
+
+  const [manualColumnFilters, setManualColumnFilters] = useState({
+    period: '',
+    accountCode: '',
+    accountName: '',
+    originalDept: '',
+    currentDept: '',
+    amountMin: '',
+    amountMax: '',
+    status: '',
+  });
+
+  const [manualVisibleCount, setManualVisibleCount] = useState(100);
+  const [recVisibleCount, setRecVisibleCount] = useState(100);
+
+  function toggleSort<T extends string>(
+    key: T,
+    setSort: React.Dispatch<React.SetStateAction<SortConfig<T> | null>>
+  ) {
+    setSort(prev => {
+      if (!prev || prev.key !== key) {
+        return { key, direction: 'asc' };
+      }
+      return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+    });
+  }
 
   // Loaded Raw Data States
   const [actualRowsList, setActualRowsList] = useState<any[]>([]);
@@ -412,6 +638,89 @@ export default function DepartmentAssignment() {
     });
   }, [allRecommendationRows, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, selectedConfidence, selectedStatus, searchQuery]);
 
+  // Combined Column Filters and Sort for Recommendation Grid
+  const filteredAndSortedRecommendationRows = useMemo(() => {
+    let rows = [...filteredRecommendationRows];
+
+    const f = recommendationColumnFilters;
+
+    rows = rows.filter(row => {
+      if (f.period && !String(row.period).includes(f.period)) return false;
+      if (f.accountCode && !row.accountCode.toLowerCase().includes(f.accountCode.toLowerCase())) return false;
+      if (f.accountName && !row.accountName.toLowerCase().includes(f.accountName.toLowerCase())) return false;
+
+      const originalDeptText = `[${row.originalDeptCode}] ${row.originalDeptName}`;
+      if (f.originalDept && !originalDeptText.toLowerCase().includes(f.originalDept.toLowerCase())) return false;
+
+      const currentDeptText = row.currentAttributedDeptCode
+        ? `[${row.currentAttributedDeptCode}] ${row.currentAttributedDeptName}`
+        : '원 사용처 기준';
+
+      if (f.currentDept && !currentDeptText.toLowerCase().includes(f.currentDept.toLowerCase())) return false;
+
+      const recommendedDeptText = row.recommendedDeptCode
+        ? `[${row.recommendedDeptCode}] ${row.recommendedDeptName}`
+        : '';
+
+      if (f.recommendedDept && !recommendedDeptText.toLowerCase().includes(f.recommendedDept.toLowerCase())) return false;
+
+      const minAmount = parseMillionAmount(f.amountMin);
+      const maxAmount = parseMillionAmount(f.amountMax);
+
+      if (minAmount !== null && row.amount < minAmount) return false;
+      if (maxAmount !== null && row.amount > maxAmount) return false;
+
+      if (f.status && row.status !== f.status) return false;
+
+      return true;
+    });
+
+    if (recommendationSort) {
+      rows.sort((a, b) => {
+        const key = recommendationSort.key;
+
+        let aValue: string | number = '';
+        let bValue: string | number = '';
+
+        if (key === 'period') {
+          aValue = parsePeriodValue(a.period);
+          bValue = parsePeriodValue(b.period);
+        } else if (key === 'amount') {
+          aValue = a.amount || 0;
+          bValue = b.amount || 0;
+        } else if (key === 'originalDept') {
+          aValue = `${a.originalDeptCode} ${a.originalDeptName}`;
+          bValue = `${b.originalDeptCode} ${b.originalDeptName}`;
+        } else if (key === 'currentDept') {
+          aValue = `${a.currentAttributedDeptCode || a.originalDeptCode} ${a.currentAttributedDeptName || a.originalDeptName}`;
+          bValue = `${b.currentAttributedDeptCode || b.originalDeptCode} ${b.currentAttributedDeptName || b.originalDeptName}`;
+        } else if (key === 'recommendedDept') {
+          aValue = `${a.recommendedDeptCode || ''} ${a.recommendedDeptName || ''}`;
+          bValue = `${b.recommendedDeptCode || ''} ${b.recommendedDeptName || ''}`;
+        } else {
+          aValue = String(a[key] ?? '');
+          bValue = String(b[key] ?? '');
+        }
+
+        const result =
+          typeof aValue === 'number' && typeof bValue === 'number'
+            ? aValue - bValue
+            : String(aValue).localeCompare(String(bValue), 'ko-KR', {
+                numeric: true,
+                sensitivity: 'base',
+              });
+
+        return recommendationSort.direction === 'asc' ? result : -result;
+      });
+    }
+
+    return rows;
+  }, [filteredRecommendationRows, recommendationColumnFilters, recommendationSort]);
+
+  const visibleRecommendationRows = useMemo(() => {
+    return filteredAndSortedRecommendationRows.slice(0, recVisibleCount);
+  }, [filteredAndSortedRecommendationRows, recVisibleCount]);
+
   // Excluded Rows construction
   const excludedRecommendationRows = useMemo(() => {
     if (!showExcludedAccounts) return [];
@@ -519,6 +828,103 @@ export default function DepartmentAssignment() {
       return true;
     });
   }, [actualRowsList, viewableDepts, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, searchQuery]);
+
+  // Lazy-load mapping of manual rows: mapped only when manualRowsLoaded is true
+  const manualRows = useMemo(() => {
+    if (!manualRowsLoaded) return [];
+
+    return filteredActualRowsForManualGrid.map((row: any) => {
+      const effectiveDeptCode = row.attributedDeptCode || row.usageCode;
+      const effectiveDeptName = row.attributedDeptName || row.usageDept || row.usageCode;
+
+      return {
+        rowId: row.id,
+        period: row.period || row.month || '12월',
+        accountCode: row.accountCode,
+        accountName: row.accountName,
+        originalDeptCode: row.usageCode,
+        originalDeptName: row.usageDept || row.usageCode,
+        currentDeptCode: effectiveDeptCode,
+        currentDeptName: effectiveDeptName,
+        amount: Number(row.completed || row.amount || 0),
+        attributionSource: row.attributionSource || 'original',
+        status: getAttributionState(row),
+      };
+    });
+  }, [manualRowsLoaded, filteredActualRowsForManualGrid]);
+
+  // Combined Column Filters and Sort for Manual Direct Correction Grid
+  const filteredAndSortedManualRows = useMemo(() => {
+    if (!manualRowsLoaded) return [];
+
+    let rows = [...manualRows];
+
+    const f = manualColumnFilters;
+
+    rows = rows.filter(row => {
+      if (f.period && !String(row.period).includes(f.period)) return false;
+      if (f.accountCode && !row.accountCode.toLowerCase().includes(f.accountCode.toLowerCase())) return false;
+      if (f.accountName && !row.accountName.toLowerCase().includes(f.accountName.toLowerCase())) return false;
+
+      const originalDeptText = `[${row.originalDeptCode}] ${row.originalDeptName}`;
+      if (f.originalDept && !originalDeptText.toLowerCase().includes(f.originalDept.toLowerCase())) return false;
+
+      const currentDeptText = `[${row.currentDeptCode}] ${row.currentDeptName}`;
+      if (f.currentDept && !currentDeptText.toLowerCase().includes(f.currentDept.toLowerCase())) return false;
+
+      const minAmount = parseMillionAmount(f.amountMin);
+      const maxAmount = parseMillionAmount(f.amountMax);
+
+      if (minAmount !== null && row.amount < minAmount) return false;
+      if (maxAmount !== null && row.amount > maxAmount) return false;
+
+      if (f.status && row.status !== f.status) return false;
+
+      return true;
+    });
+
+    if (manualSort) {
+      rows.sort((a, b) => {
+        const key = manualSort.key;
+
+        let aValue: string | number = '';
+        let bValue: string | number = '';
+
+        if (key === 'period') {
+          aValue = parsePeriodValue(a.period);
+          bValue = parsePeriodValue(b.period);
+        } else if (key === 'amount') {
+          aValue = a.amount || 0;
+          bValue = b.amount || 0;
+        } else if (key === 'originalDept') {
+          aValue = `${a.originalDeptCode} ${a.originalDeptName}`;
+          bValue = `${b.originalDeptCode} ${b.originalDeptName}`;
+        } else if (key === 'currentDept') {
+          aValue = `${a.currentDeptCode} ${a.currentDeptName}`;
+          bValue = `${b.currentDeptCode} ${b.currentDeptName}`;
+        } else {
+          aValue = String(a[key] ?? '');
+          bValue = String(b[key] ?? '');
+        }
+
+        const result =
+          typeof aValue === 'number' && typeof bValue === 'number'
+            ? aValue - bValue
+            : String(aValue).localeCompare(String(bValue), 'ko-KR', {
+                numeric: true,
+                sensitivity: 'base',
+              });
+
+        return manualSort.direction === 'asc' ? result : -result;
+      });
+    }
+
+    return rows;
+  }, [manualRowsLoaded, manualRows, manualColumnFilters, manualSort]);
+
+  const visibleManualRows = useMemo(() => {
+    return filteredAndSortedManualRows.slice(0, manualVisibleCount);
+  }, [filteredAndSortedManualRows, manualVisibleCount]);
 
   // Dynamic Statistics Counters
   const stats = useMemo(() => {
@@ -1316,21 +1722,43 @@ export default function DepartmentAssignment() {
             <span className="text-xs font-bold text-zinc-700">귀속 추천 목록</span>
             <div className="flex items-center gap-2.5">
               <span className="text-[11.5px] font-mono text-zinc-500">
-                조회 결과: <strong>{filteredRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
+                조회 결과: <strong>{filteredAndSortedRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
               </span>
+              <span className="text-zinc-300">|</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setRecommendationColumnFilters({
+                    period: '',
+                    accountCode: '',
+                    accountName: '',
+                    originalDept: '',
+                    currentDept: '',
+                    recommendedDept: '',
+                    amountMin: '',
+                    amountMax: '',
+                    status: '',
+                  });
+                  setRecommendationSort(null);
+                }}
+                className="text-[11px] font-bold text-[#008f83] hover:underline cursor-pointer select-none"
+              >
+                목록 필터 초기화
+              </button>
               <span className="text-zinc-300">|</span>
               <button
                 type="button"
                 onClick={() => setIsRecommendationListOpen(prev => !prev)}
                 className="text-xs font-bold text-[#008f83] hover:underline cursor-pointer select-none"
               >
-                {isRecommendationListOpen ? '접기' : '펼치기'}
+                {isRecommendationListOpen ? '접기 ▲' : '펼치기 ▼'}
               </button>
             </div>
           </div>
 
           {isRecommendationListOpen && (
-            <div className="overflow-x-auto">
+            <>
+              <div className="overflow-x-auto">
               <table
                 className="table-fixed border-collapse text-xs text-left"
                 style={{
@@ -1351,19 +1779,21 @@ export default function DepartmentAssignment() {
                   <col style={{ width: columnWidths.actions }} />
                 </colgroup>
                 <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-250 text-zinc-450 font-bold text-[10.5px] select-none">
+                  <tr className="bg-zinc-50 border-b border-zinc-250 text-zinc-450 font-bold text-[10.5px] select-none h-[64px]">
                     <th className="p-0 text-center">
                       <ResizableAttributionHeader
                         title={
-                          <input 
-                            type="checkbox"
-                            checked={
-                              filteredRecommendationRows.length > 0 &&
-                              filteredRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId))
-                            }
-                            onChange={handleToggleAllSelect}
-                            className="rounded accent-[#008f83] cursor-pointer"
-                          />
+                          <div className="flex h-full items-center justify-center">
+                            <input 
+                              type="checkbox"
+                              checked={
+                                filteredAndSortedRecommendationRows.length > 0 &&
+                                filteredAndSortedRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId))
+                              }
+                              onChange={handleToggleAllSelect}
+                              className="rounded accent-[#008f83] cursor-pointer"
+                            />
+                          </div>
                         }
                         columnKey="select"
                         align="center"
@@ -1373,16 +1803,38 @@ export default function DepartmentAssignment() {
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="기간"
+                        title={
+                          <SortableFilterHeader
+                            title="기간"
+                            columnKey="period"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            filterValue={recommendationColumnFilters.period}
+                            onFilterChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, period: value }))
+                            }
+                            align="center"
+                          />
+                        }
                         columnKey="period"
-                        align="center"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
                       />
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="계정코드"
+                        title={
+                          <SortableFilterHeader
+                            title="계정코드"
+                            columnKey="accountCode"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            filterValue={recommendationColumnFilters.accountCode}
+                            onFilterChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, accountCode: value }))
+                            }
+                          />
+                        }
                         columnKey="accountCode"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
@@ -1390,7 +1842,18 @@ export default function DepartmentAssignment() {
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="계정명"
+                        title={
+                          <SortableFilterHeader
+                            title="계정명"
+                            columnKey="accountName"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            filterValue={recommendationColumnFilters.accountName}
+                            onFilterChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, accountName: value }))
+                            }
+                          />
+                        }
                         columnKey="accountName"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
@@ -1398,7 +1861,18 @@ export default function DepartmentAssignment() {
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="원 사용처"
+                        title={
+                          <SortableFilterHeader
+                            title="원 사용처"
+                            columnKey="originalDept"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            filterValue={recommendationColumnFilters.originalDept}
+                            onFilterChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, originalDept: value }))
+                            }
+                          />
+                        }
                         columnKey="originalDept"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
@@ -1406,7 +1880,18 @@ export default function DepartmentAssignment() {
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="현재 귀속부서"
+                        title={
+                          <SortableFilterHeader
+                            title="현재 귀속부서"
+                            columnKey="currentDept"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            filterValue={recommendationColumnFilters.currentDept}
+                            onFilterChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, currentDept: value }))
+                            }
+                          />
+                        }
                         columnKey="currentDept"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
@@ -1414,7 +1899,18 @@ export default function DepartmentAssignment() {
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="추천 귀속부서"
+                        title={
+                          <SortableFilterHeader
+                            title="추천 귀속부서"
+                            columnKey="recommendedDept"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            filterValue={recommendationColumnFilters.recommendedDept}
+                            onFilterChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, recommendedDept: value }))
+                            }
+                          />
+                        }
                         columnKey="recommendedDept"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
@@ -1422,18 +1918,50 @@ export default function DepartmentAssignment() {
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="실적 금액"
+                        title={
+                          <AmountRangeHeader
+                            title="실적 금액"
+                            columnKey="amount"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            minValue={recommendationColumnFilters.amountMin}
+                            maxValue={recommendationColumnFilters.amountMax}
+                            onMinChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, amountMin: value }))
+                            }
+                            onMaxChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, amountMax: value }))
+                            }
+                          />
+                        }
                         columnKey="amount"
-                        align="right"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
                       />
                     </th>
                     <th className="p-0">
                       <ResizableAttributionHeader
-                        title="상태"
+                        title={
+                          <SortableFilterHeader
+                            title="상태"
+                            columnKey="status"
+                            sort={recommendationSort}
+                            onSort={(key) => toggleSort(key, setRecommendationSort)}
+                            filterValue={recommendationColumnFilters.status}
+                            onFilterChange={(value) =>
+                              setRecommendationColumnFilters(prev => ({ ...prev, status: value }))
+                            }
+                            filterType="select"
+                            options={[
+                              { value: '대기', label: '대기' },
+                              { value: '적용됨', label: '적용됨' },
+                              { value: '무시됨', label: '무시됨' },
+                              { value: '수동 변경', label: '수동 변경' },
+                            ]}
+                            align="center"
+                          />
+                        }
                         columnKey="status"
-                        align="center"
                         columnWidths={columnWidths}
                         onResize={resizeColumn}
                       />
@@ -1450,14 +1978,14 @@ export default function DepartmentAssignment() {
                   </tr>
                 </thead>
               <tbody className="divide-y divide-zinc-150 font-sans">
-                {filteredRecommendationRows.length === 0 ? (
+                {filteredAndSortedRecommendationRows.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="py-14 text-center text-zinc-400">
                       지정된 조건에 부합하는 귀속 추천 항목이 없습니다.
                     </td>
                   </tr>
                 ) : (
-                  filteredRecommendationRows.map(item => {
+                  visibleRecommendationRows.map(item => {
                     const isSelected = selectedRowId === item.rowId;
                     const isChecked = selectedRowIds.has(item.rowId);
 
@@ -1706,6 +2234,18 @@ export default function DepartmentAssignment() {
               </tbody>
             </table>
           </div>
+          {recVisibleCount < filteredAndSortedRecommendationRows.length && (
+            <div className="p-3 bg-zinc-50 border-t border-zinc-200 text-center">
+              <button
+                type="button"
+                onClick={() => setRecVisibleCount(prev => prev + 100)}
+                className="px-4 py-2 text-xs font-bold text-[#008f83] hover:bg-emerald-50 border border-zinc-200 bg-white rounded-md shadow-xs cursor-pointer select-none"
+              >
+                추천 항목 100건 더 보기 (남은 건수: {filteredAndSortedRecommendationRows.length - recVisibleCount}건)
+              </button>
+            </div>
+          )}
+            </>
           )}
         </div>
 
@@ -1713,105 +2253,274 @@ export default function DepartmentAssignment() {
 
       {/* 4.5 실적 귀속부서 직접 수정 (Directly Modify Actual Department Assignment grid) */}
       <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden mt-4">
-        <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-zinc-700">실적 귀속부서 수동 직접 보정</span>
-            <span className="inline-block px-1.5 py-0.5 bg-[#008f83]/10 text-[#008f83] text-[10px] font-bold rounded">전체 실적 대상</span>
+        <button
+          type="button"
+          onClick={() => {
+            setIsManualGridOpen(prev => {
+              const next = !prev;
+              if (next) setManualRowsLoaded(true);
+              return next;
+            });
+          }}
+          className="w-full flex items-center justify-between px-4 py-3 bg-zinc-50 border-b border-zinc-200 cursor-pointer text-left select-none"
+        >
+          <div className="flex flex-col items-start gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-zinc-700">실적 귀속부서 수동 직접 보정</span>
+              <span className="inline-block px-1.5 py-0.5 bg-[#008f83]/10 text-[#008f83] text-[10px] font-bold rounded">전체 실적 대상</span>
+            </div>
+            <span className="text-[11px] text-zinc-500">
+              추천 목록에 없는 실적도 전체 실적 대상에서 직접 찾아 귀속부서를 수정 및 보정할 수 있습니다. (클릭하여 열기)
+            </span>
           </div>
-          <span className="text-[11.5px] font-mono text-zinc-500">
-            필터링 결과: <strong>{filteredActualRowsForManualGrid.length}</strong>건 / 전체 <strong>{actualRowsList.length}</strong>건
-          </span>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs min-w-[1020px]">
-            <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-bold text-[10.5px] select-none">
-                <th className="py-2.5 px-3 w-16 text-center">기간</th>
-                <th className="py-2.5 px-3 w-28">계정코드</th>
-                <th className="py-2.5 px-3">계정명</th>
-                <th className="py-2.5 px-3">원 사용처 (발생부서)</th>
-                <th className="py-2.5 px-3">현재 귀속부서</th>
-                <th className="py-2.5 px-3 w-64">귀속부서 수동 지정</th>
-                <th className="py-2.5 px-3 text-right w-36">실적 금액</th>
-                <th className="py-2.5 px-3 text-center w-24">작업</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-150 font-sans">
-              {filteredActualRowsForManualGrid.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-zinc-400">
-                    지정된 필터 조건에 부합하는 실적 데이터가 없습니다.
-                  </td>
+          <div className="flex items-center gap-3">
+            {isManualGridOpen && (
+              <>
+                <span className="text-[11.5px] font-mono text-zinc-500">
+                  필터링 결과: <strong>{filteredAndSortedManualRows.length}</strong>건 / 전체 <strong>{actualRowsList.length}</strong>건
+                </span>
+                <span className="text-zinc-300">|</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setManualColumnFilters({
+                      period: '',
+                      accountCode: '',
+                      accountName: '',
+                      originalDept: '',
+                      currentDept: '',
+                      amountMin: '',
+                      amountMax: '',
+                      status: '',
+                    });
+                    setManualSort(null);
+                  }}
+                  className="text-[11px] font-bold text-[#008f83] hover:underline cursor-pointer select-none"
+                >
+                  직접 보정 필터 초기화
+                </button>
+                <span className="text-zinc-300">|</span>
+              </>
+            )}
+            <span className="text-xs font-bold text-[#008f83] hover:underline">
+              {isManualGridOpen ? '접기 ▲' : '펼치기 ▼'}
+            </span>
+          </div>
+        </button>
+
+        {isManualGridOpen && manualRowsLoaded && (
+          <div className="overflow-x-auto select-none">
+            <table className="w-full text-left border-collapse text-xs min-w-[1020px]">
+              <thead>
+                <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-bold text-[10.5px] select-none h-[64px]">
+                  <th className="p-0 w-16">
+                    <SortableFilterHeader
+                      title="기간"
+                      columnKey="period"
+                      sort={manualSort}
+                      onSort={(key) => toggleSort(key, setManualSort)}
+                      filterValue={manualColumnFilters.period}
+                      onFilterChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, period: value }))
+                      }
+                      align="center"
+                    />
+                  </th>
+                  <th className="p-0 w-28">
+                    <SortableFilterHeader
+                      title="계정코드"
+                      columnKey="accountCode"
+                      sort={manualSort}
+                      onSort={(key) => toggleSort(key, setManualSort)}
+                      filterValue={manualColumnFilters.accountCode}
+                      onFilterChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, accountCode: value }))
+                      }
+                    />
+                  </th>
+                  <th className="p-0 min-w-[180px]">
+                    <SortableFilterHeader
+                      title="계정명"
+                      columnKey="accountName"
+                      sort={manualSort}
+                      onSort={(key) => toggleSort(key, setManualSort)}
+                      filterValue={manualColumnFilters.accountName}
+                      onFilterChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, accountName: value }))
+                      }
+                    />
+                  </th>
+                  <th className="p-0 min-w-[170px]">
+                    <SortableFilterHeader
+                      title="원 사용처 (발생부서)"
+                      columnKey="originalDept"
+                      sort={manualSort}
+                      onSort={(key) => toggleSort(key, setManualSort)}
+                      filterValue={manualColumnFilters.originalDept}
+                      onFilterChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, originalDept: value }))
+                      }
+                    />
+                  </th>
+                  <th className="p-0 min-w-[180px]">
+                    <SortableFilterHeader
+                      title="현재 귀속부서"
+                      columnKey="currentDept"
+                      sort={manualSort}
+                      onSort={(key) => toggleSort(key, setManualSort)}
+                      filterValue={manualColumnFilters.currentDept}
+                      onFilterChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, currentDept: value }))
+                      }
+                    />
+                  </th>
+                  <th className="p-2.5 px-3 w-64 text-xs font-bold text-zinc-500 text-left">
+                    귀속부서 수동 지정
+                  </th>
+                  <th className="p-0 w-36">
+                    <AmountRangeHeader
+                      title="실적 금액"
+                      columnKey="amount"
+                      sort={manualSort}
+                      onSort={(key) => toggleSort(key, setManualSort)}
+                      minValue={manualColumnFilters.amountMin}
+                      maxValue={manualColumnFilters.amountMax}
+                      onMinChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, amountMin: value }))
+                      }
+                      onMaxChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, amountMax: value }))
+                      }
+                    />
+                  </th>
+                  <th className="p-0 w-24">
+                    <SortableFilterHeader
+                      title="상태"
+                      columnKey="status"
+                      sort={manualSort}
+                      onSort={(key) => toggleSort(key, setManualSort)}
+                      filterValue={manualColumnFilters.status}
+                      onFilterChange={(value) =>
+                        setManualColumnFilters(prev => ({ ...prev, status: value }))
+                      }
+                      filterType="select"
+                      options={[
+                        { value: '원 사용처 기준', label: '원 사용처 기준' },
+                        { value: '수동 변경', label: '수동 변경' },
+                        { value: '추천 적용', label: '추천 적용' },
+                        { value: '귀속 변경', label: '귀속 변경' },
+                      ]}
+                      align="center"
+                    />
+                  </th>
+                  <th className="p-2.5 px-3 w-20 text-center text-xs font-bold text-zinc-500">
+                    작업
+                  </th>
                 </tr>
-              ) : (
-                filteredActualRowsForManualGrid.map((row) => {
-                  return (
-                    <tr key={row.id} className="hover:bg-zinc-50/75 transition">
-                      <td className="py-2 px-3 text-center font-mono text-zinc-500">
-                        {row.period || row.month || '12월'}
-                      </td>
-                      <td className="py-2 px-3 font-mono font-bold text-zinc-700">
-                        {row.accountCode}
-                      </td>
-                      <td className="py-2 px-3 font-bold text-zinc-900 truncate max-w-[160px]" title={row.accountName}>
-                        {row.accountName}
-                      </td>
-                      <td className="py-2 px-3 text-zinc-650 truncate max-w-[180px]" title={`[${row.usageCode}] ${row.usageDept || row.usageCode}`}>
-                        [{row.usageCode}] {row.usageDept || row.usageCode}
-                      </td>
-                      <td className="py-2 px-3 truncate max-w-[180px]">
-                        {row.attributedDeptCode ? (
-                          <span className="font-bold text-emerald-700" title={`[${row.attributedDeptCode}] ${row.attributedDeptName}`}>
-                            [{row.attributedDeptCode}] {row.attributedDeptName}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400 font-medium font-sans">원 사용처 기준 동일</span>
-                        )}
-                      </td>
-                      <td className="py-2 px-3">
-                        <select
-                          value={row.attributedDeptCode || ''}
-                          onChange={(e) => {
-                            if (e.target.value === '') {
-                              handleRevertAttribution(row.id);
-                            } else {
-                              handleApplyManualChange(row.id, e.target.value);
-                            }
-                          }}
-                          className="h-7 w-full max-w-[220px] rounded border border-zinc-200 bg-white px-1.5 text-[11px] font-medium text-zinc-700 focus:border-[#008f83] outline-none"
-                        >
-                          <option value="">원 사용처 기준 (부서 미선택)</option>
-                          {allDepts.map(dept => (
-                            <option key={dept.code} value={dept.code}>
-                              [{dept.code}] {dept.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold text-zinc-800">
-                        {Number(row.completed || row.amount || 0).toLocaleString()}원
-                      </td>
-                      <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        {row.attributedDeptCode ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRevertAttribution(row.id)}
-                            className="px-2 py-0.5 border border-red-200 hover:bg-red-50 text-red-600 rounded font-bold transition text-[10px] select-none cursor-pointer"
+              </thead>
+              <tbody className="divide-y divide-zinc-150 font-sans">
+                {filteredAndSortedManualRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-zinc-400">
+                      지정된 필터 조건에 부합하는 실적 데이터가 없습니다.
+                    </td>
+                  </tr>
+                ) : (
+                  visibleManualRows.map((row) => {
+                    return (
+                      <tr key={row.rowId} className="hover:bg-zinc-50/75 transition">
+                        <td className="py-2 px-3 text-center font-mono text-zinc-500">
+                          {row.period}
+                        </td>
+                        <td className="py-2 px-3 font-mono font-bold text-zinc-700">
+                          {row.accountCode}
+                        </td>
+                        <td className="py-2 px-3 font-bold text-zinc-900 truncate max-w-[160px]" title={row.accountName}>
+                          {row.accountName}
+                        </td>
+                        <td className="py-2 px-3 text-zinc-650 truncate max-w-[180px]" title={`[${row.originalDeptCode}] ${row.originalDeptName}`}>
+                          [{row.originalDeptCode}] {row.originalDeptName}
+                        </td>
+                        <td className="py-2 px-3 truncate max-w-[180px]">
+                          {row.currentDeptCode !== row.originalDeptCode ? (
+                            <span className="font-bold text-[#008f83]" title={`[${row.currentDeptCode}] ${row.currentDeptName}`}>
+                              [{row.currentDeptCode}] {row.currentDeptName}
+                            </span>
+                          ) : (
+                            <span className="text-zinc-400 font-medium font-sans">원 사용처 기준 동일</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3">
+                          <select
+                            value={row.currentDeptCode !== row.originalDeptCode ? row.currentDeptCode : ''}
+                            onChange={(e) => {
+                              if (e.target.value === '') {
+                                handleRevertAttribution(row.rowId);
+                              } else {
+                                handleApplyManualChange(row.rowId, e.target.value);
+                              }
+                            }}
+                            className="h-7 w-full max-w-[220px] rounded border border-zinc-200 bg-white px-1.5 text-[11px] font-medium text-zinc-700 focus:border-[#008f83] outline-none cursor-pointer"
                           >
-                            원복
-                          </button>
-                        ) : (
-                          <span className="text-zinc-300 font-mono text-[10px]">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                            <option value="">원 사용처 기준 (부서 미선택)</option>
+                            {allDepts.map(dept => (
+                              <option key={dept.code} value={dept.code}>
+                                [{dept.code}] {dept.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono font-bold text-zinc-800">
+                          {row.amount.toLocaleString()}원
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            row.status === '수동 변경'
+                              ? 'bg-blue-100 text-blue-800'
+                              : row.status === '추천 적용'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : row.status === '귀속 변경'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-zinc-100 text-zinc-600'
+                          }`}>
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          {row.currentDeptCode !== row.originalDeptCode ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRevertAttribution(row.rowId)}
+                              className="px-2 py-0.5 border border-red-200 hover:bg-red-50 text-red-650 hover:text-red-900 rounded font-bold transition text-[10px] select-none cursor-pointer"
+                            >
+                              원복
+                            </button>
+                          ) : (
+                            <span className="text-zinc-300 font-mono text-[10px]">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {isManualGridOpen && manualRowsLoaded && manualVisibleCount < filteredAndSortedManualRows.length && (
+          <div className="p-3 bg-zinc-50 border-t border-zinc-200 text-center">
+            <button
+              type="button"
+              onClick={() => setManualVisibleCount(prev => prev + 100)}
+              className="px-4 py-2 text-xs font-bold text-[#008f83] hover:bg-emerald-50 border border-zinc-200 bg-white rounded-md shadow-xs cursor-pointer select-none"
+            >
+              직접 보정 100건 더 보기 (남은 건수: {filteredAndSortedManualRows.length - manualVisibleCount}건)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Dynamic Excluded Accounts section */}
@@ -2025,20 +2734,19 @@ function ResizableAttributionHeader({
   return (
     <div
       className={[
-        'relative flex h-full items-center px-2 py-2 select-none',
+        'relative flex h-full items-center py-1 select-none w-full',
         align === 'center' ? 'justify-center text-center' : '',
         align === 'right' ? 'justify-end text-right' : '',
         align === 'left' ? 'justify-start text-left' : '',
       ].join(' ')}
       style={{ width }}
     >
-      <span className="truncate">{title}</span>
+      <div className="w-full h-full flex-1 min-w-0">{title}</div>
 
       <button
         type="button"
-        aria-label={`${title} 컬럼 너비 조정`}
         onMouseDown={handleMouseDown}
-        className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-[#008f83]/30"
+        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-[#008f83]/30 z-10"
       />
     </div>
   );
