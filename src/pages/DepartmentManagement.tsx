@@ -85,6 +85,13 @@ export default function DepartmentManagement() {
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [isGroupEditing, setIsGroupEditing] = useState(false);
   const [groupSearchCodeWord, setGroupSearchCodeWord] = useState('');
+  const [deleteGroupState, setDeleteGroupState] = useState<{
+    isOpen: boolean;
+    groupId: string;
+    groupName: string;
+    hasChildren: boolean;
+    deleteChildren: boolean;
+  } | null>(null);
 
   const [groupFormData, setGroupFormData] = useState<{
     id: string;
@@ -544,21 +551,59 @@ export default function DepartmentManagement() {
     );
   };
 
-  const handlePhysicalDeleteGroup = (id: string, name: string) => {
-    showConfirm(
-      '그룹 영구 삭제',
-      `선택한 부서 그룹 [${name}] (${id})을(를) 정말 리스트에서 영구히 삭제하시겠습니까?`,
-      () => {
-        let newList = groups.filter(g => g.id !== id);
-        // detatch child groups too
-        newList = newList.map(g => g.parentId === id ? { ...g, parentId: null, updatedAt: new Date().toISOString() } : g);
+  const handleOpenGroupDelete = (id: string, name: string) => {
+    const hasChildren = groups.some(g => g.parentId === id);
+    setDeleteGroupState({
+      isOpen: true,
+      groupId: id,
+      groupName: name,
+      hasChildren,
+      deleteChildren: false
+    });
+  };
 
-        setGroups(newList);
-        saveDeptGroups(newList);
-        showToast('success', '그룹이 영구히 삭제되었습니다.');
-      },
-      '영구 삭제'
-    );
+  const handleExecuteGroupDelete = () => {
+    if (!deleteGroupState) return;
+    const { groupId, groupName, hasChildren, deleteChildren } = deleteGroupState;
+
+    let nextGroups = [...groups];
+    if (hasChildren && deleteChildren) {
+      // Recursive delete: find all child groups and delete them
+      const idsToDelete = new Set<string>();
+      const collect = (id: string) => {
+        idsToDelete.add(id);
+        groups
+          .filter(g => g.parentId === id)
+          .forEach(child => collect(child.id));
+      };
+      collect(groupId);
+      nextGroups = groups.filter(g => !idsToDelete.has(g.id));
+    } else {
+      // Only delete this group, set parentId of direct child groups to null
+      nextGroups = groups
+        .filter(g => g.id !== groupId)
+        .map(g => g.parentId === groupId ? { ...g, parentId: null, updatedAt: new Date().toISOString() } : g);
+    }
+
+    setGroups(nextGroups);
+    saveDeptGroups(nextGroups);
+
+    // Clean up cached selections if pointing to the deleted group
+    localStorage.removeItem("hycm_dashboard_selected_group");
+    localStorage.removeItem("variance_selected_group");
+    localStorage.removeItem("budget_status_selected_group");
+
+    const savedVarianceDept = localStorage.getItem('variance_dept');
+    if (savedVarianceDept === groupId) {
+      localStorage.setItem('variance_dept', 'all');
+    }
+
+    setDeleteGroupState(null);
+    showToast('success', `부서 그룹 [${groupName}]이(가) 삭제 완료되었습니다.`);
+  };
+
+  const handlePhysicalDeleteGroup = (id: string, name: string) => {
+    handleOpenGroupDelete(id, name);
   };
 
   const handleBulkAssignDepts = () => {
@@ -992,52 +1037,57 @@ export default function DepartmentManagement() {
             {filteredGroups.map(grp => {
               const parent = groups.find(g => g.id === grp.parentId);
               const isActive = grp.isActive !== false;
+              const subGroupsList = groups.filter(g => g.parentId === grp.id);
 
               return (
-                <div key={grp.id} className={`bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden flex flex-col hover:border-teal-500/70 hover:shadow-sm transition-all ${
-                  !isActive ? 'opacity-60 bg-zinc-50' : ''
-                }`}>
+                <div key={grp.id} className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden flex flex-col hover:border-[#008f83]/50 hover:shadow-sm transition-all">
                   <div className="p-5 flex-1 space-y-3.5 bg-white">
                     <div className="flex justify-between items-start gap-3">
                       <div>
-                        <span className="text-[10px] font-mono font-bold bg-[#f0f9f8] text-[#008f83] px-2 py-0.5 rounded border border-teal-100 uppercase">
-                          ID: {grp.id}
-                        </span>
+                        {showAdvancedAdmin && (
+                          <span className="text-[10px] font-mono font-bold bg-[#f0f9f8] text-[#008f83] px-2 py-0.5 rounded border border-teal-100 uppercase block mb-1">
+                            ID: {grp.id}
+                          </span>
+                        )}
                         <h4 className="text-sm font-bold text-zinc-900 mt-1">
                           {grp.name}
-                          {!isActive && (
+                          {!isActive && showAdvancedAdmin && (
                             <span className="ml-1.5 inline-block px-1 bg-red-100 text-red-800 text-[9px] font-bold rounded">비활성</span>
                           )}
                         </h4>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         <button
+                          type="button"
                           onClick={() => handleOpenGroupEdit(grp)}
-                          className="p-1.5 text-zinc-500 hover:text-teal-600 border border-zinc-200 hover:border-teal-400 rounded-lg cursor-pointer bg-white"
+                          className="px-2.5 py-1.5 text-xs text-zinc-700 hover:text-teal-600 border border-zinc-200 hover:border-teal-400 bg-white hover:bg-[#f7f9f7] rounded-lg cursor-pointer flex items-center gap-1 font-semibold transition-all"
                           title="수정"
                         >
-                          <Edit3 className="w-3.5 h-3.5" />
+                          <Edit3 className="w-3.5 h-3.5 text-zinc-500" />
+                          수정
                         </button>
 
                         <button
                           type="button"
-                          onClick={() => handleToggleGroupActive(grp.id, isActive)}
-                          className={`px-2 py-1 border text-[10px] font-bold rounded-md cursor-pointer ${
-                            isActive 
-                              ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                              : 'bg-teal-50 border-teal-200 text-[#008f83] hover:bg-teal-100'
-                          }`}
+                          onClick={() => handleOpenGroupDelete(grp.id, grp.name)}
+                          className="px-2.5 py-1.5 text-xs text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 bg-white hover:bg-rose-650 rounded-lg cursor-pointer flex items-center gap-1 font-semibold transition-all shadow-3xs"
+                          title="삭제"
                         >
-                          {isActive ? '비활성' : '복원'}
+                          <Trash2 className="w-3.5 h-3.5" />
+                          삭제
                         </button>
 
                         {showAdvancedAdmin && (
                           <button
-                            onClick={() => handlePhysicalDeleteGroup(grp.id, grp.name)}
-                            className="p-1.5 text-rose-500 hover:text-rose-700 border border-zinc-200 hover:border-rose-450 rounded-lg cursor-pointer bg-white"
-                            title="물리적 완전 삭제"
+                            type="button"
+                            onClick={() => handleToggleGroupActive(grp.id, isActive)}
+                            className={`px-2 py-1.5 border text-[10px] font-bold rounded-md cursor-pointer ${
+                              isActive 
+                                ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                                : 'bg-teal-50 border-teal-200 text-[#008f83] hover:bg-teal-100'
+                            }`}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {isActive ? '비활성' : '복원'}
                           </button>
                         )}
                       </div>
@@ -1054,7 +1104,19 @@ export default function DepartmentManagement() {
                         <FolderTree className="w-3.5 h-3.5 text-zinc-400" />
                         <span className="text-[11px] font-semibold text-zinc-550">상위 그룹:</span>
                         <span className="text-[11px] font-bold text-zinc-800">{parent.name}</span>
-                        <span className="text-[10px] font-mono text-zinc-400">({parent.id})</span>
+                        {showAdvancedAdmin && <span className="text-[10px] font-mono text-zinc-400">({parent.id})</span>}
+                      </div>
+                    )}
+
+                    {subGroupsList.length > 0 && (
+                      <div className="flex flex-col gap-1 text-xs text-zinc-650 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100/60 mt-2">
+                        <div className="flex items-center gap-1 text-emerald-800 font-semibold text-[11px]">
+                          <FolderTree className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>하위 그룹 ({subGroupsList.length}):</span>
+                        </div>
+                        <span className="text-[11px] font-medium text-zinc-700">
+                          {subGroupsList.map(g => g.name).join(', ')}
+                        </span>
                       </div>
                     )}
 
@@ -1410,6 +1472,79 @@ export default function DepartmentManagement() {
                 className="px-4 py-1.5 bg-[#008f83] text-white text-xs font-bold rounded-lg hover:bg-[#007369] cursor-pointer transition-colors"
               >
                 {confirmState.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Group Deletion Dialog with Sub-level handling option */}
+      {deleteGroupState?.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-neutral-900/40 backdrop-blur-xs animate-fade-in" onClick={() => setDeleteGroupState(null)} />
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-zinc-200 animate-in zoom-in-95 duration-100 font-sans flex flex-col gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-zinc-900">부서 그룹 삭제</h3>
+              <p className="mt-1.5 text-xs text-zinc-500 leading-normal">
+                선택하신 부서 그룹 <strong>[{deleteGroupState.groupName}]</strong>을(를) 영구히 삭제하시겠습니까?
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 leading-relaxed font-semibold">
+              ⓘ 부서 그룹은 조회 조인용 묶음 데이터입니다. 그룹이 삭제되더라도 개별 부서 마스터 정보와 기존 편성 예산 및 실제 집행 실적 데이터는 <strong>절대 삭제되지 않고 안전하게 보존</strong>됩니다.
+            </div>
+
+            {deleteGroupState.hasChildren && (
+              <div className="border border-zinc-200 bg-zinc-50 rounded-xl p-4.5 space-y-3.5">
+                <span className="text-[11px] font-bold text-zinc-700 block">
+                  ⚠️ 이 그룹은 현재 하위 그룹을 하위에 가지고 있습니다. 처리 방안을 선택하세요:
+                </span>
+                
+                <div className="space-y-2.5">
+                  <label className="flex items-start gap-2.5 cursor-pointer text-xs select-none">
+                    <input
+                      type="radio"
+                      name="child_handling"
+                      checked={!deleteGroupState.deleteChildren}
+                      onChange={() => setDeleteGroupState(prev => prev ? { ...prev, deleteChildren: false } : null)}
+                      className="mt-0.5 accent-[#008f83]"
+                    />
+                    <div>
+                      <span className="font-bold text-zinc-800 block">이 그룹만 삭제 (권장 / 안전)</span>
+                      <span className="text-[10.5px] text-zinc-500 block">하위 그룹들은 삭제하지 않고 상위 그룹 지정을 없음으로 변경하여 독립시킵니다.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer text-xs select-none">
+                    <input
+                      type="radio"
+                      name="child_handling"
+                      checked={deleteGroupState.deleteChildren}
+                      onChange={() => setDeleteGroupState(prev => prev ? { ...prev, deleteChildren: true } : null)}
+                      className="mt-0.5 accent-[#008f83]"
+                    />
+                    <div>
+                      <span className="font-bold text-rose-700 block">하위 그룹을 포함하여 일괄 일체 삭제</span>
+                      <span className="text-[10.5px] text-rose-500/85 block">이 그룹에 귀속된 하위 그룹 및 하위 계층들 전체를 연동하여 한꺼번에 일괄 영구 삭제합니다.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-1.5 pt-3 border-t border-zinc-150">
+              <button
+                type="button"
+                onClick={() => setDeleteGroupState(null)}
+                className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteGroupDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors shadow-xs"
+              >
+                삭제 진행
               </button>
             </div>
           </div>
