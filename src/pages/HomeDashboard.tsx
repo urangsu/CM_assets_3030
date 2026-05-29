@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Calculator, 
@@ -126,6 +126,35 @@ function toCumulative(values: number[]): number[] {
   });
 }
 
+function ClickableDeptTick(props: any) {
+  const { x, y, payload, deptMap, onClickDept } = props;
+  const dept = deptMap?.get(payload.value);
+
+  return (
+    <g
+      transform={`translate(${x},${y})`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (dept) {
+          onClickDept(dept.deptCode, dept.name);
+        }
+      }}
+      className="cursor-pointer group"
+    >
+      <text
+        x={-8}
+        y={0}
+        dy={4}
+        textAnchor="end"
+        className="fill-[#111111] text-[10px] font-bold hover:fill-[#008f83] transition-colors"
+        style={{ cursor: 'pointer' }}
+      >
+        {payload.value}
+      </text>
+    </g>
+  );
+}
+
 export default function HomeDashboard() {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -167,6 +196,14 @@ export default function HomeDashboard() {
   // Chart Data
   const [monthlyTrendData, setMonthlyTrendData] = useState<any[]>([]);
   const [deptContrastData, setDeptContrastData] = useState<any[]>([]);
+
+  const deptContrastMap = useMemo(() => {
+    const map = new Map<string, any>();
+    deptContrastData.forEach((row: any) => {
+      map.set(row.name, row);
+    });
+    return map;
+  }, [deptContrastData]);
 
   const navigate = useNavigate();
 
@@ -730,7 +767,22 @@ export default function HomeDashboard() {
                 >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2ec" />
                   <XAxis type="number" stroke="#8b95a1" fontSize={9} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1_000_000).toLocaleString('ko-KR')}`} />
-                  <YAxis dataKey="name" type="category" stroke="#111111" fontSize={10} axisLine={false} tickLine={false} width={80} />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    stroke="#111111" 
+                    fontSize={10} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    width={86} 
+                    tick={(props) => (
+                      <ClickableDeptTick
+                        {...props}
+                        deptMap={deptContrastMap}
+                        onClickDept={goToDeptVariance}
+                      />
+                    )}
+                  />
                   <Tooltip 
                     formatter={(v: any) => [formatMillionWonWithFull(Number(v)), '']}
                     labelFormatter={(label) => `${label} · 클릭하면 비교분석으로 이동`}
@@ -741,24 +793,6 @@ export default function HomeDashboard() {
                   <Bar name="실제 집행 누계" dataKey="실제 집행" fill="#008f83" radius={[0, 4, 4, 0]} barSize={8} cursor="pointer" />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
-            
-            <div className="mt-3 grid grid-cols-2 gap-1.5">
-              {deptContrastData.map((dept: any) => (
-                <button
-                  key={dept.deptCode}
-                  type="button"
-                  onClick={() => goToDeptVariance(dept.deptCode, dept.name)}
-                  className="flex items-center justify-between rounded-lg border border-[#dde5de] bg-[#f7f9f7] px-2.5 py-1.5 text-[11px] hover:border-[#008f83] hover:text-[#008f83] transition-colors cursor-pointer"
-                >
-                  <span className="truncate font-semibold">
-                    {dept.name}
-                  </span>
-                  <span className="font-mono text-[#8b95a1]">
-                    보기 →
-                  </span>
-                </button>
-              ))}
             </div>
           </div>
         </div>
