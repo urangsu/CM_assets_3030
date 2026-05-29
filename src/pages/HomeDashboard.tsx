@@ -154,6 +154,8 @@ export default function HomeDashboard() {
   const [appliedDashboardYear, setAppliedDashboardYear] = useState(dashboardYear);
   const [appliedDashboardBaseMonth, setAppliedDashboardBaseMonth] = useState(dashboardBaseMonth);
 
+  const [isPeriodPopoverOpen, setIsPeriodPopoverOpen] = useState(false);
+
   const [dashboardDiagnostics, setDashboardDiagnostics] = useState({
     unassignedActualCount: 0,
     unassignedActualAmount: 0,
@@ -167,6 +169,25 @@ export default function HomeDashboard() {
   const [deptContrastData, setDeptContrastData] = useState<any[]>([]);
 
   const navigate = useNavigate();
+
+  function goToDeptVariance(deptCode: string, deptName: string) {
+    const params = new URLSearchParams({
+      tab: 'default',
+      deptCode,
+      deptName,
+      baseYear: appliedDashboardYear,
+      basePlanType: '경영계획',
+      baseMonthMode: 'YTD',
+      baseMonth: String(appliedDashboardBaseMonth),
+      targetYear: appliedDashboardYear,
+      targetPlanType: '실적',
+      targetMonthMode: 'YTD',
+      targetMonth: String(appliedDashboardBaseMonth),
+      source: 'dashboard-top6',
+    });
+
+    navigate(`/variance-comparison?${params.toString()}`);
+  }
 
   const loadDashboardData = () => {
     setIsLoading(true);
@@ -316,6 +337,7 @@ export default function HomeDashboard() {
 
       // Contrast top 6 departments
       const contrastData = computedDeptList.slice(0, 6).map(d => ({
+        deptCode: d.code,
         name: d.name,
         '편성 예산': d.budgetSum,
         '실제 집행': d.actualSum,
@@ -366,12 +388,12 @@ export default function HomeDashboard() {
       setMonthlyTrendData(mockMonthlyTrend);
 
       const mockDeptContrast = [
-        { name: '기획재무그룹', '편성 예산': 145000000, '실제 집행': 68400000 },
-        { name: '전략소싱그룹', '편성 예산': 120000000, '실제 집행': 74200000 },
-        { name: '1공장', '편성 예산': 210000000, '실제 집행': 104500000 },
-        { name: '인사행정그룹', '편성 예산': 95000000, '실제 집행': 42100000 },
-        { name: '품질기술부', '편성 예산': 75000000, '실제 집행': 34800000 },
-        { name: '안전환경센터', '편성 예산': 62000000, '실제 집행': 21400000 }
+        { deptCode: '32100', name: '기획재무그룹', '편성 예산': 145000000, '실제 집행': 68400000 },
+        { deptCode: '21100', name: '전략소싱그룹', '편성 예산': 120000000, '실제 집행': 74200000 },
+        { deptCode: '50200', name: '1공장', '편성 예산': 210000000, '실제 집행': 104500000 },
+        { deptCode: '32200', name: '인사행정그룹', '편성 예산': 95000000, '실제 집행': 42100000 },
+        { deptCode: '50400', name: '품질기술부', '편성 예산': 75000000, '실제 집행': 34800000 },
+        { deptCode: '21002', name: '안전환경센터', '편성 예산': 62000000, '실제 집행': 21400000 }
       ];
 
       // Slcing top 6 demo departments with some dummy scaling if needed
@@ -379,6 +401,7 @@ export default function HomeDashboard() {
         // scale based on month
         const factor = baseMonth / 12;
         return {
+          deptCode: md.deptCode,
           name: md.name,
           '편성 예산': Math.round(md['편성 예산'] * factor),
           '실제 집행': Math.round(md['실제 집행'] * (baseMonth <= 5 ? (baseMonth / 5) : 1) * 0.75)
@@ -447,56 +470,106 @@ export default function HomeDashboard() {
           </p>
         </div>
         
-        <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full xl:w-auto">
-          {/* Refresh Action */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f7f9f7] rounded-xl text-xs text-[#647067] border border-[#dde5de] font-mono justify-center">
-            <Clock className="w-3.5 h-3.5 text-zinc-400" />
-            <span>집계: {dataUpdateTime}</span>
-          </div>
+        <div className="flex items-center gap-2 w-full xl:w-auto justify-start xl:justify-end">
+          <div className="relative">
+            <div className="flex items-center gap-3 rounded-2xl border border-[#dde5de] bg-[#f7f9f7] px-4 py-2 shadow-sm">
+              <div className="text-right leading-tight">
+                <div className="text-[11px] text-[#647067]">
+                  <span className="font-bold text-[#4e5968]">집계 기준</span>
+                  <span className="ml-2 font-semibold text-[#111111]">
+                    {appliedDashboardYear}년 {appliedDashboardBaseMonth}월까지
+                  </span>
+                </div>
 
-          {/* New Selector UI Control */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl text-xs border border-[#dde5de] shadow-sm justify-center">
-            <span className="font-bold text-[#647067]">집계 기준:</span>
-            <select
-              value={dashboardYear}
-              onChange={(e) => setDashboardYear(e.target.value)}
-              className="h-7 rounded-lg border border-[#dde5de] bg-white px-2 text-xs font-semibold outline-none focus:border-[#008f83]"
-            >
-              <option value="2025">2025년</option>
-              <option value="2026">2026년</option>
-              <option value="2027">2027년</option>
-            </select>
-            <select
-              value={dashboardBaseMonth}
-              onChange={(e) => setDashboardBaseMonth(Number(e.target.value))}
-              className="h-7 rounded-lg border border-[#dde5de] bg-white px-2 text-xs font-semibold outline-none focus:border-[#008f83]"
-            >
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  {i + 1}월까지
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => {
-                setAppliedDashboardYear(dashboardYear);
-                setAppliedDashboardBaseMonth(dashboardBaseMonth);
-                localStorage.setItem('hycm_dashboard_year', dashboardYear);
-                localStorage.setItem('hycm_dashboard_base_month', String(dashboardBaseMonth));
-              }}
-              className="h-7 rounded-lg bg-[#008f83] px-3 text-xs font-bold text-white hover:bg-[#00746b] cursor-pointer transition-all shrink-0"
-            >
-              조회
-            </button>
-          </div>
+                <div className="mt-0.5 text-[11px] text-[#8b95a1] font-mono">
+                  <span className="font-bold text-[#647067]">집계</span>
+                  <span className="ml-2">{dataUpdateTime}</span>
+                </div>
+              </div>
 
-          <button 
-            onClick={loadDashboardData}
-            className="flex items-center justify-center p-2 bg-white text-[#4e5968] border border-[#dde5de] rounded-xl text-xs font-bold hover:bg-[#f7f9f7] hover:border-[#c4cfc5] transition-all cursor-pointer shadow-sm h-9 md:h-auto"
-            title="업데이트 데이터 동기화"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+              <button
+                type="button"
+                onClick={() => setIsPeriodPopoverOpen(prev => !prev)}
+                className="h-7 rounded-lg border border-[#dde5de] bg-white px-2.5 text-[11px] font-bold text-[#4e5968] hover:border-[#008f83] hover:text-[#008f83] cursor-pointer"
+              >
+                변경
+              </button>
+
+              <button
+                type="button"
+                onClick={loadDashboardData}
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#dde5de] bg-white text-[#4e5968] hover:border-[#008f83] hover:text-[#008f83] cursor-pointer"
+                title="데이터 새로고침"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {isPeriodPopoverOpen && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-[280px] rounded-2xl border border-[#dde5de] bg-white p-4 shadow-xl">
+                <div className="mb-3">
+                  <div className="text-sm font-bold text-[#111111]">집계 기준 변경</div>
+                  <div className="mt-0.5 text-[11px] text-[#8b95a1]">
+                    선택한 기준월까지의 예산·실적 누계를 조회합니다.
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[11px] font-bold text-[#647067]">
+                    연도
+                    <select
+                      value={dashboardYear}
+                      onChange={(e) => setDashboardYear(e.target.value)}
+                      className="mt-1 h-9 w-full rounded-xl border border-[#dde5de] bg-white px-2 text-xs font-semibold outline-none focus:border-[#008f83]"
+                    >
+                      <option value="2025">2025년</option>
+                      <option value="2026">2026년</option>
+                      <option value="2027">2027년</option>
+                    </select>
+                  </label>
+
+                  <label className="text-[11px] font-bold text-[#647067]">
+                    기준월
+                    <select
+                      value={dashboardBaseMonth}
+                      onChange={(e) => setDashboardBaseMonth(Number(e.target.value))}
+                      className="mt-1 h-9 w-full rounded-xl border border-[#dde5de] bg-white px-2 text-xs font-semibold outline-none focus:border-[#008f83]"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1}월까지
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPeriodPopoverOpen(false)}
+                    className="h-8 rounded-xl border border-[#dde5de] bg-white px-3 text-xs font-bold text-[#647067] cursor-pointer"
+                  >
+                    취소
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedDashboardYear(dashboardYear);
+                      setAppliedDashboardBaseMonth(dashboardBaseMonth);
+                      localStorage.setItem('hycm_dashboard_year', dashboardYear);
+                      localStorage.setItem('hycm_dashboard_base_month', String(dashboardBaseMonth));
+                      setIsPeriodPopoverOpen(false);
+                    }}
+                    className="h-8 rounded-xl bg-[#008f83] px-3 text-xs font-bold text-white hover:bg-[#00746b] cursor-pointer"
+                  >
+                    적용
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -645,19 +718,47 @@ export default function HomeDashboard() {
             </div>
             <div className="h-[260px] w-full font-mono text-xs">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={deptContrastData} layout="vertical" margin={{ top: 5, right: 5, left: 15, bottom: 5 }}>
+                <BarChart 
+                  data={deptContrastData} 
+                  layout="vertical" 
+                  margin={{ top: 5, right: 5, left: 15, bottom: 5 }}
+                  onClick={(state: any) => {
+                    const row = state?.activePayload?.[0]?.payload;
+                    if (!row?.deptCode) return;
+                    goToDeptVariance(row.deptCode, row.name);
+                  }}
+                >
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#eef2ec" />
                   <XAxis type="number" stroke="#8b95a1" fontSize={9} axisLine={false} tickLine={false} tickFormatter={(v) => `${Math.round(Number(v) / 1_000_000).toLocaleString('ko-KR')}`} />
                   <YAxis dataKey="name" type="category" stroke="#111111" fontSize={10} axisLine={false} tickLine={false} width={80} />
                   <Tooltip 
                     formatter={(v: any) => [formatMillionWonWithFull(Number(v)), '']}
+                    labelFormatter={(label) => `${label} · 클릭하면 비교분석으로 이동`}
                     contentStyle={{ border: '1px solid #dde5de', borderRadius: '12px', fontSize: '12px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Bar name="편성 예산 누계" dataKey="편성 예산" fill="#c4cfc5" radius={[0, 4, 4, 0]} barSize={8} />
-                  <Bar name="실제 집행 누계" dataKey="실제 집행" fill="#008f83" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar name="편성 예산 누계" dataKey="편성 예산" fill="#c4cfc5" radius={[0, 4, 4, 0]} barSize={8} cursor="pointer" />
+                  <Bar name="실제 집행 누계" dataKey="실제 집행" fill="#008f83" radius={[0, 4, 4, 0]} barSize={8} cursor="pointer" />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+            
+            <div className="mt-3 grid grid-cols-2 gap-1.5">
+              {deptContrastData.map((dept: any) => (
+                <button
+                  key={dept.deptCode}
+                  type="button"
+                  onClick={() => goToDeptVariance(dept.deptCode, dept.name)}
+                  className="flex items-center justify-between rounded-lg border border-[#dde5de] bg-[#f7f9f7] px-2.5 py-1.5 text-[11px] hover:border-[#008f83] hover:text-[#008f83] transition-colors cursor-pointer"
+                >
+                  <span className="truncate font-semibold">
+                    {dept.name}
+                  </span>
+                  <span className="font-mono text-[#8b95a1]">
+                    보기 →
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
         </div>

@@ -25,13 +25,12 @@ import {
   DeptGroup 
 } from '../lib/departmentGroups';
 
-// Department Item interface (parentClass is completely removed)
+// Department Item interface (parentClass and groupIds are completely removed)
 interface DepartmentItem {
   code: string;
   name: string;
   managerName: string;
   role: string;
-  groupIds: string[];
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -57,7 +56,11 @@ export default function DepartmentManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Form Data for Department Model
+  // Bulk action states for department master
+  const [selectedDeptCodes, setSelectedDeptCodes] = useState<string[]>([]);
+  const [bulkTargetGroupId, setBulkTargetGroupId] = useState('');
+
+  // Form Data for Department Model (groupIds completely removed)
   const [formData, setFormData] = useState<{
     code: string;
     name: string;
@@ -65,7 +68,6 @@ export default function DepartmentManagement() {
     userId: string;
     password?: string;
     role: string;
-    groupIds: string[];
     isActive: boolean;
   }>({
     code: '',
@@ -74,7 +76,6 @@ export default function DepartmentManagement() {
     userId: '',
     password: '',
     role: '부서담당자',
-    groupIds: [],
     isActive: true,
   });
 
@@ -95,7 +96,7 @@ export default function DepartmentManagement() {
   }>({
     id: '',
     name: '',
-    parentId: '',
+    parentId: 'none',
     description: '',
     deptCodes: [],
     isActive: true
@@ -147,21 +148,11 @@ export default function DepartmentManagement() {
     const managerName = item.managerName || item.manager || '부서 실무장';
     const isActive = item.isActive !== false;
 
-    // Resolve groupIds based on current lists
-    let groupIds = item.groupIds || [];
-    if (!item.groupIds) {
-      const currentGroups = getDeptGroups();
-      groupIds = currentGroups
-        .filter(g => g.deptCodes.includes(item.code))
-        .map(g => g.id);
-    }
-
     return {
       code: item.code,
       name: item.name,
       managerName: managerName,
       role: item.role || '부서담당자',
-      groupIds: groupIds,
       isActive: isActive,
       createdAt: item.createdAt || new Date().toISOString(),
       updatedAt: item.updatedAt || new Date().toISOString()
@@ -169,19 +160,12 @@ export default function DepartmentManagement() {
   };
 
   const getDefaultDepts = (): DepartmentItem[] => {
-    const currentGroups = getDeptGroups();
     return DEPARTMENTS.map(d => {
-      // Find which groups contain this code initially
-      const groupIds = currentGroups
-        .filter(g => g.deptCodes.includes(d.code))
-        .map(g => g.id);
-
       return {
         code: d.code,
         name: d.name,
         managerName: d.manager || '대표 서명수',
         role: d.role || '부서담당자',
-        groupIds: groupIds,
         isActive: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -256,7 +240,6 @@ export default function DepartmentManagement() {
       name: formData.name.trim(),
       managerName: formData.managerName.trim() || '담당자',
       role: formData.role || '부서담당자',
-      groupIds: formData.groupIds,
       isActive: formData.isActive,
       createdAt: isEditing ? (depts.find(d => d.code === formData.code)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -269,31 +252,6 @@ export default function DepartmentManagement() {
       newList.push(deptToSave);
       showToast('success', `신규 [${formData.code}] 부서가 부서 마스터 목록에 추가되었습니다.`);
     }
-
-    // Bidirectional sync: Update groups' deptCodes based on the department's groupIds
-    const currentGroups = getDeptGroups();
-    const updatedGroups = currentGroups.map(group => {
-      const isAssociated = formData.groupIds.includes(group.id);
-      const hasCodeAlready = group.deptCodes.includes(formData.code);
-
-      if (isAssociated && !hasCodeAlready) {
-        return {
-          ...group,
-          deptCodes: [...group.deptCodes, formData.code],
-          updatedAt: new Date().toISOString()
-        };
-      } else if (!isAssociated && hasCodeAlready) {
-        return {
-          ...group,
-          deptCodes: group.deptCodes.filter(c => c !== formData.code),
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return group;
-    });
-
-    setGroups(updatedGroups);
-    saveDeptGroups(updatedGroups);
 
     setDepts(newList);
     localStorage.setItem('cleanmetal_dept_master_custom', JSON.stringify(newList));
@@ -444,7 +402,6 @@ export default function DepartmentManagement() {
       userId: userSetting.id || item.code,
       password: '', // Hidden or changeable
       role: item.role,
-      groupIds: item.groupIds || [],
       isActive: item.isActive
     });
     setIsEditing(true);
@@ -459,7 +416,6 @@ export default function DepartmentManagement() {
       userId: '',
       password: '',
       role: '부서담당자',
-      groupIds: [],
       isActive: true,
     });
     setIsEditing(false);
@@ -484,11 +440,10 @@ export default function DepartmentManagement() {
   const filteredDepts = depts.filter(item => {
     if (searchTerm) {
       const t = searchTerm.toLowerCase();
-      // Search by code, name, managerName, or contained group names
-      const inGroups = item.groupIds.some(gid => {
-        const grp = groups.find(g => g.id === gid);
-        return grp && grp.name.toLowerCase().includes(t);
-      });
+      // Search by code, name, managerName, or contained group names (derived from groups list)
+      const inGroups = groups
+        .filter(g => g.deptCodes?.includes(item.code))
+        .some(grp => grp.name.toLowerCase().includes(t));
 
       return (
         item.code.toLowerCase().includes(t) ||
@@ -570,31 +525,6 @@ export default function DepartmentManagement() {
       showToast('success', `신규 부서 그룹 [${groupFormData.name}]이 등록되었습니다.`);
     }
 
-    // Bidirectional sync: Update depts' groupIds based on the group's deptCodes
-    let updatedDepts = [...depts];
-    updatedDepts = updatedDepts.map(dept => {
-      const isAssociatedNow = groupFormData.deptCodes.includes(dept.code);
-      const isCurrentlyInGroup = dept.groupIds.includes(groupFormData.id);
-
-      if (isAssociatedNow && !isCurrentlyInGroup) {
-        return {
-          ...dept,
-          groupIds: [...dept.groupIds, groupFormData.id],
-          updatedAt: new Date().toISOString()
-        };
-      } else if (!isAssociatedNow && isCurrentlyInGroup) {
-        return {
-          ...dept,
-          groupIds: dept.groupIds.filter(id => id !== groupFormData.id),
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return dept;
-    });
-
-    setDepts(updatedDepts);
-    localStorage.setItem('cleanmetal_dept_master_custom', JSON.stringify(updatedDepts));
-
     setGroups(newList);
     saveDeptGroups(newList);
     setIsGroupModalOpen(false);
@@ -623,27 +553,44 @@ export default function DepartmentManagement() {
         // detatch child groups too
         newList = newList.map(g => g.parentId === id ? { ...g, parentId: null, updatedAt: new Date().toISOString() } : g);
 
-        // Remove group association from all depts
-        let updatedDepts = depts.map(dept => {
-          if (dept.groupIds.includes(id)) {
-            return {
-              ...dept,
-              groupIds: dept.groupIds.filter(gid => gid !== id),
-              updatedAt: new Date().toISOString()
-            };
-          }
-          return dept;
-        });
-
-        setDepts(updatedDepts);
-        localStorage.setItem('cleanmetal_dept_master_custom', JSON.stringify(updatedDepts));
-
         setGroups(newList);
         saveDeptGroups(newList);
         showToast('success', '그룹이 영구히 삭제되었습니다.');
       },
       '영구 삭제'
     );
+  };
+
+  const handleBulkAssignDepts = () => {
+    if (!bulkTargetGroupId || selectedDeptCodes.length === 0) return;
+    
+    const targetGroup = groups.find(g => g.id === bulkTargetGroupId);
+    if (!targetGroup) return;
+
+    if (targetGroup.isActive === false) {
+      showToast('error', '비활성화된 부서 그룹에는 일괄 할당할 수 없습니다.');
+      return;
+    }
+
+    const updatedGroups = groups.map(g => {
+      if (g.id === bulkTargetGroupId) {
+        const combined = Array.from(new Set([...(g.deptCodes || []), ...selectedDeptCodes]));
+        return {
+          ...g,
+          deptCodes: combined,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return g;
+    });
+
+    setGroups(updatedGroups);
+    saveDeptGroups(updatedGroups);
+    
+    setSelectedDeptCodes([]);
+    setBulkTargetGroupId('');
+    
+    showToast('success', `${selectedDeptCodes.length}개 부서가 [${targetGroup.name}] 그룹에 일괄 지정되었습니다.`);
   };
 
   const handleToggleDeptInGroup = (code: string) => {
@@ -807,9 +754,9 @@ export default function DepartmentManagement() {
             </div>
           </div>
 
-          {/* Quick Find Toolbar */}
-          <div className="bg-white p-4.5 rounded-2xl border border-[#dde5de] shadow-xs flex items-center gap-2">
-            <div className="relative flex-1">
+          {/* Quick Find Toolbar / Bulk Operation section */}
+          <div className="bg-white p-4.5 rounded-2xl border border-[#dde5de] shadow-xs space-y-3">
+            <div className="relative w-full">
               <Search className="absolute left-3.5 top-3 w-4 h-4 text-zinc-400" />
               <input
                 type="text"
@@ -819,6 +766,42 @@ export default function DepartmentManagement() {
                 placeholder="관련 부서코드 번호, 부서 단위명, 담당자명 또는 소속 그룹명으로 즉시 검색합니다..."
               />
             </div>
+
+            {selectedDeptCodes.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-[#f0f9f8] rounded-xl border border-teal-150 animate-fadeIn">
+                <div className="flex items-center gap-1.5 matches-checkbox">
+                  <Check className="w-4 h-4 text-[#008f83]" />
+                  <span className="text-xs font-bold text-zinc-700">
+                    선택된 부서: <strong className="text-[#008f83]">{selectedDeptCodes.length}개</strong>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <select
+                    value={bulkTargetGroupId}
+                    onChange={(e) => setBulkTargetGroupId(e.target.value)}
+                    className="bg-white border border-[#dde5de] text-zinc-700 text-xs rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-teal-500 outline-none flex-1 sm:flex-initial"
+                  >
+                    <option value="">지정할 부서 그룹 선택...</option>
+                    {groups.filter(g => g.isActive !== false).map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleBulkAssignDepts}
+                    disabled={!bulkTargetGroupId}
+                    className="px-3.5 py-1.5 bg-[#008f83] hover:bg-[#007369] disabled:bg-zinc-200 disabled:text-zinc-400 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    일괄 지정 적용
+                  </button>
+                  <button
+                    onClick={() => setSelectedDeptCodes([])}
+                    className="px-2.5 py-1.5 hover:bg-zinc-100 text-zinc-500 rounded-lg text-xs font-bold cursor-pointer border border-zinc-200 bg-white"
+                  >
+                    취소
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Grid Table */}
@@ -826,6 +809,20 @@ export default function DepartmentManagement() {
             <table className="min-w-full divide-y divide-[#eef2ec] text-left">
               <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider select-none">
                 <tr>
+                  <th className="px-5 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={filteredDepts.length > 0 && selectedDeptCodes.length === filteredDepts.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedDeptCodes(filteredDepts.map(d => d.code));
+                        } else {
+                          setSelectedDeptCodes([]);
+                        }
+                      }}
+                      className="rounded border-zinc-300 text-[#008f83] focus:ring-teal-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="px-5 py-3">부서 코드</th>
                   <th className="px-5 py-3">부서명</th>
                   <th className="px-5 py-3">부서 그룹</th>
@@ -837,13 +834,24 @@ export default function DepartmentManagement() {
               </thead>
               <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
                 {filteredDepts.map(item => {
-                  const resolvedGroups = item.groupIds
-                    .map(gid => groups.find(g => g.id === gid)?.name)
-                    .filter(Boolean)
-                    .join(', ');
+                  const associatedGroups = groups.filter(g => g.deptCodes?.includes(item.code) && g.isActive !== false);
 
                   return (
                     <tr key={item.code} className={`hover:bg-[#f7f9f7]/55 transition ${!item.isActive ? 'opacity-55 bg-zinc-50' : ''}`}>
+                      <td className="px-5 py-3.5">
+                        <input
+                          type="checkbox"
+                          checked={selectedDeptCodes.includes(item.code)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedDeptCodes(prev => [...prev, item.code]);
+                            } else {
+                              setSelectedDeptCodes(prev => prev.filter(c => c !== item.code));
+                            }
+                          }}
+                          className="rounded border-zinc-300 text-[#008f83] focus:ring-teal-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="px-5 py-3.5 font-mono font-bold text-[#008f83]">{item.code}</td>
                       <td className="px-5 py-3.5 font-semibold text-[#111111]">
                         {item.name}
@@ -851,8 +859,28 @@ export default function DepartmentManagement() {
                           <span className="ml-1.5 inline-block px-1 bg-red-100 text-red-800 text-[9px] font-bold rounded">비활성</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-zinc-500 font-sans">
-                        {resolvedGroups || <span className="text-zinc-350">-</span>}
+                      <td className="px-5 py-3.5">
+                        <div className="flex flex-wrap items-center gap-1.5 max-w-xs">
+                          {associatedGroups.length > 0 ? (
+                            associatedGroups.map(grp => (
+                              <span 
+                                key={grp.id} 
+                                className="inline-flex items-center text-[10px] font-bold bg-teal-50 text-[#008f83] px-1.5 py-0.5 rounded border border-teal-100"
+                                title={showAdvancedAdmin ? grp.id : undefined}
+                              >
+                                {grp.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-zinc-350 italic text-[11px]">- (그룹 없음)</span>
+                          )}
+                          <button
+                            onClick={() => setCurrentTab('groups')}
+                            className="text-[10.5px] text-[#008f83] hover:text-[#007369] ml-1 select-none font-bold cursor-pointer transition-colors"
+                          >
+                            [변경/관리]
+                          </button>
+                        </div>
                       </td>
                       <td className="px-5 py-3.5 text-zinc-800 font-medium">{item.managerName}</td>
                       <td className="px-5 py-3.5">
@@ -904,7 +932,7 @@ export default function DepartmentManagement() {
 
                 {filteredDepts.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-zinc-400 bg-zinc-50/50">
+                    <td colSpan={8} className="py-16 text-center text-zinc-400 bg-zinc-50/50">
                       <AlertCircle className="w-7 h-7 mx-auto text-zinc-300 mb-1" />
                       검색 조건과 부합하는 활성 부서 마스터가 없습니다.
                     </td>

@@ -8,6 +8,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, readBudgetData } from '../lib/storageKeys';
+import { getDeptGroups, getDeptCodesByGroup } from '../lib/departmentGroups';
 import { normalizePlanType } from '../lib/planTypes';
 import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
@@ -60,7 +61,59 @@ export default function VarianceComparison() {
   const queryParams = new URLSearchParams(location.search);
   const tab = queryParams.get('tab') || 'default';
 
+  const queryDeptCode = queryParams.get('deptCode');
+  const queryBaseYear = queryParams.get('baseYear');
+  const queryBasePlanType = queryParams.get('basePlanType');
+  const queryBaseMonthMode = queryParams.get('baseMonthMode') as MonthMode | null;
+  const queryBaseMonth = queryParams.get('baseMonth');
+  const queryTargetYear = queryParams.get('targetYear');
+  const queryTargetPlanType = queryParams.get('targetPlanType');
+  const queryTargetMonthMode = queryParams.get('targetMonthMode') as MonthMode | null;
+  const queryTargetMonth = queryParams.get('targetMonth');
+  const source = queryParams.get('source');
+  const fromDashboardTop6 = source === 'dashboard-top6';
+
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+
   useEffect(() => {
+    if (queryBaseYear) setBaseYear(queryBaseYear);
+    if (queryBasePlanType) setBasePlanType(normalizePlanType(queryBasePlanType));
+    if (queryBaseMonthMode === 'MONTH' || queryBaseMonthMode === 'YTD') {
+      setBaseMonthMode(queryBaseMonthMode);
+    }
+    if (queryBaseMonth) {
+      setBaseSelectedMonth(Number(queryBaseMonth));
+    }
+
+    if (queryTargetYear) setTargetYear(queryTargetYear);
+    if (queryTargetPlanType) setTargetPlanType(normalizePlanType(queryTargetPlanType));
+    if (queryTargetMonthMode === 'MONTH' || queryTargetMonthMode === 'YTD') {
+      setTargetMonthMode(queryTargetMonthMode);
+    }
+    if (queryTargetMonth) {
+      setTargetSelectedMonth(Number(queryTargetMonth));
+    }
+
+    if (queryDeptCode) {
+      const hasPermission = isAdmin || isPlanningTeam || (
+        viewableDeptCodes instanceof Set 
+          ? viewableDeptCodes.has(queryDeptCode) 
+          : Array.isArray(viewableDeptCodes) 
+            ? (viewableDeptCodes as string[]).includes(queryDeptCode) 
+            : false
+      );
+
+      if (hasPermission) {
+        setSelectedDept(queryDeptCode);
+        setPermissionError(null);
+      } else {
+        setSelectedDept(getUserInitDept());
+        setPermissionError('해당 부서에 대한 조회 권한이 없어 기본 조회 부서로 이동했습니다.');
+      }
+      setSelectedDepartment(null);
+      return;
+    }
+
     if (tab === 'time') {
       setSelectedDept('all');
       setBasePlanType('경영계획');
@@ -78,7 +131,7 @@ export default function VarianceComparison() {
       setTargetPlanType('실적');
     }
     setSelectedDepartment(null);
-  }, [tab, currentUser]);
+  }, [location.search, currentUser]);
 
   useEffect(() => {
     if (selectedDept !== 'by_dept') {
@@ -1039,8 +1092,12 @@ export default function VarianceComparison() {
             if (activeDept === 'sga' && accType !== '판관') return;
             if (activeDept === 'viewable') {
               if (!viewableDeptCodes.has(effectiveDeptCode)) return;
-            } else if (activeDept !== 'all' && activeDept !== 'by_dept' && activeDept !== 'mfg' && activeDept !== 'sga' && effectiveDeptCode !== activeDept) {
-              return;
+            } else if (activeDept !== 'all' && activeDept !== 'by_dept' && activeDept !== 'mfg' && activeDept !== 'sga') {
+              const groupCodes = getDeptCodesByGroup(activeDept);
+              const isMatch = groupCodes.length > 0 
+                ? groupCodes.includes(effectiveDeptCode) 
+                : effectiveDeptCode === activeDept;
+              if (!isMatch) return;
             }
 
             // Period filter
@@ -1115,8 +1172,12 @@ export default function VarianceComparison() {
               if (activeDept === 'sga' && accType !== '판관') return;
               if (activeDept === 'viewable') {
                 if (!viewableDeptCodes.has(rowDeptCode)) return;
-              } else if (activeDept !== 'all' && activeDept !== 'by_dept' && activeDept !== 'mfg' && activeDept !== 'sga' && rowDeptCode !== activeDept) {
-                return;
+              } else if (activeDept !== 'all' && activeDept !== 'by_dept' && activeDept !== 'mfg' && activeDept !== 'sga') {
+                const groupCodes = getDeptCodesByGroup(activeDept);
+                const isMatch = groupCodes.length > 0 
+                  ? groupCodes.includes(rowDeptCode) 
+                  : rowDeptCode === activeDept;
+                if (!isMatch) return;
               }
 
               const catName = accountToCategoryNameMap.get(row.code);
@@ -1392,6 +1453,26 @@ export default function VarianceComparison() {
         </p>
       </div>
 
+      {fromDashboardTop6 && queryDeptCode && !permissionError && (
+        <div className="rounded-xl border border-teal-200 bg-[#f0f9f8] px-4 py-3 text-xs text-[#008f83] flex items-center justify-between">
+          <span>
+            운영 대시보드 Top 6에서 이동했습니다. 
+            <strong className="ml-2 text-zinc-900 bg-white px-2 py-0.5 rounded border border-[#dde5de] font-sans">
+              {getDeptName()} ({queryDeptCode}) · {baseYear}년 1월~{baseSelectedMonth}월 경영계획 대비 실적
+            </strong>
+          </span>
+        </div>
+      )}
+
+      {permissionError && (
+        <div className="rounded-xl border border-rose-250 bg-rose-50 px-4 py-3 text-xs text-rose-800 flex items-center justify-between">
+          <span>{permissionError}</span>
+          <button onClick={() => setPermissionError(null)} className="text-rose-500 hover:text-rose-700 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Elegant Nav Tabs */}
       <div className="flex border-b border-lithium-200 gap-2">
         <button
@@ -1542,6 +1623,10 @@ export default function VarianceComparison() {
               {viewableDepts.length > 0 && (
                 <option value="viewable">조회 가능 부서</option>
               )}
+              {/* Active Department Groups */}
+              {getDeptGroups().filter(g => g.isActive !== false).map(grp => (
+                <option key={grp.id} value={grp.id}>[그룹] {grp.name}</option>
+              ))}
               {viewableDepts.filter(d => d.code !== '99999').map(dept => (
                 <option key={dept.code} value={dept.code}>{dept.name}</option>
               ))}
