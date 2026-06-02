@@ -82,6 +82,7 @@ export default function VarianceComparison() {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const tab = queryParams.get('tab') || 'default';
+  const isDeptComparisonMode = tab === 'dept' || selectedDept === 'by_dept';
 
   const queryDeptCode = queryParams.get('deptCode');
   const queryBaseYear = queryParams.get('baseYear');
@@ -978,7 +979,8 @@ export default function VarianceComparison() {
     await ensureXLSX();
     const wb = XLSX.utils.book_new();
 
-    const deptDetailRows = buildDeptDetailComparisonRows(deptCodes);
+    const deptDetailRowsRaw = buildDeptDetailComparisonRows(deptCodes);
+    const deptDetailRows = applySalaryVisibilityFilter(deptDetailRowsRaw);
 
     // 1. 전체 요약 시트
     if (includeSummarySheet) {
@@ -991,8 +993,7 @@ export default function VarianceComparison() {
         const dept = allDepts.find(d => d.code === deptCode);
         const deptName = dept?.name || deptCode;
 
-        const rowsRaw = deptDetailRows.filter(row => row.deptCode === deptCode);
-        const rows = applySalaryVisibilityFilter(rowsRaw);
+        const rows = deptDetailRows.filter(row => row.deptCode === deptCode);
 
         if (rows.length > 0) {
           appendDeptDetailSheet(wb, deptCode, deptName, rows);
@@ -1843,40 +1844,91 @@ export default function VarianceComparison() {
               보고서 다운로드
             </button>
             {showDownloadMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-lithium-200 overflow-hidden z-20">
-                <button
-                  onClick={() => {
-                    setShowDownloadMenu(false);
-                    if (selectedDept === 'by_dept') {
-                      const defaultDeptCodes = getReportAvailableDeptCodes();
-                      setSelectedReportDeptCodes(defaultDeptCodes);
-                      setIncludeAllReportDepts(true);
-                      setIncludeSummarySheet(true);
-                      setIncludeDetailSheets(true);
-                      setIncludeGroupSheets(true);
-                      setIsReportModalOpen(true);
-                    } else {
-                      handleDownloadExcel();
-                    }
-                  }}
-                  className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3"
-                >
-                  <FileSpreadsheet className="w-5 h-5 text-green-600" />
-                  Excel 다운로드
-                </button>
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-lithium-200 overflow-hidden z-20">
+                {isDeptComparisonMode ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setShowDownloadMenu(false);
+                        const defaultDeptCodes = getReportAvailableDeptCodes();
+                        setSelectedReportDeptCodes(defaultDeptCodes);
+                        setIncludeAllReportDepts(true);
+                        setIncludeSummarySheet(true);
+                        setIncludeDetailSheets(true);
+                        setIncludeGroupSheets(true);
+                        setIsReportModalOpen(true);
+                      }}
+                      className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex flex-col justify-start gap-0.5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="w-5 h-5 text-green-600 flex-shrink-0" />
+                        <span className="font-bold">전체/부서별/그룹 상세 다운로드</span>
+                      </div>
+                      <span className="text-[10px] text-text-tertiary ml-8 leading-tight">전체 요약, 개별 부서별 상세, 부서 그룹별 상세 시트 통합 다운로드</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDownloadMenu(false);
+                        handleDownloadExcel();
+                      }}
+                      className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex flex-col justify-start gap-0.5 border-t border-lithium-100 bg-zinc-50/50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="w-5 h-5 text-zinc-500 flex-shrink-0" />
+                        <span className="text-zinc-700 font-semibold">현재 화면 1시트 다운로드</span>
+                      </div>
+                      <span className="text-[10px] text-text-tertiary ml-8 leading-tight">현재 테이블 조회 상태 그대로 단일 시트 다운로드</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => {
+                        setShowDownloadMenu(false);
+                        handleDownloadExcel();
+                      }}
+                      className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex flex-col justify-start gap-0.5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="w-5 h-5 text-green-600 flex-shrink-0" />
+                        <span className="font-bold">현재 화면 1시트 다운로드</span>
+                      </div>
+                      <span className="text-[10px] text-text-tertiary ml-8 leading-tight">현재 테이블 조회 상태 그대로 단일 시트 다운로드</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDownloadMenu(false);
+                        const defaultDeptCodes = getReportAvailableDeptCodes();
+                        setSelectedReportDeptCodes(defaultDeptCodes);
+                        setIncludeAllReportDepts(true);
+                        setIncludeSummarySheet(true);
+                        setIncludeDetailSheets(true);
+                        setIncludeGroupSheets(true);
+                        setIsReportModalOpen(true);
+                      }}
+                      className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex flex-col justify-start gap-0.5 border-t border-lithium-100 bg-zinc-50/50 hover:bg-lithium-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="w-5 h-5 text-zinc-500 flex-shrink-0" />
+                        <span className="text-zinc-700 font-semibold">전체/부서별/그룹 상세 다운로드</span>
+                      </div>
+                      <span className="text-[10px] text-text-tertiary ml-8 leading-tight">전체 요약, 개별 부서별 상세, 부서 그룹별 상세 시트 통합 다운로드</span>
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={() => { setShowDownloadMenu(false); handleDownloadPPT(); }}
                   className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
                 >
-                  <Presentation className="w-5 h-5 text-cobalt-600" />
-                  PPT 다운로드
+                  <Presentation className="w-5 h-5 text-cobalt-600 flex-shrink-0" />
+                  <span className="font-semibold">PPT 다운로드</span>
                 </button>
                 <button
                   onClick={() => { setShowDownloadMenu(false); handleDownloadPDF(); }}
                   className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
                 >
-                  <FileText className="w-5 h-5 text-red-500" />
-                  PDF 다운로드
+                  <FileText className="w-5 h-5 text-red-500 flex-shrink-0" />
+                  <span className="font-semibold">PDF 다운로드</span>
                 </button>
               </div>
             )}
