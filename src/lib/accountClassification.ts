@@ -15,12 +15,13 @@ export type AccountClass =
   | '통신비'
   | '유틸리티비'
   | '세금과공과'
-  | '지급수수료류'
+  | '지급수수료'
   | '판매비'
   | '임차·보험·차량'
   | '교육·협회'
   | '소모품·피복·도서'
-  | '안전·환경·품질'
+  | '안전·환경'
+  | '품질관리비'
   | '투자'
   | '기타';
 
@@ -37,12 +38,13 @@ export const ACCOUNT_CLASS_OPTIONS: AccountClass[] = [
   '통신비',
   '유틸리티비',
   '세금과공과',
-  '지급수수료류',
+  '지급수수료',
   '판매비',
   '임차·보험·차량',
   '교육·협회',
   '소모품·피복·도서',
-  '안전·환경·품질',
+  '안전·환경',
+  '품질관리비',
   '투자',
   '기타',
 ];
@@ -141,11 +143,23 @@ export function classifyAccount(accountCode?: string, accountName?: string): Acc
   }
 
   if (
+    name.includes('품질관리비') ||
+    name.includes('품질검사') ||
+    name.includes('분석수수료') ||
+    name.includes('시험분석')
+  ) {
+    return '품질관리비';
+  }
+
+  if (
     name.includes('안전관리비') ||
     name.includes('환경관리비') ||
-    name.includes('품질관리비')
+    name.includes('산업안전') ||
+    name.includes('폐기물') ||
+    name.includes('대기환경') ||
+    name.includes('수질환경')
   ) {
-    return '안전·환경·품질';
+    return '안전·환경';
   }
 
   if (
@@ -192,7 +206,7 @@ export function classifyAccount(accountCode?: string, accountName?: string): Acc
     name.includes('담보설정수수료') ||
     name.includes('경영관리비')
   ) {
-    return '지급수수료류';
+    return '지급수수료';
   }
 
   if (
@@ -262,4 +276,33 @@ export function classifyAccount(accountCode?: string, accountName?: string): Acc
   }
 
   return '기타';
+}
+
+export function isSalaryAccountRow(row: {
+  accountCode?: string;
+  accountName?: string;
+  accountClass?: string;
+}): boolean {
+  const code = String(row.accountCode || '').trim();
+  const name = String(row.accountName || '').replace(/\s+/g, '');
+  const accountClass = String(row.accountClass || '');
+
+  if (accountClass === '직원급여' || accountClass === '임원급여') return true;
+
+  return [
+    '급여',
+    '임금',
+    '상여',
+    '성과금',
+    '퇴직금',
+    '퇴직급여',
+    '퇴직급여충당',
+    '직책수당',
+    '임원활동수당',
+    '기타수당',
+    '시간외수당',
+    '연차수당',
+    '휴일근무수당',
+    '조정수당',
+  ].some(keyword => name.includes(keyword));
 }

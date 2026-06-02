@@ -1,23 +1,45 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Minus, Download, FileSpreadsheet, Presentation, FileText, X } from 'lucide-react';
-import * as XLSX from 'xlsx-js-style';
-import pptxgen from 'pptxgenjs';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Minus, Download, FileSpreadsheet, Presentation, FileText, X, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, readBudgetData } from '../lib/storageKeys';
-import { getDeptGroups, getDeptCodesByGroup } from '../lib/departmentGroups';
+import { getDeptGroups, getDeptCodesByGroup, DeptGroup } from '../lib/departmentGroups';
 import { normalizePlanType } from '../lib/planTypes';
 import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
-import { resolveAccountByCode } from '../lib/accountResolver';
-import { classifyAccount, ACCOUNT_CLASS_OPTIONS, ACCOUNTING_TYPE_OPTIONS, AccountClass, AccountingType, getAccountingType } from '../lib/accountClassification';
+import { classifyAccount, ACCOUNT_CLASS_OPTIONS, ACCOUNTING_TYPE_OPTIONS, AccountClass, AccountingType, getAccountingType, isSalaryAccountRow } from '../lib/accountClassification';
 import { isInvestmentAccount } from '../lib/accountMaster';
+import { resolveAccountByCode } from '../lib/accountResolver';
 import { ChartCard } from '../components/charts/ChartCard';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } from '../lib/monthFilter';
+
+import { buildAccountMetaIndex, AccountMeta } from '../lib/varianceAccountIndex';
+import { loadActualRows, loadBudgetRowsByDept } from '../lib/varianceDataLoader';
+import { buildAtomicCompareRows, buildVarianceComparison, resolveSelectedDeptCodes, AtomicCompareRow as EngineAtomicCompareRow, getVarianceStatus, VarianceStatus } from '../lib/varianceEngine';
+
+let cachedPretendardBase64: string | null = null;
+let XLSX: any = null;
+
+const getStatusBadgeStyle = (status: VarianceStatus) => {
+  switch (status) {
+    case '미계획':
+      return 'text-[#0369a1] bg-[#f0f9ff] border border-[#bae6fd]';
+    case '미발생':
+      return 'text-[#c2410c] bg-[#fff7ed] border border-[#fed7aa]';
+    case '증가':
+      return 'text-[#b91c1c] bg-[#fef2f2] border border-[#fecaca]';
+    case '감소':
+      return 'text-[#15803d] bg-[#f0fdf4] border border-[#bbf7d0]';
+    case '변동없음':
+      return 'text-[#4b5563] bg-[#f3f4f6]';
+    case '사라짐':
+      return 'text-[#4b5563] bg-[#f3f4f6] border border-[#d1d5db]';
+    default:
+      return 'bg-lithium-100 text-text-secondary';
+  }
+};
 
 export default function VarianceComparison() {
   const { currentUser, isAdmin, isPlanningTeam, hasSalaryAccess, viewableDeptCodes, viewableDepts } = usePermission();
@@ -151,10 +173,76 @@ export default function VarianceComparison() {
     localStorage.removeItem('variance_accountCategory');
   }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, selectedDept, selectedAccountingType, selectedAccountClass]);
   
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [comparisonRows, setComparisonRows] = useState<any[]>([]);
+  // Redesign state variables for Top N filtering, viewing, and collapsible chart
+  const [chartTopN, setChartTopN] = useState<number>(20);
+  const [chartAccountView, setChartAccountView] = useState<'ALL' | 'MFG' | 'SGA' | 'CLASS'>('ALL');
+  const [chartAccountClass, setChartAccountClass] = useState<AccountClass>('전체');
+  const [isAccountChartOpen, setIsAccountChartOpen] = useState<boolean>(true);
+  const [applyChartFilterToTable, setApplyChartFilterToTable] = useState<boolean>(true);
+  const [visibleDetailCount, setVisibleDetailCount] = useState<number>(100);
+  const [isFullAccountModalOpen, setIsFullAccountModalOpen] = useState<boolean>(false);
+
+  type DetailSortKey =
+    | 'accountClass'
+    | 'accountingType'
+    | 'accountCode'
+    | 'accountName'
+    | 'baseAmount'
+    | 'targetAmount'
+    | 'variance'
+    | 'variancePercent'
+    | 'status';
+
+  const [detailSort, setDetailSort] = useState<{ key: DetailSortKey; direction: 'asc' | 'desc' } | null>({
+    key: 'variance',
+    direction: 'desc',
+  });
+
+  const [detailFilters, setDetailFilters] = useState({
+    accountClass: '',
+    accountingType: '',
+    accountCode: '',
+    accountName: '',
+    status: '',
+    minVariance: '',
+    minAmount: '',
+  });
+
+  const QUICK_ACCOUNT_CLASSES: AccountClass[] = [
+    '직원급여',
+    '임원급여',
+    '복리후생비',
+    '수선비',
+    '여비교통비',
+    '업무활동경비',
+    '유틸리티비',
+    '지급수수료',
+    '판매비',
+    '기타',
+  ];
+
+  function shortenAccountName(name: string, max = 22) {
+    if (!name) return '';
+    return name.length > max ? `${name.slice(0, max)}…` : name;
+  }
+
+  const handleSort = (key: DetailSortKey) => {
+    setDetailSort(prev => {
+      if (prev?.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'desc' };
+    });
+    setVisibleDetailCount(100);
+  };
+
+  const renderSortArrow = (key: DetailSortKey) => {
+    if (detailSort?.key !== key) return <span className="text-zinc-300 ml-1 font-mono">↕</span>;
+    return detailSort.direction === 'asc' ? <span className="text-[#008f83] ml-1 font-mono">▲</span> : <span className="text-[#008f83] ml-1 font-mono">▼</span>;
+  };
+
   const [selectedDepartment, setSelectedDepartment] = useState<{ departmentCode: string, departmentName: string } | null>(null);
-  const [selectedDeptDetails, setSelectedDeptDetails] = useState<any[]>([]);
+  const [includeSalaryRows, setIncludeSalaryRows] = useState(false);
   const [categories, setCategories] = useState<any[]>(INITIAL_CATEGORIES);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
@@ -163,12 +251,7 @@ export default function VarianceComparison() {
   const [includeAllReportDepts, setIncludeAllReportDepts] = useState(true);
   const [includeSummarySheet, setIncludeSummarySheet] = useState(true);
   const [includeDetailSheets, setIncludeDetailSheets] = useState(true);
-  const [summaryTotals, setSummaryTotals] = useState({
-    baseMfg: 0,
-    baseSga: 0,
-    targetMfg: 0,
-    targetSga: 0
-  });
+  const [includeGroupSheets, setIncludeGroupSheets] = useState(true);
 
   const baseName = `${baseYear} ${basePlanType} (${getMonthModeLabel(baseMonthMode, baseSelectedMonth)})`;
   const targetName = `${targetYear} ${targetPlanType} (${getMonthModeLabel(targetMonthMode, targetSelectedMonth)})`;
@@ -221,6 +304,7 @@ export default function VarianceComparison() {
     accountingType: string;
     accountClass: string;
     amount: number;
+    isSalary?: boolean;
   }
 
   const getAtomicCompareRows = (
@@ -275,12 +359,6 @@ export default function VarianceComparison() {
         const monthIndex = parseMonthIndex(periodStr);
         if (!shouldIncludeMonth(monthIndex, periodMode, periodSelectedMonth)) return;
 
-        const catName = accountToCategoryNameMap.get(item.accountCode);
-        if (!hasSalaryAccess) {
-          if (catName && SALARY_CATEGORIES.includes(catName)) return;
-          if (salaryAccountCodes.has(item.accountCode)) return;
-        }
-
         const resolvedAccount = resolveAccountByCode({
           accountCode: item.accountCode,
           uploadedName: item.accountName,
@@ -288,6 +366,16 @@ export default function VarianceComparison() {
         });
 
         const accountName = resolvedAccount.name;
+
+        const isSalary = isSalaryAccountRow({
+          accountCode: item.accountCode,
+          accountName,
+          accountClass: classifyAccount(item.accountCode, accountName),
+        });
+
+        if (!hasSalaryAccess || !includeSalaryRows) {
+          if (isSalary) return;
+        }
 
         if (selectedAccountingType !== '전체') {
           if (getAccountingType(item.accountCode, accountName) !== selectedAccountingType) return;
@@ -308,6 +396,7 @@ export default function VarianceComparison() {
           accountingType: getAccountingType(item.accountCode, accountName),
           accountClass: classifyAccount(item.accountCode, accountName),
           amount,
+          isSalary,
         });
       });
 
@@ -336,12 +425,6 @@ export default function VarianceComparison() {
         const attributedDeptCode = row.attributedDeptCode || deptCode;
         if (!deptCodes.includes(attributedDeptCode)) return;
 
-        const catName = accountToCategoryNameMap.get(row.code);
-        if (!hasSalaryAccess) {
-          if (catName && SALARY_CATEGORIES.includes(catName)) return;
-          if (salaryAccountCodes.has(row.code)) return;
-        }
-
         const resolvedAccount = resolveAccountByCode({
           accountCode: row.code,
           uploadedName: row.name,
@@ -349,6 +432,16 @@ export default function VarianceComparison() {
         });
 
         const accountName = resolvedAccount.name;
+
+        const isSalary = isSalaryAccountRow({
+          accountCode: row.code,
+          accountName,
+          accountClass: classifyAccount(row.code, accountName),
+        });
+
+        if (!hasSalaryAccess || !includeSalaryRows) {
+          if (isSalary) return;
+        }
 
         if (selectedAccountingType !== '전체') {
           if (getAccountingType(row.code, accountName) !== selectedAccountingType) return;
@@ -376,6 +469,7 @@ export default function VarianceComparison() {
           accountingType: getAccountingType(row.code, accountName),
           accountClass: classifyAccount(row.code, accountName),
           amount,
+          isSalary,
         });
       });
     });
@@ -394,7 +488,8 @@ export default function VarianceComparison() {
     targetAmount: number;
     variance: number;
     variancePercent: number;
-    status: '증가' | '감소' | '동일' | '신규' | '사라짐';
+    status: VarianceStatus;
+    isSalary?: boolean;
   }
 
   const buildDeptDetailComparisonRows = (deptCodes: string[]): DeptDetailCompareRow[] => {
@@ -449,12 +544,12 @@ export default function VarianceComparison() {
       const variance = targetAmount - baseAmount;
       const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
 
-      const status: '신규' | '사라짐' | '증가' | '감소' | '동일' =
-        baseAmount === 0 && targetAmount > 0 ? '신규' :
-        baseAmount > 0 && targetAmount === 0 ? '사라짐' :
-        variance > 0 ? '증가' :
-        variance < 0 ? '감소' :
-        '동일';
+      const status = getVarianceStatus({
+        baseAmount,
+        targetAmount,
+        basePlanType,
+        targetPlanType,
+      });
 
       return {
         deptCode: src.deptCode,
@@ -468,6 +563,7 @@ export default function VarianceComparison() {
         variance,
         variancePercent,
         status,
+        isSalary: src.isSalary,
       };
     })
     .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
@@ -485,6 +581,11 @@ export default function VarianceComparison() {
 
   const getDeptSheetName = (deptCode: string, deptName: string): string => {
     return safeSheetName(`${deptCode}_${deptName}`);
+  };
+
+  const getGroupSheetName = (group: DeptGroup): string => {
+    const representativeCode = group.deptCodes?.[0] || group.id;
+    return safeSheetName(`그룹_${representativeCode}_${group.name}`);
   };
 
   const EXCEL_HEADER_FILL = 'DAEEF3';
@@ -526,7 +627,7 @@ export default function VarianceComparison() {
   };
 
   const applyWorksheetStyle = (
-    ws: XLSX.WorkSheet,
+    ws: any,
     options: {
       amountColumnIndexes?: number[];
       percentColumnIndexes?: number[];
@@ -572,7 +673,7 @@ export default function VarianceComparison() {
     }
   };
 
-  const applyWorksheetView = (ws: XLSX.WorkSheet) => {
+  const applyWorksheetView = (ws: any) => {
     if (!ws['!ref']) return;
 
     ws['!autofilter'] = { ref: ws['!ref'] };
@@ -587,7 +688,7 @@ export default function VarianceComparison() {
   };
 
   const appendSummarySheet = (
-    wb: XLSX.WorkBook,
+    wb: any,
     rows: DeptDetailCompareRow[],
     deptCodes: string[]
   ) => {
@@ -613,7 +714,7 @@ export default function VarianceComparison() {
     });
 
     const data: any[] = [
-      ['부서코드', '부서명', '기준 금액', '비교 금액', '차액', '증감률(%)', '상태'],
+      ['부서코드', '부서명', baseName, targetName, '차액', '증감률(%)', '상태'],
     ];
 
     Array.from(summaryByDept.values())
@@ -622,12 +723,12 @@ export default function VarianceComparison() {
         const variance = row.targetAmount - row.baseAmount;
         const variancePercent = row.baseAmount === 0 ? 0 : variance / row.baseAmount;
 
-        const status =
-          row.baseAmount === 0 && row.targetAmount > 0 ? '신규' :
-          row.baseAmount > 0 && row.targetAmount === 0 ? '사라짐' :
-          variance > 0 ? '증가' :
-          variance < 0 ? '감소' :
-          '동일';
+        const status = getVarianceStatus({
+          baseAmount: row.baseAmount,
+          targetAmount: row.targetAmount,
+          basePlanType,
+          targetPlanType,
+        });
 
         data.push([
           row.deptCode,
@@ -664,7 +765,7 @@ export default function VarianceComparison() {
   };
 
   const appendDeptDetailSheet = (
-    wb: XLSX.WorkBook,
+    wb: any,
     deptCode: string,
     deptName: string,
     rows: DeptDetailCompareRow[]
@@ -677,8 +778,8 @@ export default function VarianceComparison() {
         '회계 구분',
         '계정코드',
         '계정명',
-        '기준 금액',
-        '비교 금액',
+        baseName,
+        targetName,
         '차액',
         '증감률(%)',
         '상태',
@@ -748,7 +849,133 @@ export default function VarianceComparison() {
     XLSX.utils.book_append_sheet(wb, ws, getDeptSheetName(deptCode, deptName));
   };
 
-  const handleDownloadExcelWithDeptDetails = (deptCodes: string[]) => {
+  function applySalaryVisibilityFilter<T extends { isSalary?: boolean }>(rows: T[]): T[] {
+    if (hasSalaryAccess && includeSalaryRows) return rows;
+    return rows.filter(row => !row.isSalary);
+  }
+
+  function aggregateGroupRowsByAccount(rows: DeptDetailCompareRow[]): DeptDetailCompareRow[] {
+    const map = new Map<string, DeptDetailCompareRow>();
+
+    rows.forEach(row => {
+      const key = `${row.accountCode}|${row.accountName}`;
+      const prev = map.get(key);
+
+      if (prev) {
+        prev.baseAmount += row.baseAmount;
+        prev.targetAmount += row.targetAmount;
+        prev.variance = prev.targetAmount - prev.baseAmount;
+        prev.variancePercent = prev.baseAmount === 0 ? 0 : (prev.variance / prev.baseAmount) * 100;
+        prev.status = getVarianceStatus({
+          baseAmount: prev.baseAmount,
+          targetAmount: prev.targetAmount,
+          basePlanType,
+          targetPlanType,
+        });
+      } else {
+        map.set(key, { ...row });
+      }
+    });
+
+    return Array.from(map.values())
+      .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
+      .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+  }
+
+  const appendGroupDetailSheet = (
+    wb: any,
+    group: DeptGroup,
+    deptCodes: string[],
+    rows: DeptDetailCompareRow[]
+  ) => {
+    const aggregatedRows = aggregateGroupRowsByAccount(rows);
+
+    const data: any[] = [
+      [
+        '그룹명',
+        '포함 부서코드',
+        '비용 성격',
+        '회계 구분',
+        '계정코드',
+        '계정명',
+        baseName,
+        targetName,
+        '차액',
+        '증감률(%)',
+        '상태',
+      ],
+    ];
+
+    aggregatedRows.forEach(row => {
+      data.push([
+        group.name,
+        deptCodes.join(', '),
+        row.accountClass,
+        row.accountingType,
+        row.accountCode,
+        row.accountName,
+        row.baseAmount,
+        row.targetAmount,
+        row.variance,
+        row.variancePercent / 100,
+        row.status,
+      ]);
+    });
+
+    const totalBase = aggregatedRows.reduce((sum, row) => sum + row.baseAmount, 0);
+    const totalTarget = aggregatedRows.reduce((sum, row) => sum + row.targetAmount, 0);
+    const totalVariance = totalTarget - totalBase;
+    const totalVariancePercent = totalBase === 0 ? 0 : totalVariance / totalBase;
+
+    data.push([]);
+    data.push([
+      group.name,
+      deptCodes.join(', '),
+      '',
+      '',
+      '',
+      '그룹 합계',
+      totalBase,
+      totalTarget,
+      totalVariance,
+      totalVariancePercent,
+      '',
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+
+    ws['!cols'] = [
+      { wch: 18 },
+      { wch: 36 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 34 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 12 },
+    ];
+
+    applyWorksheetStyle(ws, {
+      amountColumnIndexes: [6, 7, 8],
+      percentColumnIndexes: [9],
+      leftAlignColumnIndexes: [0, 1, 5],
+    });
+
+    applyWorksheetView(ws);
+    XLSX.utils.book_append_sheet(wb, ws, getGroupSheetName(group));
+  };
+
+  const ensureXLSX = async () => {
+    if (!XLSX) {
+      XLSX = await import('xlsx-js-style');
+    }
+  };
+
+  const handleDownloadExcelWithDeptDetails = async (deptCodes: string[]) => {
+    await ensureXLSX();
     const wb = XLSX.utils.book_new();
 
     const deptDetailRows = buildDeptDetailComparisonRows(deptCodes);
@@ -764,7 +991,8 @@ export default function VarianceComparison() {
         const dept = allDepts.find(d => d.code === deptCode);
         const deptName = dept?.name || deptCode;
 
-        const rows = deptDetailRows.filter(row => row.deptCode === deptCode);
+        const rowsRaw = deptDetailRows.filter(row => row.deptCode === deptCode);
+        const rows = applySalaryVisibilityFilter(rowsRaw);
 
         if (rows.length > 0) {
           appendDeptDetailSheet(wb, deptCode, deptName, rows);
@@ -772,27 +1000,50 @@ export default function VarianceComparison() {
       });
     }
 
+    // 3. 부서 그룹 상세 시트
+    const isFullDeptDownload =
+      includeAllReportDepts ||
+      selectedReportDeptCodes.length === getReportAvailableDeptCodes().length;
+
+    if (isFullDeptDownload && includeGroupSheets) {
+      const activeGroups = getDeptGroups().filter(group => group.isActive !== false);
+
+      activeGroups.forEach(group => {
+        const groupDeptCodes = getDeptCodesByGroup(group.id, true);
+
+        if (groupDeptCodes.length === 0) return;
+
+        const groupRowsRaw = buildDeptDetailComparisonRows(groupDeptCodes);
+        const groupRows = applySalaryVisibilityFilter(groupRowsRaw);
+
+        if (groupRows.length > 0) {
+          appendGroupDetailSheet(wb, group, groupDeptCodes, groupRows);
+        }
+      });
+    }
+
     XLSX.writeFile(wb, getReportFileName('xlsx'));
   };
 
-  const handleDownloadExcel = () => {
+  const handleDownloadExcel = async () => {
+    await ensureXLSX();
     const wb = XLSX.utils.book_new();
-    
+
     const excelData: any[] = [];
-    
+
     excelData.push([
       '비용 성격',
       '회계 구분',
       '계정코드',
       '계정명',
-      '기준 금액',
-      '비교 금액',
+      baseName,
+      targetName,
       '차액',
       '증감률(%)',
       '상태'
     ]);
-    
-    comparisonRows.forEach(row => {
+
+    salaryFilteredComparisonRows.forEach(row => {
       excelData.push([
         row.accountClass,
         row.accountingType,
@@ -806,22 +1057,35 @@ export default function VarianceComparison() {
       ]);
     });
 
-    // Requirement 1: Add summary totals (Mfg, SGA, Total) to the end of Excel
-    const mfgVar = summaryTotals.targetMfg - summaryTotals.baseMfg;
-    const mfgVarPct = summaryTotals.baseMfg === 0 ? 0 : (mfgVar / summaryTotals.baseMfg) * 100;
-    
-    const sgaVar = summaryTotals.targetSga - summaryTotals.baseSga;
-    const sgaVarPct = summaryTotals.baseSga === 0 ? 0 : (sgaVar / summaryTotals.baseSga) * 100;
-    
-    // Compute directly inside function to avoid stale closures
-    const excelTotalBase = chartData.reduce((sum, item) => sum + (item[baseName] || 0), 0);
-    const excelTotalTarget = chartData.reduce((sum, item) => sum + (item[targetName] || 0), 0);
+    let excelBaseMfg = 0;
+    let excelTargetMfg = 0;
+    let excelBaseSga = 0;
+    let excelTargetSga = 0;
+
+    salaryFilteredComparisonRows.forEach(row => {
+      if (row.accountingType === '제조') {
+        excelBaseMfg += row.baseAmount;
+        excelTargetMfg += row.targetAmount;
+      } else if (row.accountingType === '판관') {
+        excelBaseSga += row.baseAmount;
+        excelTargetSga += row.targetAmount;
+      }
+    });
+
+    const mfgVar = excelTargetMfg - excelBaseMfg;
+    const mfgVarPct = excelBaseMfg === 0 ? 0 : (mfgVar / excelBaseMfg) * 100;
+
+    const sgaVar = excelTargetSga - excelBaseSga;
+    const sgaVarPct = excelBaseSga === 0 ? 0 : (sgaVar / excelBaseSga) * 100;
+
+    const excelTotalBase = excelBaseMfg + excelBaseSga;
+    const excelTotalTarget = excelTargetMfg + excelTargetSga;
     const totalVar = excelTotalTarget - excelTotalBase;
     const totalVarPct = excelTotalBase === 0 ? 0 : (totalVar / excelTotalBase) * 100;
 
     excelData.push([]); // Empty row for spacing
-    excelData.push(['', '', '', '제조 합계', summaryTotals.baseMfg, summaryTotals.targetMfg, mfgVar, mfgVarPct.toFixed(2) + '%', '']);
-    excelData.push(['', '', '', '판관 합계', summaryTotals.baseSga, summaryTotals.targetSga, sgaVar, sgaVarPct.toFixed(2) + '%', '']);
+    excelData.push(['', '', '', '제조 합계', excelBaseMfg, excelTargetMfg, mfgVar, mfgVarPct.toFixed(2) + '%', '']);
+    excelData.push(['', '', '', '판관 합계', excelBaseSga, excelTargetSga, sgaVar, sgaVarPct.toFixed(2) + '%', '']);
     excelData.push(['', '', '', '총 합계', excelTotalBase, excelTotalTarget, totalVar, totalVarPct.toFixed(2) + '%', '']);
 
     const ws = XLSX.utils.aoa_to_sheet(excelData);
@@ -850,7 +1114,8 @@ export default function VarianceComparison() {
     XLSX.writeFile(wb, getDownloadFileName('xlsx'));
   };
 
-  const handleDownloadPPT = () => {
+  const handleDownloadPPT = async () => {
+    const pptxgen = (await import('pptxgenjs')).default;
     const pres = new pptxgen();
     
     const slide1 = pres.addSlide();
@@ -902,7 +1167,7 @@ export default function VarianceComparison() {
         { text: '증감률(%)', options: { fill: 'f9fafb', bold: true } }
       ];
 
-      comparisonRows.forEach(row => {
+      salaryFilteredComparisonRows.forEach(row => {
         tableRows.push([
           row.accountCode || '',
           row.accountName,
@@ -927,6 +1192,8 @@ export default function VarianceComparison() {
   };
 
   const handleDownloadPDF = async () => {
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
     const doc = new jsPDF('landscape');
     
     try {
@@ -979,7 +1246,7 @@ export default function VarianceComparison() {
     } else {
       head = [['계정코드', '계정명', baseName, targetName, '차액', '증감률(%)']];
       
-      comparisonRows.forEach(row => {
+      salaryFilteredComparisonRows.forEach(row => {
         body.push([
           row.accountCode || '',
           row.accountName,
@@ -1032,395 +1299,307 @@ export default function VarianceComparison() {
     setCollapsedCategories(newCollapsed);
   };
 
-  useEffect(() => {
-    // Helper function to get aggregated data for a specific year and plan type
-    const getAggregatedData = (year: string, planType: string, periodMode: MonthMode, periodSelectedMonth: number, deptOverride?: string) => {
-      const aggregated = new Map<string, { name: string, total: number }>();
-      let mfgTotal = 0;
-      let sgaTotal = 0;
+  const accountMetaMap = useMemo(() => {
+    const actualRows = loadActualRows(baseYear).concat(loadActualRows(targetYear));
+    const budgetRowsByDept = new Map<string, any[]>();
+    const deptCodes = allDepts.map(d => d.code);
 
-      const viewableDeptCodes = new Set(viewableDepts.map(d => d.code));
-
-      const accountCategoryMap = new Map<string, string>();
-      const accountToCategoryNameMap = new Map<string, string>();
-      const accountCodeToNameMap = new Map<string, string>();
-      categories.forEach(cat => {
-        const type = cat.name.startsWith('제조') ? '제조' : cat.name.startsWith('판관') ? '판관' : '기타';
-        cat.accounts.forEach((acc: any) => {
-          accountCategoryMap.set(acc.code, type);
-          accountToCategoryNameMap.set(acc.code, cat.name);
-          accountCodeToNameMap.set(acc.code, acc.name);
-        });
+    if (basePlanType !== '실적') {
+      const baseBudgets = loadBudgetRowsByDept({ year: baseYear, planType: basePlanType, deptCodes });
+      baseBudgets.forEach((rows, dCode) => {
+        budgetRowsByDept.set(`${baseYear}_${dCode}`, rows);
       });
-
-      const salaryAccountCodes = new Set<string>();
-      INITIAL_CATEGORIES.forEach(cat => {
-        if (SALARY_CATEGORIES.includes(cat.name)) {
-          cat.accounts.forEach((acc: any) => salaryAccountCodes.add(acc.code));
-        }
+    }
+    if (targetPlanType !== '실적') {
+      const targetBudgets = loadBudgetRowsByDept({ year: targetYear, planType: targetPlanType, deptCodes });
+      targetBudgets.forEach((rows, dCode) => {
+        budgetRowsByDept.set(`${targetYear}_${dCode}`, rows);
       });
+    }
 
-      const activeDept = deptOverride || selectedDept;
+    return buildAccountMetaIndex({
+      year: baseYear,
+      categories,
+      actualRows,
+      budgetRowsByDept,
+    });
+  }, [baseYear, targetYear, basePlanType, targetPlanType, categories, allDepts]);
 
-      if (planType === '실적') {
-        const actualDataStr = localStorage.getItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`);
-        if (actualDataStr) {
-          const actualData: any[] = JSON.parse(actualDataStr);
-          
-          // Load saved actuals to get the overridden attributedDeptCode
-          const savedActualsMap = new Map<string, string>();
-          allDepts.forEach(d => {
-            const key = getBudgetDataKey(d.code, year, '실적');
-            try {
-              const saved = JSON.parse(localStorage.getItem(key) || '[]');
-              saved.forEach((row: any) => {
-                savedActualsMap.set(`${d.code}_${row.code}`, row.attributedDeptCode);
-              });
-            } catch (e) {}
-          });
+  const selectedDeptCodes = useMemo(() => {
+    return resolveSelectedDeptCodes({
+      selectedDept,
+      viewableDepts,
+      isAdmin,
+      isPlanningTeam,
+    });
+  }, [selectedDept, viewableDepts, isAdmin, isPlanningTeam]);
 
-          // Use a composite key [DeptCode_AccountCode] for internal aggregation to ensure precision
-          const internalAggregated = new Map<string, { deptCode: string, accountCode: string, accountName: string, amount: number }>();
+  const baseAtomicRows = useMemo(() => {
+    return buildAtomicCompareRows({
+      year: baseYear,
+      planType: basePlanType,
+      monthMode: baseMonthMode,
+      selectedMonth: baseSelectedMonth,
+      deptCodes: selectedDeptCodes,
+      accountMetaMap,
+      hasSalaryAccess: hasSalaryAccess && includeSalaryRows,
+      allDepts,
+    });
+  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, selectedDeptCodes, accountMetaMap, hasSalaryAccess, includeSalaryRows, allDepts]);
 
-          actualData.forEach(item => {
-            const accType = accountCategoryMap.get(item.accountCode) || '기타';
-            const overriddenDeptCode = savedActualsMap.get(`${item.usageCode}_${item.accountCode}`);
-            const effectiveDeptCode = overriddenDeptCode || item.usageCode;
+  const targetAtomicRows = useMemo(() => {
+    return buildAtomicCompareRows({
+      year: targetYear,
+      planType: targetPlanType,
+      monthMode: targetMonthMode,
+      selectedMonth: targetSelectedMonth,
+      deptCodes: selectedDeptCodes,
+      accountMetaMap,
+      hasSalaryAccess: hasSalaryAccess && includeSalaryRows,
+      allDepts,
+    });
+  }, [targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, selectedDeptCodes, accountMetaMap, hasSalaryAccess, includeSalaryRows, allDepts]);
 
-            // Department filter
-            if (activeDept === 'mfg' && accType !== '제조') return;
-            if (activeDept === 'sga' && accType !== '판관') return;
-            if (activeDept === 'viewable') {
-              if (!viewableDeptCodes.has(effectiveDeptCode)) return;
-            } else if (activeDept !== 'all' && activeDept !== 'by_dept' && activeDept !== 'mfg' && activeDept !== 'sga') {
-              const groupCodes = getDeptCodesByGroup(activeDept);
-              const isMatch = groupCodes.length > 0 
-                ? groupCodes.includes(effectiveDeptCode) 
-                : effectiveDeptCode === activeDept;
-              if (!isMatch) return;
-            }
+  const varianceResult = useMemo(() => {
+    const groupBy = selectedDept === 'by_dept' ? 'dept' : 'account';
+    return buildVarianceComparison({
+      baseRows: baseAtomicRows,
+      targetRows: targetAtomicRows,
+      groupBy,
+      allDepts,
+      activeDept: selectedDept,
+      selectedAccountingType,
+      selectedAccountClass,
+      basePlanType,
+      targetPlanType,
+    });
+  }, [baseAtomicRows, targetAtomicRows, selectedDept, allDepts, selectedAccountingType, selectedAccountClass, basePlanType, targetPlanType]);
 
-            // Period filter
-            const periodStr = String(item.period || '');
-            const monthIndex = parseMonthIndex(periodStr);
-            if (!shouldIncludeMonth(monthIndex, periodMode, periodSelectedMonth)) return;
+  const comparisonRows = useMemo(() => {
+    return varianceResult.rows;
+  }, [varianceResult]);
 
-            const catName = accountToCategoryNameMap.get(item.accountCode);
-            const resolvedAccount = resolveAccountByCode({ accountCode: item.accountCode, uploadedName: item.accountName, year });
-            const resolvedAccountName = resolvedAccount.name;
-              
-              // Salary access check
-              if (!hasSalaryAccess) {
-                if (catName && SALARY_CATEGORIES.includes(catName)) return;
-                if (salaryAccountCodes.has(item.accountCode)) return;
-              }
+  const salaryFilteredComparisonRows = useMemo(() => {
+    if (hasSalaryAccess && includeSalaryRows) return comparisonRows;
+    return comparisonRows.filter(row => !row.isSalary);
+  }, [comparisonRows, hasSalaryAccess, includeSalaryRows]);
 
-              if (selectedAccountingType !== '전체') {
-                if (getAccountingType(item.accountCode, resolvedAccountName) !== selectedAccountingType) return;
-              }
-              if (selectedAccountClass !== '전체') {
-                if (classifyAccount(item.accountCode, resolvedAccountName) !== selectedAccountClass) return;
-              }
+  const summaryTotals = useMemo(() => {
+    return varianceResult.summary;
+  }, [varianceResult]);
 
-              const amount = item.completed || 0;
-              if (accType === '제조') mfgTotal += amount;
-              if (accType === '판관') sgaTotal += amount;
+  const chartData = useMemo(() => {
+    return salaryFilteredComparisonRows.map(row => ({
+      code: row.code,
+      name: row.name,
+      [baseName]: row.baseAmount,
+      [targetName]: row.targetAmount,
+      variance: row.variance,
+      variancePercent: row.variancePercent,
+    })).filter(item => (item[baseName] as number) > 0 || (item[targetName] as number) > 0)
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [salaryFilteredComparisonRows, baseName, targetName]);
 
-              // Unique key: [DeptCode_AccountCode]
-              const compositeKey = `${effectiveDeptCode}_${item.accountCode}`;
-              if (internalAggregated.has(compositeKey)) {
-                internalAggregated.get(compositeKey)!.amount += amount;
-              } else {
-                internalAggregated.set(compositeKey, { 
-                  deptCode: effectiveDeptCode, 
-                  accountCode: item.accountCode, 
-                  accountName: resolvedAccountName, 
-                  amount 
-                });
-              }
-          });
+  const selectedDeptDetails = useMemo(() => {
+    if (selectedDept !== 'by_dept' || !selectedDepartment) return [];
 
-          // Final aggregation based on selected view
-          internalAggregated.forEach(item => {
-            const code = activeDept === 'by_dept' ? item.deptCode : item.accountCode;
-            const name = activeDept === 'by_dept' ? (allDepts.find(d => d.code === item.deptCode)?.name || item.deptCode) : item.accountName;
-            
-            if (aggregated.has(code)) {
-              aggregated.get(code)!.total += item.amount;
-            } else {
-              aggregated.set(code, { name, total: item.amount });
-            }
-          });
-        }
-      } else {
-        // Budget aggregation with unique key logic
-        const internalAggregated = new Map<string, { deptCode: string, accountCode: string, accountName: string, amount: number }>();
-
-        allDepts.forEach(dept => {
-          const savedDataStr = readBudgetData(dept.code, year, planType);
-          // Keep oldKey as fallback for migration support
-          const oldKey = `${STORAGE_KEYS.BUDGET_DATA}_${dept.code}`;
-          const dataStr = savedDataStr || (year === '2026' && planType === '경영계획' ? localStorage.getItem(oldKey) : null);
-
-          if (dataStr) {
-            const deptData = JSON.parse(dataStr);
-            deptData.forEach((row: any) => {
-              const rowDeptCode = row.attributedDeptCode || dept.code;
-              const accType = accountCategoryMap.get(row.code) || '기타';
-
-              if (activeDept === 'mfg' && accType !== '제조') return;
-              if (activeDept === 'sga' && accType !== '판관') return;
-              if (activeDept === 'viewable') {
-                if (!viewableDeptCodes.has(rowDeptCode)) return;
-              } else if (activeDept !== 'all' && activeDept !== 'by_dept' && activeDept !== 'mfg' && activeDept !== 'sga') {
-                const groupCodes = getDeptCodesByGroup(activeDept);
-                const isMatch = groupCodes.length > 0 
-                  ? groupCodes.includes(rowDeptCode) 
-                  : rowDeptCode === activeDept;
-                if (!isMatch) return;
-              }
-
-              const catName = accountToCategoryNameMap.get(row.code);
-              if (!hasSalaryAccess) {
-                if (catName && SALARY_CATEGORIES.includes(catName)) return;
-                if (salaryAccountCodes.has(row.code)) return;
-              }
-
-              const resolvedAccount = resolveAccountByCode({ accountCode: row.code, uploadedName: row.name, year });
-              const resolvedAccountName = resolvedAccount.name;
-
-              if (selectedAccountingType !== '전체') {
-                if (getAccountingType(row.code, resolvedAccountName) !== selectedAccountingType) return;
-              }
-              if (selectedAccountClass !== '전체') {
-                if (classifyAccount(row.code, resolvedAccountName) !== selectedAccountClass) return;
-              }
-
-              let amount = 0;
-              if (periodMode === 'MONTH') {
-                amount = row.values[periodSelectedMonth - 1] || 0;
-              } else {
-                amount = row.values.slice(0, periodSelectedMonth).reduce((sum: number, val: number) => sum + val, 0);
-              }
-
-              if (accType === '제조') mfgTotal += amount;
-              if (accType === '판관') sgaTotal += amount;
-
-              // Unique key: [SourceDeptCode_AccountCode] to ensure each row in storage is counted exactly once
-              const compositeKey = `${dept.code}_${row.code}`;
-              if (internalAggregated.has(compositeKey)) {
-                internalAggregated.get(compositeKey)!.amount += amount;
-              } else {
-                internalAggregated.set(compositeKey, { 
-                  deptCode: rowDeptCode, 
-                  accountCode: row.code, 
-                  accountName: resolvedAccountName, 
-                  amount 
-                });
-              }
-            });
-          }
-        });
-
-        // Final aggregation based on selected view
-        internalAggregated.forEach(item => {
-          const code = activeDept === 'by_dept' ? item.deptCode : item.accountCode;
-          const name = activeDept === 'by_dept' ? (allDepts.find(d => d.code === item.deptCode)?.name || item.deptCode) : item.accountName;
-          
-          if (aggregated.has(code)) {
-            aggregated.get(code)!.total += item.amount;
-          } else {
-            aggregated.set(code, { name, total: item.amount });
-          }
-        });
-      }
-      return { aggregated, mfgTotal, sgaTotal };
-    };
-
-    const baseData = getAggregatedData(baseYear, basePlanType, baseMonthMode, baseSelectedMonth);
-    const targetData = getAggregatedData(targetYear, targetPlanType, targetMonthMode, targetSelectedMonth);
-
-    const baseDataMap = baseData.aggregated;
-    const targetDataMap = targetData.aggregated;
-
-    setSummaryTotals({
-      baseMfg: baseData.mfgTotal,
-      baseSga: baseData.sgaTotal,
-      targetMfg: targetData.mfgTotal,
-      targetSga: targetData.sgaTotal
+    const detailsResult = buildVarianceComparison({
+      baseRows: baseAtomicRows.filter(r => r.deptCode === selectedDepartment.departmentCode),
+      targetRows: targetAtomicRows.filter(r => r.deptCode === selectedDepartment.departmentCode),
+      groupBy: 'account',
+      allDepts,
+      activeDept: selectedDepartment.departmentCode,
+      selectedAccountingType: '전체',
+      selectedAccountClass: '전체',
+      basePlanType,
+      targetPlanType,
     });
 
-    // Combine data for the chart
-    const allCodes = new Set([...baseDataMap.keys(), ...targetDataMap.keys()]);
-    const newChartData = Array.from(allCodes).map(code => {
-      const baseItem = baseDataMap.get(code);
-      const targetItem = targetDataMap.get(code);
-      const name = baseItem?.name || targetItem?.name || 'Unknown';
-      
-      let baseVal = baseItem?.total || 0;
-      let targetVal = targetItem?.total || 0;
+    return detailsResult.rows.map(row => ({
+      accountCode: row.accountCode,
+      accountName: row.accountName,
+      budgetAmount: row.baseAmount,
+      actualAmount: row.targetAmount,
+      varianceAmount: row.variance,
+      executionRate: row.baseAmount === 0 ? null : (row.targetAmount / row.baseAmount) * 100,
+    }));
+  }, [selectedDept, selectedDepartment, baseAtomicRows, targetAtomicRows, allDepts, basePlanType, targetPlanType]);
 
-      const variance = targetVal - baseVal;
-      const variancePercent = baseVal === 0 ? 0 : (variance / baseVal) * 100;
+  const visibleChartData = useMemo(() => {
+    let rows = [...salaryFilteredComparisonRows];
 
-      return {
-        code,
-        name,
-        [baseName]: baseVal,
-        [targetName]: targetVal,
-        variance,
-        variancePercent
-      };
-    }).filter(item => (item[baseName] as number) > 0 || (item[targetName] as number) > 0)
-      .sort((a, b) => a.code.localeCompare(b.code)); // Sort by code to ensure Manufacturing comes before SG&A and items are ordered correctly
-
-    const newComparisonRows = Array.from(allCodes).map(code => {
-      const baseItem = baseDataMap.get(code);
-      const targetItem = targetDataMap.get(code);
-      const name = baseItem?.name || targetItem?.name || 'Unknown';
-
-      const baseAmount = baseItem?.total || 0;
-      const targetAmount = targetItem?.total || 0;
-      const variance = targetAmount - baseAmount;
-      const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
-
-      const accountingType = selectedDept === 'by_dept'
-        ? '전체'
-        : getAccountingType(code, name);
-
-      const accountClass = selectedDept === 'by_dept'
-        ? '부서'
-        : classifyAccount(code, name);
-
-      const status =
-        baseAmount === 0 && targetAmount > 0 ? '신규' :
-        baseAmount > 0 && targetAmount === 0 ? '사라짐' :
-        variance > 0 ? '증가' :
-        variance < 0 ? '감소' :
-        '동일';
-
-      return {
-        key: code,
-        accountingType,
-        accountClass,
-        accountCode: selectedDept === 'by_dept' ? '' : code,
-        accountName: name,
-        deptName: selectedDept === 'by_dept' ? name : '',
-        baseAmount,
-        targetAmount,
-        variance,
-        variancePercent,
-        status,
-      };
-    })
-    .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
-    .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
-
-    setComparisonRows(newComparisonRows);
-
-    // If no data is found in localStorage, fallback to some mock data for demonstration
-    if (newChartData.length === 0) {
-      const MOCK_DATA = [
-        { code: 'A1', name: '복리후생비', actual2025: 12000000, plan2026: 15000000 },
-        { code: 'A2', name: '여비교통비', actual2025: 8500000, plan2026: 8000000 },
-        { code: 'A3', name: '소모품비', actual2025: 4200000, plan2026: 4200000 },
-        { code: 'A4', name: '통신비', actual2025: 3500000, plan2026: 3800000 },
-        { code: 'A5', name: '교육훈련비', actual2025: 5000000, plan2026: 7500000 },
-      ];
-      const fallbackData = MOCK_DATA.map(item => {
-        const baseVal = item.actual2025;
-        const targetVal = item.plan2026;
-        return {
-          code: item.code,
-          name: item.name,
-          [baseName]: baseVal,
-          [targetName]: targetVal,
-          variance: targetVal - baseVal,
-          variancePercent: ((targetVal - baseVal) / baseVal) * 100
-        };
-      });
-      setChartData(fallbackData);
-
-      const fallbackComparison = MOCK_DATA.map(item => {
-        const baseAmount = item.actual2025;
-        const targetAmount = item.plan2026;
-        const variance = targetAmount - baseAmount;
-        const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
-        return {
-          key: item.code,
-          accountingType: '판관',
-          accountClass: item.name,
-          accountCode: item.code,
-          accountName: item.name,
-          deptName: '',
-          baseAmount,
-          targetAmount,
-          variance,
-          variancePercent,
-          status: variance > 0 ? '증가' : variance < 0 ? '감소' : '동일'
-        };
-      });
-      setComparisonRows(fallbackComparison);
+    if (selectedDept === 'by_dept') {
+      // 부서별 비교 화면은 부서별 Top N 유지
+      rows = rows.filter(row => row.baseAmount !== 0 || row.targetAmount !== 0);
     } else {
-      setChartData(newChartData);
-    }
+      if (chartAccountView === 'MFG') {
+        rows = rows.filter(row => row.accountingType === '제조');
+      }
 
-    // Calculate details for clicked department drilldown
-    let deptDetails: any[] = [];
-    if (selectedDept === 'by_dept' && selectedDepartment) {
-      const deptBase = getAggregatedData(baseYear, basePlanType, baseMonthMode, baseSelectedMonth, selectedDepartment.departmentCode);
-      const deptTarget = getAggregatedData(targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, selectedDepartment.departmentCode);
-      
-      const deptBaseMap = deptBase.aggregated;
-      const deptTargetMap = deptTarget.aggregated;
-      
-      const deptAllCodes = new Set([...deptBaseMap.keys(), ...deptTargetMap.keys()]);
-      deptDetails = Array.from(deptAllCodes).map(code => {
-        const baseItem = deptBaseMap.get(code);
-        const targetItem = deptTargetMap.get(code);
-        const name = baseItem?.name || targetItem?.name || 'Unknown';
-        
-        const baseAmount = baseItem?.total || 0;
-        const targetAmount = targetItem?.total || 0;
-        const variance = targetAmount - baseAmount;
-        const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
-        
-        return {
-          accountCode: code,
-          accountName: name,
-          budgetAmount: baseAmount,
-          actualAmount: targetAmount,
-          varianceAmount: variance,
-          executionRate: baseAmount === 0 ? null : (targetAmount / baseAmount) * 100
-        };
-      }).filter(row => row.budgetAmount !== 0 || row.actualAmount !== 0)
-        .sort((a, b) => Math.abs(b.varianceAmount) - Math.abs(a.varianceAmount));
+      if (chartAccountView === 'SGA') {
+        rows = rows.filter(row => row.accountingType === '판관');
+      }
 
-      if (deptDetails.length === 0) {
-        const FAKE_ACCOUNTS = [
-          { code: '5110100', name: '선급비용', b: 50000000, a: 45000000 },
-          { code: '5110200', name: '정보기술비용', b: 0, a: 12500000 },
-          { code: '5110300', name: '지급임차료', b: 120000000, a: 120000000 },
-          { code: '5110400', name: '복리후생비_기타', b: 15000000, a: 18500000 },
-          { code: '5110500', name: '교육훈련비', b: 20000000, a: 11000000 },
-          { code: '5110600', name: '도서인쇄비', b: 3000000, a: 2100000 },
-        ];
-        deptDetails = FAKE_ACCOUNTS.map(item => {
-          const varAmt = item.a - item.b;
-          return {
-            accountCode: item.code,
-            accountName: item.name,
-            budgetAmount: item.b,
-            actualAmount: item.a,
-            varianceAmount: varAmt,
-            executionRate: item.b === 0 ? null : (item.a / item.b) * 100
-          };
-        });
+      if (chartAccountView === 'CLASS' && chartAccountClass !== '전체') {
+        rows = rows.filter(row => row.accountClass === chartAccountClass);
       }
     }
-    setSelectedDeptDetails(deptDetails);
 
-  }, [baseYear, basePlanType, baseMonthMode, baseSelectedMonth, targetYear, targetPlanType, targetMonthMode, targetSelectedMonth, baseName, targetName, selectedDept, selectedAccountingType, selectedAccountClass, currentUser, selectedDepartment]);
+    return rows
+      .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
+      .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance))
+      .slice(0, chartTopN)
+      .map(row => ({
+        code: row.accountCode || row.key,
+        name: row.accountName || row.deptName,
+        displayName: shortenAccountName(row.accountName || row.deptName),
+        [baseName]: row.baseAmount,
+        [targetName]: row.targetAmount,
+        variance: row.variance,
+        variancePercent: row.variancePercent,
+        accountClass: row.accountClass,
+        accountingType: row.accountingType,
+        status: row.status,
+      }));
+  }, [
+    salaryFilteredComparisonRows,
+    selectedDept,
+    chartAccountView,
+    chartAccountClass,
+    chartTopN,
+    baseName,
+    targetName,
+  ]);
+
+  const visibleComparisonRows = useMemo(() => {
+    if (!applyChartFilterToTable) return salaryFilteredComparisonRows;
+
+    let rows = [...salaryFilteredComparisonRows];
+
+    if (chartAccountView === 'MFG') {
+      rows = rows.filter(row => row.accountingType === '제조');
+    }
+
+    if (chartAccountView === 'SGA') {
+      rows = rows.filter(row => row.accountingType === '판관');
+    }
+
+    if (chartAccountView === 'CLASS' && chartAccountClass !== '전체') {
+      rows = rows.filter(row => row.accountClass === chartAccountClass);
+    }
+
+    return rows;
+  }, [salaryFilteredComparisonRows, applyChartFilterToTable, chartAccountView, chartAccountClass]);
+
+  const fullFilteredAccountRows = useMemo(() => {
+    let rows = [...salaryFilteredComparisonRows];
+
+    if (chartAccountView === 'MFG') {
+      rows = rows.filter(row => row.accountingType === '제조');
+    }
+
+    if (chartAccountView === 'SGA') {
+      rows = rows.filter(row => row.accountingType === '판관');
+    }
+
+    if (chartAccountView === 'CLASS' && chartAccountClass !== '전체') {
+      rows = rows.filter(row => row.accountClass === chartAccountClass);
+    }
+
+    return rows.sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+  }, [salaryFilteredComparisonRows, chartAccountView, chartAccountClass]);
+
+  const filteredAndSortedRows = useMemo(() => {
+    let rows = [...visibleComparisonRows];
+
+    // 1. Apply table filters (detailFilters)
+    if (detailFilters.accountClass) {
+      rows = rows.filter(row => row.accountClass.includes(detailFilters.accountClass));
+    }
+    if (detailFilters.accountingType) {
+      rows = rows.filter(row => row.accountingType === detailFilters.accountingType);
+    }
+    if (detailFilters.accountCode) {
+      const codeTerm = detailFilters.accountCode.toLowerCase();
+      rows = rows.filter(row => row.accountCode.toLowerCase().includes(codeTerm) || row.key.toLowerCase().includes(codeTerm));
+    }
+    if (detailFilters.accountName) {
+      const nameTerm = detailFilters.accountName.toLowerCase();
+      rows = rows.filter(row => 
+        row.accountName.toLowerCase().includes(nameTerm) || 
+        row.deptName.toLowerCase().includes(nameTerm)
+      );
+    }
+    if (detailFilters.status) {
+      rows = rows.filter(row => row.status === detailFilters.status);
+    }
+    if (detailFilters.minVariance) {
+      const minVal = Number(detailFilters.minVariance) * 1000000;
+      if (!isNaN(minVal)) {
+        rows = rows.filter(row => Math.abs(row.variance) >= minVal);
+      }
+    }
+    if (detailFilters.minAmount) {
+      const minAmtVal = Number(detailFilters.minAmount) * 1000000;
+      if (!isNaN(minAmtVal)) {
+        rows = rows.filter(row => Math.abs(row.baseAmount) >= minAmtVal || Math.abs(row.targetAmount) >= minAmtVal);
+      }
+    }
+
+    // 2. Apply table sorting (detailSort)
+    if (detailSort) {
+      const { key, direction } = detailSort;
+      rows.sort((a, b) => {
+        let valA: any;
+        let valB: any;
+
+        if (key === 'variance') {
+          valA = Math.abs(a.variance);
+          valB = Math.abs(b.variance);
+        } else if (key === 'variancePercent') {
+          valA = a.variancePercent;
+          valB = b.variancePercent;
+        } else if (key === 'baseAmount') {
+          valA = a.baseAmount;
+          valB = b.baseAmount;
+        } else if (key === 'targetAmount') {
+          valA = a.targetAmount;
+          valB = b.targetAmount;
+        } else if (key === 'accountCode') {
+          valA = a.accountCode || a.key;
+          valB = b.accountCode || b.key;
+        } else if (key === 'accountName') {
+          valA = a.accountName || a.deptName;
+          valB = b.accountName || b.deptName;
+        } else if (key === 'accountClass') {
+          valA = a.accountClass;
+          valB = b.accountClass;
+        } else if (key === 'accountingType') {
+          valA = a.accountingType;
+          valB = b.accountingType;
+        } else if (key === 'status') {
+          valA = a.status;
+          valB = b.status;
+        }
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else {
+          const numA = Number(valA) || 0;
+          const numB = Number(valB) || 0;
+          return direction === 'asc' ? numA - numB : numB - numA;
+        }
+      });
+    } else {
+      rows.sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+    }
+
+    return rows;
+  }, [visibleComparisonRows, detailFilters, detailSort]);
+
+  const pagedVisibleComparisonRows = useMemo(() => {
+    return filteredAndSortedRows.slice(0, visibleDetailCount);
+  }, [filteredAndSortedRows, visibleDetailCount]);
 
   const totalBase = chartData.reduce((sum, item) => sum + item[baseName], 0);
   const totalTarget = chartData.reduce((sum, item) => sum + item[targetName], 0);
@@ -1672,6 +1851,9 @@ export default function VarianceComparison() {
                       const defaultDeptCodes = getReportAvailableDeptCodes();
                       setSelectedReportDeptCodes(defaultDeptCodes);
                       setIncludeAllReportDepts(true);
+                      setIncludeSummarySheet(true);
+                      setIncludeDetailSheets(true);
+                      setIncludeGroupSheets(true);
                       setIsReportModalOpen(true);
                     } else {
                       handleDownloadExcel();
@@ -1736,44 +1918,270 @@ export default function VarianceComparison() {
 
       {/* Comparison Detail Table */}
       <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden mb-10">
-        <div className="px-6 py-5 border-b border-lithium-200 bg-lithium-50 flex justify-between items-center">
+        <div className="px-6 py-5 border-b border-lithium-200 bg-lithium-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h3 className="text-lg font-bold text-eco-black tracking-tight">
               {selectedDept === 'by_dept' ? '부서별 상세 비교 내역' : '계정별 상세 비교 내역'}
             </h3>
-            <p className="text-xs text-text-secondary mt-1">
-              기준금액과 비교금액의 차이를 계정(부서) 단위로 확인합니다. 단위: 백만원
-            </p>
+            <div className="flex flex-col gap-1 text-[11px] text-zinc-500 font-medium mt-1 font-sans">
+              <div>기준: {baseYear}년 {basePlanType} · {getMonthModeLabel(baseMonthMode, baseSelectedMonth)}</div>
+              <div>비교: {targetYear}년 {targetPlanType} · {getMonthModeLabel(targetMonthMode, targetSelectedMonth)}</div>
+            </div>
           </div>
-          <span className="text-xs font-bold text-text-secondary">
-            {comparisonRows.length.toLocaleString()}건
-          </span>
+          
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+            {hasSalaryAccess ? (
+              <label className="flex items-center gap-2 text-xs font-bold text-zinc-650 cursor-pointer select-none border border-zinc-200 bg-white px-3 py-1.5 rounded-xl hover:bg-zinc-50 transition-colors shadow-2xs">
+                <input
+                  type="checkbox"
+                  checked={includeSalaryRows}
+                  onChange={(e) => {
+                    setIncludeSalaryRows(e.target.checked);
+                    setVisibleDetailCount(100);
+                  }}
+                  className="w-4 h-4 text-[#008f83] focus:ring-[#008f83] border-zinc-300 rounded accent-[#008f83] cursor-pointer"
+                />
+                <span>급여성 계정 포함</span>
+              </label>
+            ) : (
+              <label className="flex items-center gap-2 text-xs font-bold text-zinc-400 cursor-not-allowed select-none border border-zinc-150 bg-zinc-50 px-3 py-1.5 rounded-xl opacity-60">
+                <input
+                  type="checkbox"
+                  checked={false}
+                  disabled
+                  className="w-4 h-4 text-zinc-300 border-zinc-200 rounded cursor-not-allowed"
+                />
+                <span>급여성 계정 포함</span>
+              </label>
+            )}
+            {selectedDept !== 'by_dept' && (
+              <label className="flex items-center gap-2 text-xs font-bold text-zinc-650 cursor-pointer select-none border border-zinc-200 bg-white px-3 py-1.5 rounded-xl hover:bg-zinc-50 transition-colors shadow-2xs">
+                <input
+                  type="checkbox"
+                  checked={applyChartFilterToTable}
+                  onChange={(e) => {
+                    setApplyChartFilterToTable(e.target.checked);
+                    setVisibleDetailCount(100);
+                  }}
+                  className="w-4 h-4 text-[#008f83] focus:ring-[#008f83] border-zinc-300 rounded accent-[#008f83] cursor-pointer"
+                />
+                <span>상세표에도 차트 필터 적용</span>
+              </label>
+            )}
+            <span className="text-xs font-bold text-zinc-650 bg-zinc-150 px-2.5 py-1.5 rounded-xl font-sans shrink-0">
+              {filteredAndSortedRows.length.toLocaleString()}건
+              {applyChartFilterToTable && comparisonRows.length !== filteredAndSortedRows.length && (
+                <span className="ml-1 text-zinc-400 font-medium">
+                  / 전체 {comparisonRows.length.toLocaleString()}건
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* Detail Filter Toolbar */}
+        <div className="bg-zinc-50/50 border-b border-zinc-200 px-6 py-3.5 flex flex-wrap gap-3 items-center text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-zinc-500">비용성격:</span>
+            <select
+              value={detailFilters.accountClass}
+              onChange={(e) => {
+                setDetailFilters(prev => ({ ...prev, accountClass: e.target.value }));
+                setVisibleDetailCount(100);
+              }}
+              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
+            >
+              <option value="">전체</option>
+              {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-zinc-500">회계구분:</span>
+            <select
+              value={detailFilters.accountingType}
+              onChange={(e) => {
+                setDetailFilters(prev => ({ ...prev, accountingType: e.target.value }));
+                setVisibleDetailCount(100);
+              }}
+              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
+            >
+              <option value="">전체</option>
+              {ACCOUNTING_TYPE_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-zinc-500">코드:</span>
+            <input
+              type="text"
+              placeholder="코드 검색..."
+              value={detailFilters.accountCode}
+              onChange={(e) => {
+                setDetailFilters(prev => ({ ...prev, accountCode: e.target.value }));
+                setVisibleDetailCount(100);
+              }}
+              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2.5 py-1 outline-none font-medium w-24 focus:border-[#008f83]"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-zinc-500">이름:</span>
+            <input
+              type="text"
+              placeholder="계정/부서명..."
+              value={detailFilters.accountName}
+              onChange={(e) => {
+                setDetailFilters(prev => ({ ...prev, accountName: e.target.value }));
+                setVisibleDetailCount(100);
+              }}
+              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2.5 py-1 outline-none font-medium w-28 focus:border-[#008f83]"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-zinc-500">상태:</span>
+            <select
+              value={detailFilters.status}
+              onChange={(e) => {
+                setDetailFilters(prev => ({ ...prev, status: e.target.value }));
+                setVisibleDetailCount(100);
+              }}
+              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
+            >
+              <option value="">전체</option>
+              {['미계획', '미발생', '증가', '감소', '변동없음', '사라짐'].map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-zinc-500">최소 차액:</span>
+            <input
+              type="number"
+              placeholder="단위 백만..."
+              value={detailFilters.minVariance}
+              onChange={(e) => {
+                setDetailFilters(prev => ({ ...prev, minVariance: e.target.value }));
+                setVisibleDetailCount(100);
+              }}
+              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2.5 py-1 outline-none font-medium w-24 focus:border-[#008f83]"
+            />
+            <span className="text-zinc-400">백만원 ↑</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-zinc-500">최소 금액:</span>
+            <input
+              type="number"
+              placeholder="단위 백만..."
+              value={detailFilters.minAmount}
+              onChange={(e) => {
+                setDetailFilters(prev => ({ ...prev, minAmount: e.target.value }));
+                setVisibleDetailCount(100);
+              }}
+              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2.5 py-1 outline-none font-medium w-24 focus:border-[#008f83]"
+            />
+            <span className="text-zinc-400">백만원 ↑</span>
+          </div>
+
+          {(detailFilters.accountClass || detailFilters.accountingType || detailFilters.accountCode || detailFilters.accountName || detailFilters.status || detailFilters.minVariance || detailFilters.minAmount || (detailSort && detailSort.key !== 'variance')) && (
+            <button
+              type="button"
+              onClick={() => {
+                setDetailFilters({
+                  accountClass: '',
+                  accountingType: '',
+                  accountCode: '',
+                  accountName: '',
+                  status: '',
+                  minVariance: '',
+                  minAmount: '',
+                });
+                setDetailSort({ key: 'variance', direction: 'desc' });
+                setVisibleDetailCount(100);
+              }}
+              className="px-2.5 py-1 hover:bg-zinc-200 border border-zinc-300 text-zinc-650 text-[11px] font-bold rounded-lg cursor-pointer transition-colors shadow-3xs ml-auto"
+            >
+              초기화 ↺
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="bg-lithium-100/50 border-b border-lithium-200">
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary">비용 성격</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary">회계 구분</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary">{selectedDept === 'by_dept' ? '부서코드' : '계정코드'}</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary">{selectedDept === 'by_dept' ? '부서명' : '계정명'}</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">기준 금액</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">비교 금액</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">차액</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">증감률</th>
-                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-center">상태</th>
+              <tr className="bg-lithium-100/50 border-b border-lithium-200 font-sans">
+                <th
+                  onClick={() => handleSort('accountClass')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  비용 성격 {renderSortArrow('accountClass')}
+                </th>
+                <th
+                  onClick={() => handleSort('accountingType')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  회계 구분 {renderSortArrow('accountingType')}
+                </th>
+                <th
+                  onClick={() => handleSort('accountCode')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  {selectedDept === 'by_dept' ? '부서코드' : '계정코드'} {renderSortArrow('accountCode')}
+                </th>
+                <th
+                  onClick={() => handleSort('accountName')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  {selectedDept === 'by_dept' ? '부서명' : '계정명'} {renderSortArrow('accountName')}
+                </th>
+                <th
+                  onClick={() => handleSort('baseAmount')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary text-right cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  {baseName} {renderSortArrow('baseAmount')}
+                </th>
+                <th
+                  onClick={() => handleSort('targetAmount')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary text-right cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  {targetName} {renderSortArrow('targetAmount')}
+                </th>
+                <th
+                  onClick={() => handleSort('variance')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary text-right cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  차액 {renderSortArrow('variance')}
+                </th>
+                <th
+                  onClick={() => handleSort('variancePercent')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary text-right cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  증감률 {renderSortArrow('variancePercent')}
+                </th>
+                <th
+                  onClick={() => handleSort('status')}
+                  className="px-5 py-3 text-xs font-bold text-text-secondary text-center cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                >
+                  상태 {renderSortArrow('status')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-lithium-100">
-              {comparisonRows.length === 0 ? (
+              {pagedVisibleComparisonRows.length === 0 ? (
                 <tr>
-                   <td colSpan={9} className="px-6 py-12 text-center text-sm text-text-secondary">
-                    선택한 조건에 해당하는 상세 비교 데이터가 없습니다. 기준/비교 조건, 부서, 회계 구분, 비용 성격 필터를 확인해주세요.
+                   <td colSpan={9} className="px-6 py-12 text-center text-sm text-text-secondary bg-white">
+                    선택한 조건에 해당하는 상세 비교 데이터가 없습니다. 상위 필터 조건 또는 아래 텍스트 필터 구성을 확인해 주세요.
                   </td>
                 </tr>
               ) : (
-                comparisonRows.map(row => {
+                pagedVisibleComparisonRows.map(row => {
                   const isDrilldown = selectedDept === 'by_dept';
                   const isSelected = isDrilldown && selectedDepartment?.departmentCode === row.key;
                   
@@ -1785,7 +2193,7 @@ export default function VarianceComparison() {
                           setSelectedDepartment(prev => 
                             prev?.departmentCode === row.key 
                               ? null 
-                              : { departmentCode: row.key, departmentName: row.accountName }
+                              : { departmentCode: row.key, departmentName: row.accountName || row.deptName || row.name }
                           );
                         }
                       }}
@@ -1817,16 +2225,16 @@ export default function VarianceComparison() {
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-sm text-right">{formatCurrency(toMillions(row.baseAmount))}</td>
-                      <td className="px-5 py-3 text-sm text-right font-bold text-eco-black">{formatCurrency(toMillions(row.targetAmount))}</td>
-                      <td className={`px-5 py-3 text-sm text-right font-black ${isSelected ? 'text-cobalt-700' : row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
+                      <td className="px-5 py-3 text-sm text-right font-mono text-zinc-600">{formatCurrency(toMillions(row.baseAmount))}</td>
+                      <td className="px-5 py-3 text-sm text-right font-bold text-eco-black font-mono">{formatCurrency(toMillions(row.targetAmount))}</td>
+                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${isSelected ? 'text-cobalt-700' : row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                         {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
                       </td>
-                      <td className={`px-5 py-3 text-sm text-right font-black ${isSelected ? 'text-cobalt-600' : row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${isSelected ? 'text-cobalt-600' : row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
                         {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
                       </td>
                       <td className="px-5 py-3 text-sm text-center" onClick={(e) => e.stopPropagation()}>
-                        <span className="px-2 py-1 rounded-lg bg-lithium-100 text-text-secondary text-xs font-bold inline-block">
+                        <span className={`px-2 py-0.5 rounded-lg text-xs font-bold inline-block ${getStatusBadgeStyle(row.status)}`}>
                           {row.status}
                         </span>
                       </td>
@@ -1875,6 +2283,18 @@ export default function VarianceComparison() {
             </tfoot>
           </table>
         </div>
+
+        {visibleDetailCount < filteredAndSortedRows.length && (
+          <div className="border-t border-lithium-200">
+            <button
+              type="button"
+              onClick={() => setVisibleDetailCount(prev => prev + 100)}
+              className="w-full py-4 text-xs font-bold text-[#008f83] hover:bg-[#008f83]/10 bg-zinc-50 transition-colors cursor-pointer"
+            >
+              상세 내역 100건 더 보기 ({pagedVisibleComparisonRows.length.toLocaleString()} / {filteredAndSortedRows.length.toLocaleString()}건 표시 중)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Department Account Drilldown Table */}
@@ -1939,34 +2359,290 @@ export default function VarianceComparison() {
         </section>
       )}
 
-      {/* Chart */}
+      {/* Chart Segment - Collapsible and Customizable */}
       <div className="w-full min-w-0">
-        <ChartCard
-          title={selectedDept === 'by_dept' ? '부서별 예산·실적 비교' : '계정별 예산·실적 비교'}
-          isEmpty={chartData.length === 0}
-          contentClassName="min-h-[360px] w-full min-w-0 block"
-        >
-          <div className="w-full min-w-[320px] h-[320px]">
-            <ResponsiveContainer width="100%" height={320} debounce={50}>
-              <BarChart
-                data={chartData}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+        <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden">
+          {/* Chart Header */}
+          <div className="px-6 py-4.5 border-b border-lithium-200 bg-lithium-50 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsAccountChartOpen(prev => !prev)}
+                className="p-1 rounded-lg hover:bg-zinc-200 transition-colors cursor-pointer text-zinc-650 flex items-center justify-center"
+                title={isAccountChartOpen ? "차트 접기" : "차트 펼치기"}
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2f4f6" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8b95a1', fontSize: 11 }} tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}`} />
-                <Tooltip 
-                  cursor={{ fill: 'rgba(0,0,0,0.02)' }}
-                  contentStyle={{ borderRadius: '16px', border: '1px solid #dde5de', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                  formatter={(value: number) => [`${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}백만원 (${formatCurrency(value)}원)`, '']}
-                />
-                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-                <Bar dataKey={baseName} fill="#e5e8eb" radius={[6, 6, 0, 0]} maxBarSize={32} />
-                <Bar dataKey={targetName} fill="var(--nickel-500)" radius={[6, 6, 0, 0]} maxBarSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
+                {isAccountChartOpen ? (
+                  <ChevronDown className="w-5 h-5" />
+                ) : (
+                  <ChevronRight className="w-5 h-5" />
+                )}
+              </button>
+              <div>
+                <h3 className="text-lg font-bold text-eco-black tracking-tight flex items-center gap-2">
+                  <span>{selectedDept === 'by_dept' ? '부서별 예산·실적 비교 차트' : '계정별 주요 변동 비교 차트'}</span>
+                  {selectedDept !== 'by_dept' && (
+                    <span className="text-[10px] bg-red-50 text-red-600 font-extrabold px-1.5 py-0.5 rounded border border-red-100">
+                      Top {chartTopN}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {selectedDept === 'by_dept' 
+                    ? '부서별 전체 예산과 실적의 집행 추이를 확인합니다.' 
+                    : `변동금액(절대값)이 큰 상위 ${chartTopN}개 계정과목을 기준으로 시각화한 차트입니다.`}
+                </p>
+              </div>
+            </div>
+
+            {/* Controls Row (only for account comparison) */}
+            {selectedDept !== 'by_dept' && isAccountChartOpen && (
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* View Filters */}
+                <div className="bg-white p-0.5 rounded-xl border border-zinc-200 flex items-center shadow-3xs text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChartAccountView('ALL');
+                      setVisibleDetailCount(100);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${chartAccountView === 'ALL' ? 'bg-[#008f83] text-white font-extrabold shadow-3xs' : 'text-zinc-600 hover:text-eco-black'}`}
+                  >
+                    전체 계정
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChartAccountView('MFG');
+                      setVisibleDetailCount(100);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${chartAccountView === 'MFG' ? 'bg-[#008f83] text-white font-extrabold shadow-3xs' : 'text-zinc-600 hover:text-eco-black'}`}
+                  >
+                    제조비용
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChartAccountView('SGA');
+                      setVisibleDetailCount(100);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${chartAccountView === 'SGA' ? 'bg-[#008f83] text-white font-extrabold shadow-3xs' : 'text-zinc-600 hover:text-eco-black'}`}
+                  >
+                    판관비용
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChartAccountView('CLASS');
+                      setVisibleDetailCount(100);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${chartAccountView === 'CLASS' ? 'bg-[#008f83] text-white font-extrabold shadow-3xs' : 'text-zinc-600 hover:text-eco-black'}`}
+                  >
+                    소분류별
+                  </button>
+                </div>
+
+                {/* Subclass select when class-view is dynamic */}
+                {chartAccountView === 'CLASS' && (
+                  <select
+                    value={chartAccountClass}
+                    onChange={(e) => {
+                      setChartAccountClass(e.target.value as AccountClass);
+                      setVisibleDetailCount(100);
+                    }}
+                    className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-xl px-2.5 py-1.5 outline-none font-bold shadow-3xs cursor-pointer"
+                  >
+                    <option value="전체">전체 소분류</option>
+                    {QUICK_ACCOUNT_CLASSES.map(cls => (
+                      <option key={cls} value={cls}>{cls}</option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Top N Limit Selector */}
+                <select
+                  value={chartTopN}
+                  onChange={(e) => {
+                    setChartTopN(Number(e.target.value));
+                    setVisibleDetailCount(100);
+                  }}
+                  className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-xl px-2.5 py-1.5 outline-none font-bold shadow-3xs cursor-pointer"
+                >
+                  <option value={10}>Top 10</option>
+                  <option value={20}>Top 20</option>
+                  <option value={30}>Top 30</option>
+                  <option value={50}>Top 50</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setIsFullAccountModalOpen(true)}
+                  className="bg-white border border-zinc-200 text-zinc-650 text-xs rounded-xl px-3 py-1.5 font-bold hover:bg-zinc-50 hover:text-eco-black transition-colors cursor-pointer shadow-3xs shrink-0 flex items-center gap-1.5"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>전체 목록</span>
+                </button>
+              </div>
+            )}
           </div>
-        </ChartCard>
+
+          {/* Quick Category filter tags below chart header */}
+          {selectedDept !== 'by_dept' && isAccountChartOpen && chartAccountView === 'CLASS' && (
+            <div className="px-6 py-2 bg-zinc-50 border-b border-zinc-150 flex flex-wrap gap-1.5 items-center">
+              <span className="text-[11px] font-bold text-zinc-400 mr-2">빠른 소분류 전환:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setChartAccountClass('전체');
+                  setVisibleDetailCount(100);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${chartAccountClass === '전체' ? 'bg-zinc-800 text-white border-zinc-800 shadow-3xs' : 'bg-white text-zinc-650 border-zinc-200 hover:text-zinc-800 hover:bg-zinc-100'}`}
+              >
+                전체 소분류
+              </button>
+              {QUICK_ACCOUNT_CLASSES.map(cls => (
+                <button
+                  key={cls}
+                  type="button"
+                  onClick={() => {
+                    setChartAccountClass(cls);
+                    setVisibleDetailCount(100);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${chartAccountClass === cls ? 'bg-[#008f83] text-white border-[#008f83] shadow-3xs' : 'bg-white text-zinc-650 border-zinc-200 hover:text-zinc-800 hover:bg-zinc-100'}`}
+                >
+                  {cls}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Chart Content Area */}
+          {isAccountChartOpen && (
+            <div className="p-6">
+              <div className="w-full min-h-[360px]">
+                {visibleChartData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center min-h-[320px] text-zinc-400 font-sans gap-3">
+                    <TrendingUp className="w-12 h-12 stroke-[1.5] text-zinc-300" />
+                    <p className="text-sm font-semibold">선택한 분류 필터 조건에 해당하는 데이터가 없습니다.</p>
+                    <p className="text-xs">상단의 세부 소분류 또는 차트 필터를 조정하여 점검해 주세요.</p>
+                  </div>
+                ) : (
+                  <div className="w-full min-w-[320px]" style={{ height: `${Math.max(360, visibleChartData.length * 28 + 60)}px` }}>
+                    <ResponsiveContainer width="100%" height="100%" debounce={50}>
+                      <BarChart
+                        data={visibleChartData}
+                        layout="vertical"
+                        margin={{ top: 12, right: 32, left: 180, bottom: 12 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f2f4f6" />
+                        <XAxis
+                          type="number"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: '#8b95a1', fontSize: 10, fontFamily: 'monospace' }}
+                          tickFormatter={(value) => `${new Intl.NumberFormat('ko-KR').format(Math.round(value / 1000000))}M`}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="displayName"
+                          width={170}
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: '#4e5968', fontSize: 11, fontWeight: 500 }}
+                        />
+                        <Tooltip
+                          cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                          wrapperStyle={{ pointerEvents: 'none' }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const data = payload[0].payload;
+                              const fullName = data.name || data.displayName;
+                              return (
+                                <div className="bg-white p-4 rounded-2xl border border-[#dde5de] shadow-xl text-xs font-sans pointer-events-none">
+                                  <p className="font-extrabold text-eco-black mb-2">{fullName} ({data.code || ''})</p>
+                                  {payload.map((item: any, idx: number) => (
+                                    <div key={idx} className="flex justify-between gap-6 py-0.5">
+                                      <span className="text-zinc-500 font-medium flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: item.color }} />
+                                        {item.name}:
+                                      </span>
+                                      <span className="font-bold text-[#444] font-mono">
+                                        {formatCurrency(toMillions(Number(item.value)))}백만원 ({formatCurrency(Number(item.value))}원)
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {data.variance !== undefined && (
+                                    <div className="flex justify-between gap-6 py-0.5 border-t border-zinc-100 mt-2 pt-2">
+                                      <span className="text-zinc-500 font-bold">차액:</span>
+                                      <span className={`font-mono font-black ${data.variance > 0 ? 'text-cobalt-600' : data.variance < 0 ? 'text-nickel-600' : 'text-zinc-550'}`}>
+                                        {data.variance > 0 ? '+' : ''}{formatCurrency(toMillions(data.variance))}백만원 ({data.variancePercent > 0 ? '+' : ''}{data.variancePercent.toFixed(1)}%)
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                        <Bar dataKey={baseName} radius={[0, 4, 4, 0]} maxBarSize={16}>
+                          {visibleChartData.map((entry: any, index: number) => {
+                            const isSelected = selectedDept === 'by_dept' && selectedDepartment?.departmentCode === entry.code;
+                            const hasSelection = selectedDept === 'by_dept' && selectedDepartment !== null;
+                            const opacity = hasSelection ? (isSelected ? 1 : 0.35) : 1;
+                            const fill = isSelected ? '#cbd5e1' : '#e5e8eb';
+                            return (
+                              <Cell
+                                key={`cell-base-${index}`}
+                                fill={fill}
+                                opacity={opacity}
+                                className="cursor-pointer transition-all duration-250"
+                                onClick={() => {
+                                  if (selectedDept === 'by_dept') {
+                                    setSelectedDepartment(prev => 
+                                      prev?.departmentCode === entry.code 
+                                        ? null 
+                                        : { departmentCode: entry.code, departmentName: entry.name }
+                                    );
+                                  }
+                                }}
+                              />
+                            );
+                          })}
+                        </Bar>
+                        <Bar dataKey={targetName} radius={[0, 4, 4, 0]} maxBarSize={16}>
+                          {visibleChartData.map((entry: any, index: number) => {
+                            const isSelected = selectedDept === 'by_dept' && selectedDepartment?.departmentCode === entry.code;
+                            const hasSelection = selectedDept === 'by_dept' && selectedDepartment !== null;
+                            const opacity = hasSelection ? (isSelected ? 1 : 0.35) : 1;
+                            const fill = '#008f83';
+                            return (
+                              <Cell
+                                key={`cell-target-${index}`}
+                                fill={fill}
+                                opacity={opacity}
+                                className="cursor-pointer transition-all duration-250"
+                                onClick={() => {
+                                  if (selectedDept === 'by_dept') {
+                                    setSelectedDepartment(prev => 
+                                      prev?.departmentCode === entry.code 
+                                        ? null 
+                                        : { departmentCode: entry.code, departmentName: entry.name }
+                                    );
+                                  }
+                                }}
+                              />
+                            );
+                          })}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Report Download Settings Modal */}
@@ -2002,8 +2678,10 @@ export default function VarianceComparison() {
                       setIncludeAllReportDepts(checked);
                       if (checked) {
                         setSelectedReportDeptCodes(getReportAvailableDeptCodes());
+                        setIncludeGroupSheets(true);
                       } else {
                         setSelectedReportDeptCodes([]);
+                        setIncludeGroupSheets(false);
                       }
                     }}
                     className="w-4 h-4 rounded text-cobalt-600 focus:ring-cobalt-500 border-lithium-300"
@@ -2047,8 +2725,10 @@ export default function VarianceComparison() {
                               const allAvailable = getReportAvailableDeptCodes();
                               if (newSelected.length === allAvailable.length) {
                                 setIncludeAllReportDepts(true);
+                                setIncludeGroupSheets(true);
                               } else {
                                 setIncludeAllReportDepts(false);
+                                setIncludeGroupSheets(false);
                               }
                             }}
                             className="w-4 h-4 rounded text-cobalt-600 focus:ring-cobalt-500 border-lithium-300"
@@ -2067,7 +2747,7 @@ export default function VarianceComparison() {
               {/* Inclusions */}
               <div className="space-y-3">
                 <span className="font-bold text-eco-black text-sm block">포함 항목</span>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <label className="flex items-start gap-2.5 p-3 border border-lithium-200 rounded-xl hover:bg-lithium-50 cursor-pointer transition-colors bg-white">
                     <input
                       type="checkbox"
@@ -2092,6 +2772,18 @@ export default function VarianceComparison() {
                       <p className="text-[10px] text-text-tertiary mt-0.5 leading-tight">부서별 계정과목 단위 상세 시트입니다.</p>
                     </div>
                   </label>
+                  <label className="flex items-start gap-2.5 p-3 border border-lithium-200 rounded-xl hover:bg-lithium-50 cursor-pointer transition-colors bg-white">
+                    <input
+                      type="checkbox"
+                      checked={includeGroupSheets}
+                      onChange={(e) => setIncludeGroupSheets(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 rounded text-cobalt-600 focus:ring-cobalt-500 border-lithium-300"
+                    />
+                    <div>
+                      <span className="font-bold text-eco-black text-xs leading-none">부서 그룹 상세내역</span>
+                      <p className="text-[10px] text-text-tertiary mt-0.5 leading-tight">1공장, 설비관리섹션, 품질기술부 등 코드 기준 그룹별 분석 시트를 포함합니다.</p>
+                    </div>
+                  </label>
                 </div>
               </div>
             </div>
@@ -2107,9 +2799,12 @@ export default function VarianceComparison() {
               </button>
               <button
                 type="button"
-                disabled={includeDetailSheets && selectedReportDeptCodes.length === 0}
+                disabled={
+                  (includeDetailSheets && selectedReportDeptCodes.length === 0) ||
+                  (!includeSummarySheet && !includeDetailSheets && !includeGroupSheets)
+                }
                 onClick={() => {
-                  if (!includeSummarySheet && !includeDetailSheets) {
+                  if (!includeSummarySheet && !includeDetailSheets && !includeGroupSheets) {
                     alert('적어도 하나의 포함 항목을 선택해야 합니다.');
                     return;
                   }
@@ -2121,16 +2816,19 @@ export default function VarianceComparison() {
                   handleDownloadExcelWithDeptDetails(selectedReportDeptCodes);
                 }}
                 className={`px-6 py-2.5 rounded-xl text-sm font-bold text-white shadow-md transition-all ${
-                  includeDetailSheets && selectedReportDeptCodes.length === 0
+                  (includeDetailSheets && selectedReportDeptCodes.length === 0) ||
+                  (!includeSummarySheet && !includeDetailSheets && !includeGroupSheets)
                     ? 'bg-lithium-300 cursor-not-allowed shadow-none'
                     : 'bg-cobalt-600 hover:bg-cobalt-700 active:scale-95'
                 }`}
               >
                 {includeDetailSheets && selectedReportDeptCodes.length === 0 
                   ? '부서를 선택해 주세요' 
-                  : !includeSummarySheet && !includeDetailSheets
+                  : !includeSummarySheet && !includeDetailSheets && !includeGroupSheets
                   ? '포함 항목을 선택해 주세요'
-                  : includeAllReportDepts || selectedReportDeptCodes.length === getReportAvailableDeptCodes().length
+                  : (includeAllReportDepts || selectedReportDeptCodes.length === getReportAvailableDeptCodes().length) && includeGroupSheets
+                  ? '전체 부서 + 그룹 다운로드'
+                  : (includeAllReportDepts || selectedReportDeptCodes.length === getReportAvailableDeptCodes().length)
                   ? '전체 부서 다운로드'
                   : `선택 부서 ${selectedReportDeptCodes.length}개 다운로드`}
               </button>
@@ -2138,6 +2836,169 @@ export default function VarianceComparison() {
           </div>
         </div>
       )}
+
+      {/* Full Account Modal Popup */}
+      {isFullAccountModalOpen && (
+        <FullAccountModal
+          isOpen={isFullAccountModalOpen}
+          onClose={() => setIsFullAccountModalOpen(false)}
+          rows={fullFilteredAccountRows}
+          viewType={chartAccountView}
+          classType={chartAccountClass}
+          baseName={baseName}
+          targetName={targetName}
+          formatCurrency={formatCurrency}
+          toMillions={toMillions}
+        />
+      )}
+    </div>
+  );
+}
+
+interface FullAccountModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  rows: any[];
+  viewType: 'ALL' | 'MFG' | 'SGA' | 'CLASS';
+  classType: string;
+  baseName: string;
+  targetName: string;
+  formatCurrency: (value: number) => string;
+  toMillions: (value: number) => number;
+}
+
+function FullAccountModal({
+  isOpen,
+  onClose,
+  rows,
+  viewType,
+  classType,
+  baseName,
+  targetName,
+  formatCurrency,
+  toMillions,
+}: FullAccountModalProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredRows = React.useMemo(() => {
+    let result = [...rows];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        row =>
+          (row.accountCode && row.accountCode.toLowerCase().includes(q)) ||
+          (row.accountName && row.accountName.toLowerCase().includes(q)) ||
+          (row.key && row.key.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [rows, searchQuery]);
+
+  return (
+    <div className="fixed inset-0 bg-eco-black/55 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl border border-lithium-200 shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4.5 bg-lithium-50 border-b border-lithium-200 flex justify-between items-center shrink-0">
+          <div>
+            <h3 className="text-base sm:text-lg font-black text-eco-black flex items-center gap-2">
+              <Eye className="w-5 h-5 text-[#008f83]" />
+              <span>전체 계정 대비 분석표</span>
+              <span className="text-xs bg-[#008f83]/10 text-[#008f83] px-2 py-0.5 rounded-full font-bold">
+                {viewType === 'ALL' ? '전체 계정' : viewType === 'MFG' ? '제조비용' : viewType === 'SGA' ? '판관비용' : `소분류: ${classType}`} ({filteredRows.length}건)
+              </span>
+            </h3>
+            <p className="text-xs text-text-secondary mt-0.5">
+              절대 증감액이 큰 주요 변동 계정과목 순으로 표시됩니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 px-2 text-xs font-bold text-zinc-500 rounded-lg hover:bg-zinc-200 transition-colors flex items-center gap-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+            <span>닫기</span>
+          </button>
+        </div>
+
+        {/* Search Bar Row */}
+        <div className="bg-zinc-50 border-b border-zinc-150 px-6 py-3 flex items-center shrink-0 gap-3">
+          <span className="text-xs font-bold text-zinc-500">계정과목 검색:</span>
+          <input
+            type="text"
+            placeholder="계정과목 코드 또는 명칭 입력..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 bg-white border border-zinc-200 text-sm rounded-xl px-3 py-1.5 outline-none font-medium text-zinc-800 focus:border-[#008f83] focus:ring-1 focus:ring-[#008f83] transition-all"
+            autoFocus
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-xs text-zinc-400 hover:text-zinc-650 cursor-pointer font-bold"
+            >
+              지우기 ↺
+            </button>
+          )}
+        </div>
+
+        {/* Table Body Area */}
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-left border-collapse text-sm">
+            <thead className="sticky top-0 bg-zinc-100 z-10 border-b border-lithium-200 shadow-3xs">
+              <tr>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">비용 성격</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">회계 구분</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">계정코드</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary">계정명</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">{baseName}</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">{targetName}</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">차액</th>
+                <th className="px-5 py-3 text-xs font-bold text-text-secondary text-right">증감률</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 bg-white">
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-16 text-center text-sm text-text-secondary font-sans">
+                    검색어 "{searchQuery}"에 일치하는 계정과목이 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map(row => {
+                  return (
+                    <tr key={row.key} className="hover:bg-zinc-50/75 transition-colors">
+                      <td className="px-5 py-3 text-xs font-bold text-zinc-700">{row.accountClass}</td>
+                      <td className="px-5 py-3 text-xs text-text-secondary">{row.accountingType}</td>
+                      <td className="px-5 py-3 text-xs font-mono text-text-tertiary">{row.accountCode || row.key}</td>
+                      <td className="px-5 py-3 text-sm font-semibold text-eco-black">{row.accountName}</td>
+                      <td className="px-5 py-3 text-sm text-right font-mono text-zinc-650">{formatCurrency(toMillions(row.baseAmount))}</td>
+                      <td className="px-5 py-3 text-sm text-right font-bold text-eco-black font-mono">{formatCurrency(toMillions(row.targetAmount))}</td>
+                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
+                        {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
+                      </td>
+                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                        {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-zinc-50 border-t border-zinc-200 flex justify-end shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-xl border border-zinc-200 text-sm font-bold text-zinc-650 hover:bg-zinc-100 transition-colors cursor-pointer"
+          >
+            닫기
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
