@@ -18,9 +18,22 @@ import { MonthMode, parseMonthIndex, shouldIncludeMonth, getMonthModeLabel } fro
 import { buildAccountMetaIndex, AccountMeta } from '../lib/varianceAccountIndex';
 import { loadActualRows, loadBudgetRowsByDept } from '../lib/varianceDataLoader';
 import { buildAtomicCompareRows, buildVarianceComparison, resolveSelectedDeptCodes, AtomicCompareRow as EngineAtomicCompareRow, getVarianceStatus, VarianceStatus } from '../lib/varianceEngine';
+import { calcVarianceRate, formatVarianceRate, toExcelPercentValue } from '../lib/varianceMath';
 
 let cachedPretendardBase64: string | null = null;
 let XLSX: any = null;
+
+function getCompareRowCode(row: any, isDeptMode: boolean): string {
+  return isDeptMode
+    ? row.deptCode || row.code || row.key || ''
+    : row.accountCode || row.code || row.key || '';
+}
+
+function getCompareRowName(row: any, isDeptMode: boolean): string {
+  return isDeptMode
+    ? row.deptName || row.name || row.accountName || ''
+    : row.accountName || row.name || '';
+}
 
 const getStatusBadgeStyle = (status: VarianceStatus) => {
   switch (status) {
@@ -297,187 +310,6 @@ export default function VarianceComparison() {
     return `부서별_비교분석_${baseYear}_${basePlanType}_${basePeriod}_vs_${targetYear}_${targetPlanType}_${targetPeriod}.${ext}`;
   };
 
-  interface AtomicCompareRow {
-    deptCode: string;
-    deptName: string;
-    accountCode: string;
-    accountName: string;
-    accountingType: string;
-    accountClass: string;
-    amount: number;
-    isSalary?: boolean;
-  }
-
-  const getAtomicCompareRows = (
-    year: string,
-    planType: string,
-    periodMode: MonthMode,
-    periodSelectedMonth: number,
-    deptCodes: string[]
-  ): AtomicCompareRow[] => {
-    const rows: AtomicCompareRow[] = [];
-
-    const accountCategoryMap = new Map<string, string>();
-    const accountToCategoryNameMap = new Map<string, string>();
-    const accountCodeToNameMap = new Map<string, string>();
-    categories.forEach(cat => {
-      const type = cat.name.startsWith('제조') ? '제조' : cat.name.startsWith('판관') ? '판관' : '기타';
-      cat.accounts.forEach((acc: any) => {
-        accountCategoryMap.set(acc.code, type);
-        accountToCategoryNameMap.set(acc.code, cat.name);
-        accountCodeToNameMap.set(acc.code, acc.name);
-      });
-    });
-
-    const salaryAccountCodes = new Set<string>();
-    INITIAL_CATEGORIES.forEach(cat => {
-      if (SALARY_CATEGORIES.includes(cat.name)) {
-        cat.accounts.forEach((acc: any) => salaryAccountCodes.add(acc.code));
-      }
-    });
-
-    if (planType === '실적') {
-      const actualDataStr = localStorage.getItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`);
-      const actualData = actualDataStr ? JSON.parse(actualDataStr) : [];
-
-      const savedActualsMap = new Map<string, string>();
-      allDepts.forEach(d => {
-        const key = getBudgetDataKey(d.code, year, '실적');
-        try {
-          const saved = JSON.parse(localStorage.getItem(key) || '[]');
-          saved.forEach((row: any) => {
-            savedActualsMap.set(`${d.code}_${row.code}`, row.attributedDeptCode);
-          });
-        } catch (e) {}
-      });
-
-      actualData.forEach((item: any) => {
-        const effectiveDeptCode = item.attributedDeptCode || savedActualsMap.get(`${item.usageCode}_${item.accountCode}`) || item.usageCode;
-        
-        if (!deptCodes.includes(effectiveDeptCode)) return;
-
-        const periodStr = String(item.period || '');
-        const monthIndex = parseMonthIndex(periodStr);
-        if (!shouldIncludeMonth(monthIndex, periodMode, periodSelectedMonth)) return;
-
-        const resolvedAccount = resolveAccountByCode({
-          accountCode: item.accountCode,
-          uploadedName: item.accountName,
-          year,
-        });
-
-        const accountName = resolvedAccount.name;
-
-        const isSalary = isSalaryAccountRow({
-          accountCode: item.accountCode,
-          accountName,
-          accountClass: classifyAccount(item.accountCode, accountName),
-        });
-
-        if (!hasSalaryAccess || !includeSalaryRows) {
-          if (isSalary) return;
-        }
-
-        if (selectedAccountingType !== '전체') {
-          if (getAccountingType(item.accountCode, accountName) !== selectedAccountingType) return;
-        }
-        if (selectedAccountClass !== '전체') {
-          if (classifyAccount(item.accountCode, accountName) !== selectedAccountClass) return;
-        }
-
-        const amount = Number(item.completed || 0);
-
-        if (amount === 0) return;
-
-        rows.push({
-          deptCode: effectiveDeptCode,
-          deptName: allDepts.find(d => d.code === effectiveDeptCode)?.name || effectiveDeptCode,
-          accountCode: item.accountCode,
-          accountName,
-          accountingType: getAccountingType(item.accountCode, accountName),
-          accountClass: classifyAccount(item.accountCode, accountName),
-          amount,
-          isSalary,
-        });
-      });
-
-      return rows;
-    }
-
-    deptCodes.forEach(deptCode => {
-      const savedDataStr = readBudgetData(deptCode, year, planType);
-      const oldKey = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}`;
-      const dataStr = savedDataStr || (
-        year === '2026' && planType === '경영계획'
-          ? localStorage.getItem(oldKey)
-          : null
-      );
-
-      if (!dataStr) return;
-
-      let budgetRows: any[] = [];
-      try {
-        budgetRows = JSON.parse(dataStr);
-      } catch (e) {
-        return;
-      }
-
-      budgetRows.forEach((row: any) => {
-        const attributedDeptCode = row.attributedDeptCode || deptCode;
-        if (!deptCodes.includes(attributedDeptCode)) return;
-
-        const resolvedAccount = resolveAccountByCode({
-          accountCode: row.code,
-          uploadedName: row.name,
-          year,
-        });
-
-        const accountName = resolvedAccount.name;
-
-        const isSalary = isSalaryAccountRow({
-          accountCode: row.code,
-          accountName,
-          accountClass: classifyAccount(row.code, accountName),
-        });
-
-        if (!hasSalaryAccess || !includeSalaryRows) {
-          if (isSalary) return;
-        }
-
-        if (selectedAccountingType !== '전체') {
-          if (getAccountingType(row.code, accountName) !== selectedAccountingType) return;
-        }
-        if (selectedAccountClass !== '전체') {
-          if (classifyAccount(row.code, accountName) !== selectedAccountClass) return;
-        }
-
-        let amount = 0;
-        if (periodMode === 'MONTH') {
-          amount = Number(row.values?.[periodSelectedMonth - 1] || 0);
-        } else {
-          amount = (row.values || [])
-            .slice(0, periodSelectedMonth)
-            .reduce((sum: number, v: any) => sum + Number(v || 0), 0);
-        }
-
-        if (amount === 0) return;
-
-        rows.push({
-          deptCode: attributedDeptCode,
-          deptName: allDepts.find(d => d.code === attributedDeptCode)?.name || attributedDeptCode,
-          accountCode: row.code,
-          accountName,
-          accountingType: getAccountingType(row.code, accountName),
-          accountClass: classifyAccount(row.code, accountName),
-          amount,
-          isSalary,
-        });
-      });
-    });
-
-    return rows;
-  };
-
   interface DeptDetailCompareRow {
     deptCode: string;
     deptName: string;
@@ -488,90 +320,62 @@ export default function VarianceComparison() {
     baseAmount: number;
     targetAmount: number;
     variance: number;
-    variancePercent: number;
+    variancePercent: number | null;
     status: VarianceStatus;
     isSalary?: boolean;
   }
 
   const buildDeptDetailComparisonRows = (deptCodes: string[]): DeptDetailCompareRow[] => {
-    const baseRows = getAtomicCompareRows(
-      baseYear,
+    const baseRows = buildAtomicCompareRows({
+      year: baseYear,
+      planType: basePlanType,
+      monthMode: baseMonthMode,
+      selectedMonth: baseSelectedMonth,
+      deptCodes,
+      accountMetaMap,
+      hasSalaryAccess: hasSalaryAccess && includeSalaryRows,
+      allDepts,
+    });
+
+    const targetRows = buildAtomicCompareRows({
+      year: targetYear,
+      planType: targetPlanType,
+      monthMode: targetMonthMode,
+      selectedMonth: targetSelectedMonth,
+      deptCodes,
+      accountMetaMap,
+      hasSalaryAccess: hasSalaryAccess && includeSalaryRows,
+      allDepts,
+    });
+
+    const result = buildVarianceComparison({
+      baseRows,
+      targetRows,
+      groupBy: 'account',
+      allDepts,
+      activeDept: deptCodes.length === 1 ? deptCodes[0] : 'group',
+      selectedAccountingType,
+      selectedAccountClass,
       basePlanType,
-      baseMonthMode,
-      baseSelectedMonth,
-      deptCodes
-    );
-
-    const targetRows = getAtomicCompareRows(
-      targetYear,
       targetPlanType,
-      targetMonthMode,
-      targetSelectedMonth,
-      deptCodes
-    );
-
-    const baseMap = new Map<string, AtomicCompareRow>();
-    const targetMap = new Map<string, AtomicCompareRow>();
-
-    baseRows.forEach(row => {
-      const key = `${row.deptCode}|${row.accountCode}`;
-      const prev = baseMap.get(key);
-      if (prev) {
-        prev.amount += row.amount;
-      } else {
-        baseMap.set(key, { ...row });
-      }
     });
 
-    targetRows.forEach(row => {
-      const key = `${row.deptCode}|${row.accountCode}`;
-      const prev = targetMap.get(key);
-      if (prev) {
-        prev.amount += row.amount;
-      } else {
-        targetMap.set(key, { ...row });
-      }
-    });
-
-    const allKeys = new Set([...baseMap.keys(), ...targetMap.keys()]);
-
-    return Array.from(allKeys).map(key => {
-      const base = baseMap.get(key);
-      const target = targetMap.get(key);
-      const src = base || target!;
-
-      const baseAmount = base?.amount || 0;
-      const targetAmount = target?.amount || 0;
-      const variance = targetAmount - baseAmount;
-      const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
-
-      const status = getVarianceStatus({
-        baseAmount,
-        targetAmount,
-        basePlanType,
-        targetPlanType,
-      });
-
-      return {
-        deptCode: src.deptCode,
-        deptName: src.deptName,
-        accountingType: src.accountingType,
-        accountClass: src.accountClass,
-        accountCode: src.accountCode,
-        accountName: src.accountName,
-        baseAmount,
-        targetAmount,
-        variance,
-        variancePercent,
-        status,
-        isSalary: src.isSalary,
-      };
-    })
-    .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
-    .sort((a, b) => {
-      if (a.deptCode !== b.deptCode) return a.deptCode.localeCompare(b.deptCode);
-      return Math.abs(b.variance) - Math.abs(a.variance);
-    });
+    return result.rows.map(row => ({
+      deptCode: deptCodes.length === 1 ? deptCodes[0] : '',
+      deptName: deptCodes.length === 1
+        ? allDepts.find(d => d.code === deptCodes[0])?.name || deptCodes[0]
+        : '',
+      accountingType: row.accountingType,
+      accountClass: row.accountClass,
+      accountCode: row.accountCode,
+      accountName: row.accountName,
+      baseAmount: row.baseAmount,
+      targetAmount: row.targetAmount,
+      variance: row.variance,
+      variancePercent: row.variancePercent,
+      status: row.status,
+      isSalary: row.isSalary,
+    }));
   };
 
   const safeSheetName = (name: string): string => {
@@ -722,7 +526,7 @@ export default function VarianceComparison() {
       .sort((a, b) => a.deptCode.localeCompare(b.deptCode))
       .forEach(row => {
         const variance = row.targetAmount - row.baseAmount;
-        const variancePercent = row.baseAmount === 0 ? 0 : variance / row.baseAmount;
+        const variancePercent = calcVarianceRate(row.baseAmount, row.targetAmount);
 
         const status = getVarianceStatus({
           baseAmount: row.baseAmount,
@@ -737,7 +541,7 @@ export default function VarianceComparison() {
           row.baseAmount,
           row.targetAmount,
           variance,
-          variancePercent,
+          toExcelPercentValue(variancePercent),
           status,
         ]);
       });
@@ -798,7 +602,7 @@ export default function VarianceComparison() {
         row.baseAmount,
         row.targetAmount,
         row.variance,
-        row.variancePercent / 100,
+        toExcelPercentValue(row.variancePercent),
         row.status,
       ]);
     });
@@ -806,7 +610,7 @@ export default function VarianceComparison() {
     const totalBase = rows.reduce((sum, row) => sum + row.baseAmount, 0);
     const totalTarget = rows.reduce((sum, row) => sum + row.targetAmount, 0);
     const totalVariance = totalTarget - totalBase;
-    const totalVariancePercent = totalBase === 0 ? 0 : totalVariance / totalBase;
+    const totalVariancePercent = calcVarianceRate(totalBase, totalTarget);
 
     data.push([]);
     data.push([
@@ -819,7 +623,7 @@ export default function VarianceComparison() {
       totalBase,
       totalTarget,
       totalVariance,
-      totalVariancePercent,
+      toExcelPercentValue(totalVariancePercent),
       '',
     ]);
 
@@ -866,7 +670,7 @@ export default function VarianceComparison() {
         prev.baseAmount += row.baseAmount;
         prev.targetAmount += row.targetAmount;
         prev.variance = prev.targetAmount - prev.baseAmount;
-        prev.variancePercent = prev.baseAmount === 0 ? 0 : (prev.variance / prev.baseAmount) * 100;
+        prev.variancePercent = calcVarianceRate(prev.baseAmount, prev.targetAmount);
         prev.status = getVarianceStatus({
           baseAmount: prev.baseAmount,
           targetAmount: prev.targetAmount,
@@ -918,7 +722,7 @@ export default function VarianceComparison() {
         row.baseAmount,
         row.targetAmount,
         row.variance,
-        row.variancePercent / 100,
+        toExcelPercentValue(row.variancePercent),
         row.status,
       ]);
     });
@@ -926,7 +730,7 @@ export default function VarianceComparison() {
     const totalBase = aggregatedRows.reduce((sum, row) => sum + row.baseAmount, 0);
     const totalTarget = aggregatedRows.reduce((sum, row) => sum + row.targetAmount, 0);
     const totalVariance = totalTarget - totalBase;
-    const totalVariancePercent = totalBase === 0 ? 0 : totalVariance / totalBase;
+    const totalVariancePercent = calcVarianceRate(totalBase, totalTarget);
 
     data.push([]);
     data.push([
@@ -939,7 +743,7 @@ export default function VarianceComparison() {
       totalBase,
       totalTarget,
       totalVariance,
-      totalVariancePercent,
+      toExcelPercentValue(totalVariancePercent),
       '',
     ]);
 
@@ -1053,7 +857,7 @@ export default function VarianceComparison() {
         row.baseAmount,
         row.targetAmount,
         row.variance,
-        typeof row.variancePercent === 'number' ? row.variancePercent.toFixed(2) + '%' : row.variancePercent,
+        toExcelPercentValue(row.variancePercent),
         row.status
       ]);
     });
@@ -1074,29 +878,27 @@ export default function VarianceComparison() {
     });
 
     const mfgVar = excelTargetMfg - excelBaseMfg;
-    const mfgVarPct = excelBaseMfg === 0 ? 0 : (mfgVar / excelBaseMfg) * 100;
+    const mfgVarRate = calcVarianceRate(excelBaseMfg, excelTargetMfg);
 
     const sgaVar = excelTargetSga - excelBaseSga;
-    const sgaVarPct = excelBaseSga === 0 ? 0 : (sgaVar / excelBaseSga) * 100;
+    const sgaVarRate = calcVarianceRate(excelBaseSga, excelTargetSga);
 
     const excelTotalBase = excelBaseMfg + excelBaseSga;
     const excelTotalTarget = excelTargetMfg + excelTargetSga;
     const totalVar = excelTotalTarget - excelTotalBase;
-    const totalVarPct = excelTotalBase === 0 ? 0 : (totalVar / excelTotalBase) * 100;
+    const totalVarRate = calcVarianceRate(excelTotalBase, excelTotalTarget);
 
     excelData.push([]); // Empty row for spacing
-    excelData.push(['', '', '', '제조 합계', excelBaseMfg, excelTargetMfg, mfgVar, mfgVarPct.toFixed(2) + '%', '']);
-    excelData.push(['', '', '', '판관 합계', excelBaseSga, excelTargetSga, sgaVar, sgaVarPct.toFixed(2) + '%', '']);
-    excelData.push(['', '', '', '총 합계', excelTotalBase, excelTotalTarget, totalVar, totalVarPct.toFixed(2) + '%', '']);
+    excelData.push(['', '', '', '제조 합계', excelBaseMfg, excelTargetMfg, mfgVar, toExcelPercentValue(mfgVarRate), '']);
+    excelData.push(['', '', '', '판관 합계', excelBaseSga, excelTargetSga, sgaVar, toExcelPercentValue(sgaVarRate), '']);
+    excelData.push(['', '', '', '총 합계', excelTotalBase, excelTotalTarget, totalVar, toExcelPercentValue(totalVarRate), '']);
 
     const ws = XLSX.utils.aoa_to_sheet(excelData);
     
-    // Apply number formatting with comma
-    Object.keys(ws).forEach(key => {
-      if (key[0] === '!') return;
-      if (ws[key].t === 'n') {
-        ws[key].z = '#,##0';
-      }
+    applyWorksheetStyle(ws, {
+      amountColumnIndexes: [4, 5, 6],
+      percentColumnIndexes: [7],
+      leftAlignColumnIndexes: [3],
     });
     
     ws['!cols'] = [
@@ -1110,6 +912,8 @@ export default function VarianceComparison() {
       { wch: 15 },
       { wch: 10 }
     ];
+
+    applyWorksheetView(ws);
 
     XLSX.utils.book_append_sheet(wb, ws, '비교분석');
     XLSX.writeFile(wb, getDownloadFileName('xlsx'));
@@ -1126,15 +930,15 @@ export default function VarianceComparison() {
     const slide2 = pres.addSlide();
     slide2.addText('요약', { x: 0.5, y: 0.5, w: '90%', h: 0.5, fontSize: 24, bold: true, color: '191f28' });
     
-    const pptTotalBase = chartData.reduce((sum, item) => sum + (item[baseName] || 0), 0);
-    const pptTotalTarget = chartData.reduce((sum, item) => sum + (item[targetName] || 0), 0);
-    const pptTotalVariance = pptTotalTarget - pptTotalBase;
-    const pptTotalVariancePercent = pptTotalBase === 0 ? 0 : (pptTotalVariance / pptTotalBase) * 100;
+    const pptTotalBase = totalBase;
+    const pptTotalTarget = totalTarget;
+    const pptTotalVariance = totalVariance;
 
     slide2.addText(`${baseName} 총액: ${formatCurrency(pptTotalBase)}원`, { x: 0.5, y: 1.5, w: '90%', h: 0.5, fontSize: 18 });
     slide2.addText(`${targetName} 총액: ${formatCurrency(pptTotalTarget)}원`, { x: 0.5, y: 2.2, w: '90%', h: 0.5, fontSize: 18 });
     
-    const varianceText = `${pptTotalVariance > 0 ? '+' : ''}${formatCurrency(pptTotalVariance)}원 (${pptTotalVariance > 0 ? '+' : ''}${pptTotalVariancePercent.toFixed(1)}%)`;
+    const formattedPercent = formatVarianceRate(totalVariancePercent, 1);
+    const varianceText = `${pptTotalVariance > 0 ? '+' : ''}${formatCurrency(pptTotalVariance)}원 (${formattedPercent})`;
     slide2.addText(`증감액: ${varianceText}`, { x: 0.5, y: 2.9, w: '90%', h: 0.5, fontSize: 18, bold: true, color: pptTotalVariance > 0 ? 'FF0000' : '0000FF' });
 
     const slide3 = pres.addSlide();
@@ -1156,7 +960,7 @@ export default function VarianceComparison() {
         formatCurrency(row[baseName]),
         formatCurrency(row[targetName]),
         `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
-        `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
+        formatVarianceRate(row.variancePercent, 1)
       ]);
     } else {
       tableHeaders = [
@@ -1175,7 +979,7 @@ export default function VarianceComparison() {
           formatCurrency(row.baseAmount),
           formatCurrency(row.targetAmount),
           `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
-          `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
+          formatVarianceRate(row.variancePercent, 1)
         ]);
       });
       
@@ -1221,15 +1025,15 @@ export default function VarianceComparison() {
     doc.setFontSize(12);
     doc.text(`기준: ${baseName} / 비교: ${targetName}`, 14, 32);
 
-    const pdfTotalBase = chartData.reduce((sum, item) => sum + (item[baseName] || 0), 0);
-    const pdfTotalTarget = chartData.reduce((sum, item) => sum + (item[targetName] || 0), 0);
-    const pdfTotalVariance = pdfTotalTarget - pdfTotalBase;
-    const pdfTotalVariancePercent = pdfTotalBase === 0 ? 0 : (pdfTotalVariance / pdfTotalBase) * 100;
+    const pdfTotalBase = totalBase;
+    const pdfTotalTarget = totalTarget;
+    const pdfTotalVariance = totalVariance;
+    const pdfTotalVariancePercent = totalVariancePercent;
 
     doc.text(`총액 요약:`, 14, 42);
     doc.text(`- ${baseName} 총액: ${formatCurrency(pdfTotalBase)}원`, 14, 48);
     doc.text(`- ${targetName} 총액: ${formatCurrency(pdfTotalTarget)}원`, 14, 54);
-    const varianceText = `${pdfTotalVariance > 0 ? '+' : ''}${formatCurrency(pdfTotalVariance)}원 (${pdfTotalVariance > 0 ? '+' : ''}${pdfTotalVariancePercent.toFixed(1)}%)`;
+    const varianceText = `${pdfTotalVariance > 0 ? '+' : ''}${formatCurrency(pdfTotalVariance)}원 (${formatVarianceRate(pdfTotalVariancePercent, 1)})`;
     doc.text(`- 증감액: ${varianceText}`, 14, 60);
 
     let head = [];
@@ -1242,7 +1046,7 @@ export default function VarianceComparison() {
         formatCurrency(row[baseName]),
         formatCurrency(row[targetName]),
         `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
-        `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
+        formatVarianceRate(row.variancePercent, 1)
       ]);
     } else {
       head = [['계정코드', '계정명', baseName, targetName, '차액', '증감률(%)']];
@@ -1254,7 +1058,7 @@ export default function VarianceComparison() {
           formatCurrency(row.baseAmount),
           formatCurrency(row.targetAmount),
           `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
-          `${row.variancePercent > 0 ? '+' : ''}${row.variancePercent.toFixed(1)}%`
+          formatVarianceRate(row.variancePercent, 1)
         ]);
       });
     }
@@ -1512,6 +1316,7 @@ export default function VarianceComparison() {
 
   const filteredAndSortedRows = useMemo(() => {
     let rows = [...visibleComparisonRows];
+    const isDeptMode = selectedDept === 'by_dept';
 
     // 1. Apply table filters (detailFilters)
     if (detailFilters.accountClass) {
@@ -1522,13 +1327,14 @@ export default function VarianceComparison() {
     }
     if (detailFilters.accountCode) {
       const codeTerm = detailFilters.accountCode.toLowerCase();
-      rows = rows.filter(row => row.accountCode.toLowerCase().includes(codeTerm) || row.key.toLowerCase().includes(codeTerm));
+      rows = rows.filter(row =>
+        getCompareRowCode(row, isDeptMode).toLowerCase().includes(codeTerm)
+      );
     }
     if (detailFilters.accountName) {
       const nameTerm = detailFilters.accountName.toLowerCase();
-      rows = rows.filter(row => 
-        row.accountName.toLowerCase().includes(nameTerm) || 
-        row.deptName.toLowerCase().includes(nameTerm)
+      rows = rows.filter(row =>
+        getCompareRowName(row, isDeptMode).toLowerCase().includes(nameTerm)
       );
     }
     if (detailFilters.status) {
@@ -1567,11 +1373,11 @@ export default function VarianceComparison() {
           valA = a.targetAmount;
           valB = b.targetAmount;
         } else if (key === 'accountCode') {
-          valA = a.accountCode || a.key;
-          valB = b.accountCode || b.key;
+          valA = getCompareRowCode(a, isDeptMode);
+          valB = getCompareRowCode(b, isDeptMode);
         } else if (key === 'accountName') {
-          valA = a.accountName || a.deptName;
-          valB = b.accountName || b.deptName;
+          valA = getCompareRowName(a, isDeptMode);
+          valB = getCompareRowName(b, isDeptMode);
         } else if (key === 'accountClass') {
           valA = a.accountClass;
           valB = b.accountClass;
@@ -1596,16 +1402,37 @@ export default function VarianceComparison() {
     }
 
     return rows;
-  }, [visibleComparisonRows, detailFilters, detailSort]);
+  }, [visibleComparisonRows, detailFilters, detailSort, selectedDept]);
 
   const pagedVisibleComparisonRows = useMemo(() => {
     return filteredAndSortedRows.slice(0, visibleDetailCount);
   }, [filteredAndSortedRows, visibleDetailCount]);
 
-  const totalBase = chartData.reduce((sum, item) => sum + item[baseName], 0);
-  const totalTarget = chartData.reduce((sum, item) => sum + item[targetName], 0);
-  const totalVariance = totalTarget - totalBase;
-  const totalVariancePercent = totalBase === 0 ? 0 : (totalVariance / totalBase) * 100;
+  const totalBase = useMemo(() => {
+    return salaryFilteredComparisonRows.reduce((sum, row) => sum + row.baseAmount, 0);
+  }, [salaryFilteredComparisonRows]);
+
+  const totalTarget = useMemo(() => {
+    return salaryFilteredComparisonRows.reduce((sum, row) => sum + row.targetAmount, 0);
+  }, [salaryFilteredComparisonRows]);
+
+  const totalVariance = useMemo(() => {
+    return totalTarget - totalBase;
+  }, [totalBase, totalTarget]);
+
+  const totalVariancePercent = useMemo(() => {
+    return calcVarianceRate(totalBase, totalTarget);
+  }, [totalBase, totalTarget]);
+
+  const mfgRate = useMemo(() => {
+    return calcVarianceRate(summaryTotals.baseMfg, summaryTotals.targetMfg);
+  }, [summaryTotals.baseMfg, summaryTotals.targetMfg]);
+
+  const sgaRate = useMemo(() => {
+    return calcVarianceRate(summaryTotals.baseSga, summaryTotals.targetSga);
+  }, [summaryTotals.baseSga, summaryTotals.targetSga]);
+
+  const isDeptMode = selectedDept === 'by_dept';
 
   return (
     <div className="space-y-6">
@@ -1961,7 +1788,7 @@ export default function VarianceComparison() {
                 {totalVariance > 0 ? '+' : ''}{formatCurrency(toMillions(totalVariance))} <span className="text-sm font-normal">백만원</span>
               </p>
               <p className={`text-sm font-bold ${totalVariance > 0 ? 'text-cobalt-600' : totalVariance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
-                {totalVariance > 0 ? '+' : ''}{totalVariancePercent.toFixed(1)}%
+                {formatVarianceRate(totalVariancePercent, 1)}
               </p>
             </div>
           </div>
@@ -2033,45 +1860,49 @@ export default function VarianceComparison() {
 
         {/* Detail Filter Toolbar */}
         <div className="bg-zinc-50/50 border-b border-zinc-200 px-6 py-3.5 flex flex-wrap gap-3 items-center text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-zinc-500">비용성격:</span>
-            <select
-              value={detailFilters.accountClass}
-              onChange={(e) => {
-                setDetailFilters(prev => ({ ...prev, accountClass: e.target.value }));
-                setVisibleDetailCount(100);
-              }}
-              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
-            >
-              <option value="">전체</option>
-              {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          </div>
+          {!isDeptMode && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-zinc-500">비용성격:</span>
+                <select
+                  value={detailFilters.accountClass}
+                  onChange={(e) => {
+                    setDetailFilters(prev => ({ ...prev, accountClass: e.target.value }));
+                    setVisibleDetailCount(100);
+                  }}
+                  className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
+                >
+                  <option value="">전체</option>
+                  {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-zinc-500">회계구분:</span>
+                <select
+                  value={detailFilters.accountingType}
+                  onChange={(e) => {
+                    setDetailFilters(prev => ({ ...prev, accountingType: e.target.value }));
+                    setVisibleDetailCount(100);
+                  }}
+                  className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
+                >
+                  <option value="">전체</option>
+                  {ACCOUNTING_TYPE_OPTIONS.filter(opt => opt !== '전체').map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-zinc-500">회계구분:</span>
-            <select
-              value={detailFilters.accountingType}
-              onChange={(e) => {
-                setDetailFilters(prev => ({ ...prev, accountingType: e.target.value }));
-                setVisibleDetailCount(100);
-              }}
-              className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
-            >
-              <option value="">전체</option>
-              {ACCOUNTING_TYPE_OPTIONS.filter(opt => opt !== '전체').map(opt => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold text-zinc-500">코드:</span>
+            <span className="font-bold text-zinc-500">{isDeptMode ? '부서코드:' : '계정코드:'}</span>
             <input
               type="text"
-              placeholder="코드 검색..."
+              placeholder={isDeptMode ? '부서코드 검색...' : '계정코드 검색...'}
               value={detailFilters.accountCode}
               onChange={(e) => {
                 setDetailFilters(prev => ({ ...prev, accountCode: e.target.value }));
@@ -2082,10 +1913,10 @@ export default function VarianceComparison() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-zinc-500">이름:</span>
+            <span className="font-bold text-zinc-500">{isDeptMode ? '부서명:' : '계정명:'}</span>
             <input
               type="text"
-              placeholder="계정/부서명..."
+              placeholder={isDeptMode ? '부서명 검색...' : '계정명 검색...'}
               value={detailFilters.accountName}
               onChange={(e) => {
                 setDetailFilters(prev => ({ ...prev, accountName: e.target.value }));
@@ -2169,29 +2000,33 @@ export default function VarianceComparison() {
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-lithium-100/50 border-b border-lithium-200 font-sans">
-                <th
-                  onClick={() => handleSort('accountClass')}
-                  className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
-                >
-                  비용 성격 {renderSortArrow('accountClass')}
-                </th>
-                <th
-                  onClick={() => handleSort('accountingType')}
-                  className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
-                >
-                  회계 구분 {renderSortArrow('accountingType')}
-                </th>
+                {!isDeptMode && (
+                  <>
+                    <th
+                      onClick={() => handleSort('accountClass')}
+                      className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                    >
+                      비용 성격 {renderSortArrow('accountClass')}
+                    </th>
+                    <th
+                      onClick={() => handleSort('accountingType')}
+                      className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
+                    >
+                      회계 구분 {renderSortArrow('accountingType')}
+                    </th>
+                  </>
+                )}
                 <th
                   onClick={() => handleSort('accountCode')}
                   className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
                 >
-                  {selectedDept === 'by_dept' ? '부서코드' : '계정코드'} {renderSortArrow('accountCode')}
+                  {isDeptMode ? '부서코드' : '계정코드'} {renderSortArrow('accountCode')}
                 </th>
                 <th
                   onClick={() => handleSort('accountName')}
                   className="px-5 py-3 text-xs font-bold text-text-secondary cursor-pointer hover:bg-zinc-150 select-none transition-colors"
                 >
-                  {selectedDept === 'by_dept' ? '부서명' : '계정명'} {renderSortArrow('accountName')}
+                  {isDeptMode ? '부서명' : '계정명'} {renderSortArrow('accountName')}
                 </th>
                 <th
                   onClick={() => handleSort('baseAmount')}
@@ -2228,14 +2063,16 @@ export default function VarianceComparison() {
             <tbody className="divide-y divide-lithium-100">
               {pagedVisibleComparisonRows.length === 0 ? (
                 <tr>
-                   <td colSpan={9} className="px-6 py-12 text-center text-sm text-text-secondary bg-white">
+                   <td colSpan={isDeptMode ? 7 : 9} className="px-6 py-12 text-center text-sm text-text-secondary bg-white">
                     선택한 조건에 해당하는 상세 비교 데이터가 없습니다. 상위 필터 조건 또는 아래 텍스트 필터 구성을 확인해 주세요.
                   </td>
                 </tr>
               ) : (
                 pagedVisibleComparisonRows.map(row => {
-                  const isDrilldown = selectedDept === 'by_dept';
+                  const isDrilldown = isDeptMode;
                   const isSelected = isDrilldown && selectedDepartment?.departmentCode === row.key;
+                  const rowCode = getCompareRowCode(row, isDeptMode);
+                  const rowName = getCompareRowName(row, isDeptMode);
                   
                   return (
                     <tr 
@@ -2245,11 +2082,11 @@ export default function VarianceComparison() {
                           setSelectedDepartment(prev => 
                             prev?.departmentCode === row.key 
                               ? null 
-                              : { departmentCode: row.key, departmentName: row.accountName || row.deptName || row.name }
+                              : { departmentCode: row.key, departmentName: rowName }
                           );
                         }
                       }}
-                      className={`transition-colors duration-150 ${
+                      className={`transition-colors duration-150 group ${
                         isDrilldown ? 'cursor-pointer select-none' : ''
                       } ${
                         isSelected 
@@ -2257,14 +2094,18 @@ export default function VarianceComparison() {
                           : 'hover:bg-lithium-50/80'
                       }`}
                     >
-                      <td className="px-5 py-3 text-sm font-bold text-eco-black">{row.accountClass}</td>
-                      <td className="px-5 py-3 text-sm text-text-secondary">{row.accountingType}</td>
+                      {!isDeptMode && (
+                        <>
+                          <td className="px-5 py-3 text-sm font-bold text-eco-black">{row.accountClass}</td>
+                          <td className="px-5 py-3 text-sm text-text-secondary">{row.accountingType}</td>
+                        </>
+                      )}
                       <td className="px-5 py-3 text-xs font-mono text-text-tertiary">
-                        {isDrilldown ? row.key : (row.accountCode || '-')}
+                        {rowCode}
                       </td>
                       <td className="px-5 py-3 text-sm font-semibold text-eco-black">
                         <div className="flex items-center gap-2">
-                          <span>{row.accountName}</span>
+                          <span>{rowName}</span>
                           {isDrilldown && !isSelected && (
                             <span className="text-[10px] text-cobalt-600 font-bold bg-cobalt-50 border border-cobalt-100 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity">
                               상세보기
@@ -2282,8 +2123,8 @@ export default function VarianceComparison() {
                       <td className={`px-5 py-3 text-sm text-right font-black font-mono ${isSelected ? 'text-cobalt-700' : row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                         {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
                       </td>
-                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${isSelected ? 'text-cobalt-600' : row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                        {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
+                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${isSelected ? 'text-cobalt-600' : (row.variancePercent !== null && row.variancePercent > 0) ? 'text-cobalt-500' : (row.variancePercent !== null && row.variancePercent < 0) ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                        {formatVarianceRate(row.variancePercent, 1)}
                       </td>
                       <td className="px-5 py-3 text-sm text-center" onClick={(e) => e.stopPropagation()}>
                         <span className={`px-2 py-0.5 rounded-lg text-xs font-bold inline-block ${getStatusBadgeStyle(row.status)}`}>
@@ -2297,38 +2138,38 @@ export default function VarianceComparison() {
             </tbody>
             <tfoot className="bg-lithium-50 border-t-2 border-lithium-200">
               <tr className="border-b border-lithium-100">
-                <td colSpan={4} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black tracking-tight text-right">제조 합계</td>
+                <td colSpan={isDeptMode ? 2 : 4} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black tracking-tight text-right">제조 합계</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-text-secondary text-right">{formatCurrency(toMillions(summaryTotals.baseMfg))}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(summaryTotals.targetMfg))}</td>
                 <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.targetMfg - summaryTotals.baseMfg > 0 ? 'text-cobalt-600' : summaryTotals.targetMfg - summaryTotals.baseMfg < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                   {summaryTotals.targetMfg - summaryTotals.baseMfg > 0 ? '+' : ''}{formatCurrency(toMillions(summaryTotals.targetMfg - summaryTotals.baseMfg))}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.baseMfg === 0 ? 'text-text-tertiary' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg > 0 ? 'text-cobalt-500' : (summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                  {summaryTotals.baseMfg === 0 ? '0.0%' : `${(summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg > 0 ? '+' : ''}${(((summaryTotals.targetMfg - summaryTotals.baseMfg) / summaryTotals.baseMfg) * 100).toFixed(1)}%`}
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${(mfgRate !== null && mfgRate > 0) ? 'text-cobalt-500' : (mfgRate !== null && mfgRate < 0) ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                  {formatVarianceRate(mfgRate, 1)}
                 </td>
                 <td></td>
               </tr>
               <tr className="border-b border-lithium-100">
-                <td colSpan={4} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black tracking-tight text-right">판관 합계</td>
+                <td colSpan={isDeptMode ? 2 : 4} className="px-6 py-4 whitespace-nowrap text-sm font-bold text-eco-black tracking-tight text-right">판관 합계</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-text-secondary text-right">{formatCurrency(toMillions(summaryTotals.baseSga))}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-black text-eco-black text-right">{formatCurrency(toMillions(summaryTotals.targetSga))}</td>
                 <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.targetSga - summaryTotals.baseSga > 0 ? 'text-cobalt-600' : summaryTotals.targetSga - summaryTotals.baseSga < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                   {summaryTotals.targetSga - summaryTotals.baseSga > 0 ? '+' : ''}{formatCurrency(toMillions(summaryTotals.targetSga - summaryTotals.baseSga))}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${summaryTotals.baseSga === 0 ? 'text-text-tertiary' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga > 0 ? 'text-cobalt-500' : (summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                  {summaryTotals.baseSga === 0 ? '0.0%' : `${(summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga > 0 ? '+' : ''}${(((summaryTotals.targetSga - summaryTotals.baseSga) / summaryTotals.baseSga) * 100).toFixed(1)}%`}
+                <td className={`px-6 py-4 whitespace-nowrap text-sm font-black text-right ${(sgaRate !== null && sgaRate > 0) ? 'text-cobalt-500' : (sgaRate !== null && sgaRate < 0) ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                  {formatVarianceRate(sgaRate, 1)}
                 </td>
                 <td></td>
               </tr>
               <tr className="bg-lithium-100">
-                <td colSpan={4} className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black uppercase tracking-tight text-right">총 합계</td>
+                <td colSpan={isDeptMode ? 2 : 4} className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black uppercase tracking-tight text-right">총 합계</td>
                 <td className="px-6 py-5 whitespace-nowrap text-base font-bold text-text-secondary text-right">{formatCurrency(toMillions(totalBase))}</td>
                 <td className="px-6 py-5 whitespace-nowrap text-base font-black text-eco-black text-right">{formatCurrency(toMillions(totalTarget))}</td>
                 <td className={`px-6 py-5 whitespace-nowrap text-base font-black text-right ${totalVariance > 0 ? 'text-cobalt-600' : totalVariance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                   {totalVariance > 0 ? '+' : ''}{formatCurrency(toMillions(totalVariance))}
                 </td>
-                <td className={`px-6 py-5 whitespace-nowrap text-base font-black text-right ${totalVariancePercent > 0 ? 'text-cobalt-500' : totalVariancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                  {totalVariancePercent > 0 ? '+' : ''}{totalVariancePercent.toFixed(1)}%
+                <td className={`px-6 py-5 whitespace-nowrap text-base font-black text-right ${(totalVariancePercent !== null && totalVariancePercent > 0) ? 'text-cobalt-500' : (totalVariancePercent !== null && totalVariancePercent < 0) ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                  {formatVarianceRate(totalVariancePercent, 1)}
                 </td>
                 <td></td>
               </tr>
@@ -2626,7 +2467,7 @@ export default function VarianceComparison() {
                                     <div className="flex justify-between gap-6 py-0.5 border-t border-zinc-100 mt-2 pt-2">
                                       <span className="text-zinc-500 font-bold">차액:</span>
                                       <span className={`font-mono font-black ${data.variance > 0 ? 'text-cobalt-600' : data.variance < 0 ? 'text-nickel-600' : 'text-zinc-550'}`}>
-                                        {data.variance > 0 ? '+' : ''}{formatCurrency(toMillions(data.variance))}백만원 ({data.variancePercent > 0 ? '+' : ''}{data.variancePercent.toFixed(1)}%)
+                                        {data.variance > 0 ? '+' : ''}{formatCurrency(toMillions(data.variance))}백만원 ({formatVarianceRate(data.variancePercent, 1)})
                                       </span>
                                     </div>
                                   )}
@@ -3029,8 +2870,8 @@ function FullAccountModal({
                       <td className={`px-5 py-3 text-sm text-right font-black font-mono ${row.variance > 0 ? 'text-cobalt-600' : row.variance < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                         {row.variance > 0 ? '+' : ''}{formatCurrency(toMillions(row.variance))}
                       </td>
-                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${row.variancePercent > 0 ? 'text-cobalt-500' : row.variancePercent < 0 ? 'text-nickel-500' : 'text-text-tertiary'}`}>
-                        {row.variancePercent > 0 ? '+' : ''}{row.variancePercent.toFixed(1)}%
+                      <td className={`px-5 py-3 text-sm text-right font-black font-mono ${(row.variancePercent !== null && row.variancePercent > 0) ? 'text-cobalt-500' : (row.variancePercent !== null && row.variancePercent < 0) ? 'text-nickel-500' : 'text-text-tertiary'}`}>
+                        {formatVarianceRate(row.variancePercent, 1)}
                       </td>
                     </tr>
                   );

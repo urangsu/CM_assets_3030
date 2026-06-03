@@ -3,6 +3,7 @@ import { MonthMode, parseMonthIndex, shouldIncludeMonth } from './monthFilter';
 import { loadActualRows, loadBudgetRowsByDept } from './varianceDataLoader';
 import { AccountMeta } from './varianceAccountIndex';
 import { getDeptCodesByGroup } from './departmentGroups';
+import { calcVarianceRate } from './varianceMath';
 
 export function resolveSelectedDeptCodes(params: {
   selectedDept: string;
@@ -86,7 +87,7 @@ export interface ComparisonRow {
   baseAmount: number;
   targetAmount: number;
   variance: number;
-  variancePercent: number;
+  variancePercent: number | null;
   status: VarianceStatus;
   isSalary: boolean;
 }
@@ -355,7 +356,7 @@ export function buildVarianceComparison(params: {
     const baseAmount = baseItem?.amount || 0;
     const targetAmount = targetItem?.amount || 0;
     const variance = targetAmount - baseAmount;
-    const variancePercent = baseAmount === 0 ? 0 : (variance / baseAmount) * 100;
+    const variancePercent = calcVarianceRate(baseAmount, targetAmount);
 
     const rowAccountingType = groupBy === 'dept' ? '전체' : getAccountingType(code, name);
     const rowAccountClass = groupBy === 'dept' ? '부서' : classifyAccount(code, name);
