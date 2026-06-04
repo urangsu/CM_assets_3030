@@ -2325,10 +2325,9 @@ export default function DepartmentAssignment() {
 
       </div>
 
-      {/* 4.5 실적 귀속부서 직접 수정 (Directly Modify Actual Department Assignment grid) */}
+       {/* 4.5 실적 귀속부서 직접 수정 (Directly Modify Actual Department Assignment grid) */}
       <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden mt-4">
-        <button
-          type="button"
+        <div
           onClick={() => {
             setIsManualGridOpen(prev => {
               const next = !prev;
@@ -2382,7 +2381,7 @@ export default function DepartmentAssignment() {
               {isManualGridOpen ? '접기 ▲' : '펼치기 ▼'}
             </span>
           </div>
-        </button>
+        </div>
 
         {isManualGridOpen && manualRowsLoaded && (
           <div className="overflow-x-auto select-none">
