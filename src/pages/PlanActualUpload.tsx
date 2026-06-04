@@ -271,6 +271,16 @@ export default function PlanActualUpload() {
   type UploadKind = "monthlyActual" | "managementPlan" | "";
   const [uploadKind, setUploadKind] = useState<UploadKind>("");
   const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
+
+  useEffect(() => {
+    if (uploadTarget === '실적') {
+      setUploadKind('monthlyActual');
+    } else if (uploadTarget) {
+      setUploadKind('managementPlan');
+    } else {
+      setUploadKind('');
+    }
+  }, [uploadTarget]);
   const [pasteText, setPasteText] = useState('');
   const [firstRowIsHeader, setFirstRowIsHeader] = useState(true);
   const [headerlessStartMonth, setHeaderlessStartMonth] = useState(1);

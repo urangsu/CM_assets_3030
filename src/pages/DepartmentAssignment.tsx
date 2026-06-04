@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
+import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { usePermission } from '../lib/permissions';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { 
@@ -504,6 +505,8 @@ export default function DepartmentAssignment() {
 
   // Helper: Month parser
   const getPeriodMonthIndex = (period: string): number => {
+    const idx = parsePeriodMonth(period);
+    if (idx !== null) return idx + 1; // Convert 0-indexed to 1-indexed (1 to 12)
     if (!period) return 12;
     const num = parseInt(period.replace(/[^0-9]/g, ''), 10);
     return isNaN(num) ? 12 : num;
