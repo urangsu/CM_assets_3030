@@ -23,6 +23,7 @@ import {
 import { getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
 import { usePermission } from '../lib/permissions';
+import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { 
   recommendAttributionForRow, 
   getAttributionExcludeResult,
@@ -1019,6 +1020,7 @@ export default function DepartmentAssignment() {
 
     if (targetRow) {
       localStorage.setItem(actKey, JSON.stringify(updated));
+      clearDataLoaderCache();
       saveAuditLog({
         rowId,
         action: 'APPLY',
@@ -1071,6 +1073,7 @@ export default function DepartmentAssignment() {
 
     if (targetRow) {
       localStorage.setItem(actKey, JSON.stringify(updated));
+      clearDataLoaderCache();
       saveAuditLog({
         rowId,
         action: 'MANUAL_CHANGE',
@@ -1119,6 +1122,7 @@ export default function DepartmentAssignment() {
 
     if (targetRow) {
       localStorage.setItem(actKey, JSON.stringify(updated));
+      clearDataLoaderCache();
       saveAuditLog({
         rowId,
         action: 'REVERT',
@@ -1249,6 +1253,7 @@ export default function DepartmentAssignment() {
 
         localStorage.setItem(actKey, JSON.stringify(updated));
         localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
+        clearDataLoaderCache();
 
         setFeedbackMsg({
           type: 'success',
@@ -1326,6 +1331,7 @@ export default function DepartmentAssignment() {
 
         localStorage.setItem(actKey, JSON.stringify(updated));
         localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
+        clearDataLoaderCache();
 
         setFeedbackMsg({
           type: 'success',

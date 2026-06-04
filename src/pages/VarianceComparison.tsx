@@ -276,7 +276,7 @@ export default function VarianceComparison() {
 
   const toMillions = (val: number) => Math.round(val / 1000000);
 
-  const allDepts = getAllDepartments();
+  const allDepts = useMemo(() => getAllDepartments(), []);
 
   const getDeptName = () => {
     if (selectedDept === 'all') return '전체부서';
@@ -382,6 +382,26 @@ export default function VarianceComparison() {
     return String(name)
       .replace(/[\\/?*[\]:]/g, '')
       .slice(0, 31);
+  };
+
+  const appendSheetSafely = (wb: any, ws: any, name: string, usedSet?: Set<string>) => {
+    let cleanName = String(name)
+      .replace(/[\\/?*[\]:]/g, '')
+      .trim();
+    if (!cleanName) cleanName = 'Sheet';
+    
+    let finalStr = cleanName.substring(0, 31);
+    if (usedSet) {
+      let counter = 1;
+      while (usedSet.has(finalStr)) {
+        const suffix = `_${counter}`;
+        const allowedBase = 31 - suffix.length;
+        finalStr = cleanName.substring(0, allowedBase) + suffix;
+        counter++;
+      }
+      usedSet.add(finalStr);
+    }
+    XLSX.utils.book_append_sheet(wb, ws, finalStr);
   };
 
   const getDeptSheetName = (deptCode: string, deptName: string): string => {
@@ -495,7 +515,8 @@ export default function VarianceComparison() {
   const appendSummarySheet = (
     wb: any,
     rows: DeptDetailCompareRow[],
-    deptCodes: string[]
+    deptCodes: string[],
+    usedSheetNames?: Set<string>
   ) => {
     const summaryByDept = new Map<string, {
       deptCode: string;
@@ -566,14 +587,15 @@ export default function VarianceComparison() {
 
     applyWorksheetView(ws);
 
-    XLSX.utils.book_append_sheet(wb, ws, '전체');
+    appendSheetSafely(wb, ws, '전체', usedSheetNames);
   };
 
   const appendDeptDetailSheet = (
     wb: any,
     deptCode: string,
     deptName: string,
-    rows: DeptDetailCompareRow[]
+    rows: DeptDetailCompareRow[],
+    usedSheetNames?: Set<string>
   ) => {
     const data: any[] = [
       [
@@ -651,7 +673,7 @@ export default function VarianceComparison() {
 
     applyWorksheetView(ws);
 
-    XLSX.utils.book_append_sheet(wb, ws, getDeptSheetName(deptCode, deptName));
+    appendSheetSafely(wb, ws, `${deptCode}_${deptName}`, usedSheetNames);
   };
 
   function applySalaryVisibilityFilter<T extends { isSalary?: boolean }>(rows: T[]): T[] {
@@ -691,7 +713,8 @@ export default function VarianceComparison() {
     wb: any,
     group: DeptGroup,
     deptCodes: string[],
-    rows: DeptDetailCompareRow[]
+    rows: DeptDetailCompareRow[],
+    usedSheetNames?: Set<string>
   ) => {
     const aggregatedRows = aggregateGroupRowsByAccount(rows);
 
@@ -770,7 +793,7 @@ export default function VarianceComparison() {
     });
 
     applyWorksheetView(ws);
-    XLSX.utils.book_append_sheet(wb, ws, getGroupSheetName(group));
+    appendSheetSafely(wb, ws, `그룹_${group.deptCodes?.[0] || group.id}_${group.name}`, usedSheetNames);
   };
 
   const ensureXLSX = async () => {
@@ -782,13 +805,14 @@ export default function VarianceComparison() {
   const handleDownloadExcelWithDeptDetails = async (deptCodes: string[]) => {
     await ensureXLSX();
     const wb = XLSX.utils.book_new();
+    const usedSheetNames = new Set<string>();
 
     const deptDetailRowsRaw = buildDeptDetailComparisonRows(deptCodes);
     const deptDetailRows = applySalaryVisibilityFilter(deptDetailRowsRaw);
 
     // 1. 전체 요약 시트
     if (includeSummarySheet) {
-      appendSummarySheet(wb, deptDetailRows, deptCodes);
+      appendSummarySheet(wb, deptDetailRows, deptCodes, usedSheetNames);
     }
 
     // 2. 선택 부서별 상세 시트
@@ -800,7 +824,7 @@ export default function VarianceComparison() {
         const rows = deptDetailRows.filter(row => row.deptCode === deptCode);
 
         if (rows.length > 0) {
-          appendDeptDetailSheet(wb, deptCode, deptName, rows);
+          appendDeptDetailSheet(wb, deptCode, deptName, rows, usedSheetNames);
         }
       });
     }
@@ -822,7 +846,7 @@ export default function VarianceComparison() {
         const groupRows = applySalaryVisibilityFilter(groupRowsRaw);
 
         if (groupRows.length > 0) {
-          appendGroupDetailSheet(wb, group, groupDeptCodes, groupRows);
+          appendGroupDetailSheet(wb, group, groupDeptCodes, groupRows, usedSheetNames);
         }
       });
     }
@@ -915,7 +939,7 @@ export default function VarianceComparison() {
 
     applyWorksheetView(ws);
 
-    XLSX.utils.book_append_sheet(wb, ws, '비교분석');
+    appendSheetSafely(wb, ws, '비교분석');
     XLSX.writeFile(wb, getDownloadFileName('xlsx'));
   };
 

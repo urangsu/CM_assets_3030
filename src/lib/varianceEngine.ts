@@ -4,6 +4,7 @@ import { loadActualRows, loadBudgetRowsByDept } from './varianceDataLoader';
 import { AccountMeta } from './varianceAccountIndex';
 import { getDeptCodesByGroup } from './departmentGroups';
 import { calcVarianceRate } from './varianceMath';
+import { getEffectiveDeptCodeForActual } from './storageKeys';
 
 export function resolveSelectedDeptCodes(params: {
   selectedDept: string;
@@ -129,30 +130,23 @@ export function buildAtomicCompareRows(params: {
   if (planType === '실적') {
     const actualRows = loadActualRows(year);
 
-    // Load actual-to-attribution-budgeted maps to resolve attributedDeptCode overrides
+    // Load actual-to-attribution-budgeted maps to resolve attributedDeptCode overrides with year+period+usageCode+accountCode+id key
     const savedActualsMap = new Map<string, string>();
-    const deptCodesForFullActual = allDepts.map(d => d.code);
-    const actualBudgets = loadBudgetRowsByDept({
-      year,
-      planType: '실적',
-      deptCodes: deptCodesForFullActual,
-    });
-
-    actualBudgets.forEach((rows, dCode) => {
-      rows.forEach((row: any) => {
-        if (row.attributedDeptCode) {
-          savedActualsMap.set(`${dCode}_${row.code}`, row.attributedDeptCode);
-        }
-      });
+    actualRows.forEach(item => {
+      if (item.attributedDeptCode) {
+        const key = `${year}_${item.period}_${item.usageCode}_${item.accountCode}_${item.id}`;
+        savedActualsMap.set(key, item.attributedDeptCode);
+      }
     });
 
     const internalAggregated = new Map<string, { deptCode: string; accountCode: string; accountName: string; amount: number }>();
 
     actualRows.forEach(item => {
-      const overriddenDeptCode = savedActualsMap.get(`${item.usageCode}_${item.accountCode}`);
-      const effectiveDeptCode = overriddenDeptCode || item.usageCode;
+       const key = `${year}_${item.period}_${item.usageCode}_${item.accountCode}_${item.id}`;
+       const overriddenDeptCode = savedActualsMap.get(key);
+       const effectiveDeptCode = overriddenDeptCode || getEffectiveDeptCodeForActual(item);
 
-      // Group/Department filter
+       // Group/Department filter
       if (!deptCodesSet.has(effectiveDeptCode)) return;
 
       // Period filter

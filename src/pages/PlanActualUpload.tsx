@@ -33,6 +33,7 @@ import { getBudgetDataKey, getActualDataKey, isBudgetLocked } from '../lib/stora
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
+import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 
 // Sort logic
 type SortDirection = 'asc' | 'desc';
@@ -647,6 +648,7 @@ export default function PlanActualUpload() {
     if (uploadTarget === '실적') {
       const dedupedData = dedupeRowsByKey(data, uploadTarget);
       localStorage.setItem(getActualDataKey(year), JSON.stringify(dedupedData));
+      clearDataLoaderCache();
       setData(dedupedData);
       
       const affectedCodes = new Set(dedupedData.map(r => r.usageCode).filter(Boolean));
@@ -716,6 +718,7 @@ export default function PlanActualUpload() {
         });
         localStorage.setItem(key, JSON.stringify(budgetRows));
       });
+      clearDataLoaderCache();
       
       if (lockedDepts.length > 0) {
         setSuccessBanner({
@@ -757,6 +760,7 @@ export default function PlanActualUpload() {
           });
           setData([]);
         }
+        clearDataLoaderCache();
         setConfirmModal(null);
       }
     });

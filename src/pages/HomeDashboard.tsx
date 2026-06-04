@@ -35,7 +35,7 @@ import {
   formatMillionWonWithFull 
 } from '../lib/formatters';
 import { getAllDepartments, getViewableDepts } from '../constants';
-import { getBudgetDataKey, getActualDataKey, getSubmissionStatus } from '../lib/storageKeys';
+import { getBudgetDataKey, getActualDataKey, getSubmissionStatus, getEffectiveDeptCodeForActual } from '../lib/storageKeys';
 
 // Reusable micro metric card inside HomeDashboard
 interface MiniMetricCardProps {
@@ -322,7 +322,7 @@ export default function HomeDashboard() {
       let deptActualSum = 0;
       if (hasRealActual) {
         realActualRows.filter((r: any) => {
-          const effectiveDeptCode = r.attributedDeptCode || r.usageCode;
+          const effectiveDeptCode = getEffectiveDeptCodeForActual(r);
           const monthNum = getMonthNumberFromActualRow(r);
           return effectiveDeptCode === dept.code && monthNum >= 1 && monthNum <= baseMonth;
         }).forEach((r: any) => {

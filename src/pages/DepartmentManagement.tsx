@@ -268,13 +268,33 @@ export default function DepartmentManagement() {
     if (isEditing) {
       const idx = updatedUsers.findIndex((u: any) => u.departmentCode === formData.code);
       if (idx !== -1) {
+        const oldUserId = updatedUsers[idx].code;
+        const newUserId = formData.userId.trim() || formData.code.trim();
         updatedUsers[idx] = {
           ...updatedUsers[idx],
+          code: newUserId,
           name: formData.managerName.trim(),
           department: formData.name.trim(),
           role: formData.role || '부서담당자',
           isActive: formData.isActive
         };
+        if (formData.password) {
+          updatedUsers[idx].password = formData.password.trim();
+        }
+
+        // If user ID changed, migrate settings
+        if (oldUserId !== newUserId) {
+          const settingsKey = 'cleanmetal_user_settings';
+          const savedSettings = localStorage.getItem(settingsKey);
+          if (savedSettings) {
+            const settings = JSON.parse(savedSettings);
+            if (settings[oldUserId]) {
+              settings[newUserId] = { ...settings[oldUserId], id: newUserId };
+              delete settings[oldUserId];
+              localStorage.setItem(settingsKey, JSON.stringify(settings));
+            }
+          }
+        }
       } else {
         updatedUsers.push({
           code: formData.userId.trim() || formData.code.trim(),
@@ -308,16 +328,23 @@ export default function DepartmentManagement() {
     const savedSettings = localStorage.getItem(settingsKey);
     const settings = savedSettings ? JSON.parse(savedSettings) : {};
     
-    settings[formData.code] = {
-      ...(settings[formData.code] || {}),
-      id: formData.userId.trim() || formData.code.trim(),
-      password: formData.password ? formData.password.trim() : (settings[formData.code]?.password || `${formData.code}!`),
+    const loginId = formData.userId.trim() || formData.code.trim();
+    settings[loginId] = {
+      ...(settings[loginId] || {}),
+      id: loginId,
+      password: formData.password ? formData.password.trim() : (settings[loginId]?.password || `${formData.code}!`),
       name: formData.managerName.trim() || formData.name.trim(),
       role: formData.role || '부서담당자',
       isActive: formData.isActive,
       mustChangePassword: true,
-      viewableDepts: [formData.code]
+      viewableDepts: [formData.code.trim()]
     };
+    
+    // Clean up old code-based setting if different
+    if (loginId !== formData.code.trim() && settings[formData.code.trim()]) {
+      delete settings[formData.code.trim()];
+    }
+
     localStorage.setItem(settingsKey, JSON.stringify(settings));
 
     setIsModalOpen(false);
@@ -355,10 +382,18 @@ export default function DepartmentManagement() {
         const savedSettings = localStorage.getItem('cleanmetal_user_settings');
         if (savedSettings) {
           const settings = JSON.parse(savedSettings);
-          if (settings[code]) {
-            settings[code].isActive = !currentActive;
-            localStorage.setItem('cleanmetal_user_settings', JSON.stringify(settings));
+          const savedCustomUsers = localStorage.getItem('cleanmetal_custom_users');
+          const customUsers = savedCustomUsers ? JSON.parse(savedCustomUsers) : [];
+          const associatedUser = customUsers.find((u: any) => u.departmentCode === code);
+          const loginId = associatedUser ? associatedUser.code : code;
+
+          if (settings[loginId]) {
+            settings[loginId].isActive = !currentActive;
           }
+          if (settings[code] && settings[code] !== settings[loginId]) {
+            settings[code].isActive = !currentActive;
+          }
+          localStorage.setItem('cleanmetal_user_settings', JSON.stringify(settings));
         }
 
         showToast('success', `부서 [${code}]가 성공적으로 ${actionText} 되었습니다.`);
@@ -400,7 +435,13 @@ export default function DepartmentManagement() {
     // Lookup associated login ID/password from settings if exists
     const savedSettings = localStorage.getItem('cleanmetal_user_settings');
     const settings = savedSettings ? JSON.parse(savedSettings) : {};
-    const userSetting = settings[item.code] || {};
+    
+    const savedCustomUsers = localStorage.getItem('cleanmetal_custom_users');
+    const customUsers = savedCustomUsers ? JSON.parse(savedCustomUsers) : [];
+    const associatedUser = customUsers.find((u: any) => u.departmentCode === item.code);
+    const loginId = associatedUser ? associatedUser.code : item.code;
+
+    const userSetting = settings[loginId] || settings[item.code] || {};
 
     setFormData({
       code: item.code,

@@ -8,6 +8,7 @@ import { INITIAL_CATEGORIES } from './AccountSelection';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { inferBudgetTypeByAccountCode, inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { PLAN_TYPE_OPTIONS, BUDGET_PLAN_TYPE_OPTIONS, normalizePlanType } from '../lib/planTypes';
+import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 
 import { usePermission } from '../lib/permissions';
 
@@ -214,18 +215,16 @@ export default function BudgetCreation() {
       }
     }
 
-    // Load saved actuals to get the overridden attributedDeptCode
+    // Load saved actuals to get the overridden attributedDeptCode with year+period+usageCode+accountCode+id key
     const savedActualsMap = new Map<string, string>();
-    allDepts.forEach(d => {
-      const key = getBudgetDataKey(d.code, year, '실적');
-      try {
-        const saved = JSON.parse(localStorage.getItem(key) || '[]');
-        saved.forEach((row: any) => {
-          if (row.attributedDeptCode) {
-            savedActualsMap.set(`${d.code}_${row.code}`, row.attributedDeptCode);
-          }
-        });
-      } catch (e) {}
+    const actualDataStr = localStorage.getItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`);
+    const actualData: any[] = actualDataStr ? JSON.parse(actualDataStr) : [];
+    
+    actualData.forEach((item: any) => {
+      if (item.attributedDeptCode) {
+        const key = `${year}_${item.period}_${item.usageCode}_${item.accountCode}_${item.id}`;
+        savedActualsMap.set(key, item.attributedDeptCode);
+      }
     });
 
     const loadData = () => {
@@ -233,14 +232,12 @@ export default function BudgetCreation() {
       const viewableDeptCodes = new Set(viewableDepts.map(d => d.code));
 
       // 1. Load Actuals
-      const actualDataStr = localStorage.getItem(`${STORAGE_KEYS.ACTUAL_DATA}_${year}`);
-      const actualData: any[] = actualDataStr ? JSON.parse(actualDataStr) : [];
-      
       const tempActualsMap = new Map<string, number[]>();
       actualData.forEach((actual: any) => {
         const sourceDeptCode = actual.usageCode;
         const accountCode = actual.accountCode;
-        const attributedDeptCode = savedActualsMap.get(`${sourceDeptCode}_${accountCode}`) || sourceDeptCode;
+        const actualKey = `${year}_${actual.period}_${sourceDeptCode}_${accountCode}_${actual.id}`;
+        const attributedDeptCode = savedActualsMap.get(actualKey) || actual.attributedDeptCode || sourceDeptCode;
 
         // Filtering logic: only relevant data for the selected department or viewable departments
         if (selectedDeptCode === 'viewable') {
@@ -689,6 +686,7 @@ export default function BudgetCreation() {
 
       const key = `${STORAGE_KEYS.BUDGET_DATA}_${selectedDeptCode}_${year}_${planType}`;
       localStorage.setItem(key, JSON.stringify(newData));
+      clearDataLoaderCache();
 
       setSelectedRows(new Set());
       showAlert('선택한 계정이 삭제되었습니다.');
@@ -926,6 +924,7 @@ export default function BudgetCreation() {
     }
 
     const wb = XLSX.utils.book_new();
+    const usedSheetNames = new Set<string>();
 
     if (selectedDeptCode === 'all' || selectedDeptCode === 'viewable') {
       const deptGroups = new Map<string, any[]>();
@@ -1031,7 +1030,17 @@ export default function BudgetCreation() {
           }
         });
 
-        const safeSheetName = deptName.replace(/[\\/?*[\]]/g, '').substring(0, 31);
+        let cleanName = deptName.replace(/[\\/?*[\]:]/g, '').trim();
+        if (!cleanName) cleanName = 'Sheet';
+        let safeSheetName = cleanName.substring(0, 31);
+        let counter = 1;
+        while (usedSheetNames.has(safeSheetName)) {
+          const suffix = `_${counter}`;
+          const maxBaseLen = 31 - suffix.length;
+          safeSheetName = cleanName.substring(0, maxBaseLen) + suffix;
+          counter++;
+        }
+        usedSheetNames.add(safeSheetName);
         XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
       });
     } else {
@@ -1076,6 +1085,7 @@ export default function BudgetCreation() {
     }
     const key = getBudgetDataKey(selectedDeptCode, year, planType);
     localStorage.setItem(key, JSON.stringify(data));
+    clearDataLoaderCache();
     showAlert('예산 데이터가 임시 저장되었습니다.');
   };
 
@@ -1091,6 +1101,7 @@ export default function BudgetCreation() {
     showConfirm('정말 초기화하시겠습니까?', () => {
       const key = getBudgetDataKey(selectedDeptCode, year, planType);
       localStorage.removeItem(key);
+      clearDataLoaderCache();
       setReloadTrigger(prev => prev + 1);
       showAlert('초기화되었습니다.');
     });
@@ -1104,6 +1115,7 @@ export default function BudgetCreation() {
     showConfirm('작성한 예산을 상신하시겠습니까? 상신 후에는 수정이 제한될 수 있습니다.', async () => {
       const key = getBudgetDataKey(selectedDeptCode, year, planType);
       localStorage.setItem(key, JSON.stringify(data));
+      clearDataLoaderCache();
       
       // Save submission status
       const statusKey = STORAGE_KEYS.SUBMISSION_STATUS;
@@ -1170,6 +1182,7 @@ export default function BudgetCreation() {
       
       statuses[getSubmissionStatusMapKey(selectedDeptCode, year, planType)] = newStatus;
       localStorage.setItem(statusKey, JSON.stringify(statuses));
+      clearDataLoaderCache();
       setSubmissionStatus(newStatus);
 
       // Add notification
@@ -1225,6 +1238,7 @@ export default function BudgetCreation() {
       
       statuses[getSubmissionStatusMapKey(selectedDeptCode, year, planType)] = newStatus;
       localStorage.setItem(statusKey, JSON.stringify(statuses));
+      clearDataLoaderCache();
       setSubmissionStatus(newStatus);
 
       // Add notification
@@ -1468,6 +1482,7 @@ export default function BudgetCreation() {
                           userName: currentUser.name,
                           reason: reason,
                         });
+                        clearDataLoaderCache();
                         window.location.reload();
                       }
                     }}

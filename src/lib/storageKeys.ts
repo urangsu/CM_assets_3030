@@ -138,3 +138,7 @@ export function appendBudgetLockAuditLog(log: Omit<BudgetLockAuditLog, 'id' | 't
   localStorage.setItem(key, JSON.stringify(rows));
 }
 
+export function getEffectiveDeptCodeForActual(row: any): string {
+  return row.attributedDeptCode || row.usageCode;
+}
+

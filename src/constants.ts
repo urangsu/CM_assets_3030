@@ -53,11 +53,11 @@ export const getAllDepartments = () => {
   const customUsers = savedCustomUsers ? JSON.parse(savedCustomUsers) : [];
   
   const customDepts = customUsers.map((u: any) => ({
-    code: u.code,
+    code: u.departmentCode,
     name: u.department,
     manager: u.name,
     role: u.role
-  }));
+  })).filter((d: any) => d.code);
 
   // Merge and remove duplicates by code
   const allDepts = [...DEPARTMENTS, ...customDepts];

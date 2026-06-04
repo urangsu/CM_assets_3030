@@ -21,10 +21,14 @@ export function buildAccountMetaIndex(params: {
 }): Map<string, AccountMeta> {
   const map = new Map<string, AccountMeta>();
 
-  const registerInMap = (code: string, name: string) => {
+  const registerInMap = (code: string, name: string, forceOverwrite = true) => {
     const normalizedCode = normalizeAccountCode(code);
     const trimmedName = String(name ?? '').trim();
     if (!normalizedCode || !trimmedName || trimmedName.includes('미등록 계정')) {
+      return;
+    }
+
+    if (!forceOverwrite && map.has(normalizedCode)) {
       return;
     }
 
@@ -50,7 +54,7 @@ export function buildAccountMetaIndex(params: {
     params.categories.forEach((cat: any) => {
       if (cat && Array.isArray(cat.accounts)) {
         cat.accounts.forEach((acc: any) => {
-          registerInMap(acc.code, acc.name);
+          registerInMap(acc.code, acc.name, true);
         });
       }
     });
@@ -64,7 +68,7 @@ export function buildAccountMetaIndex(params: {
       globalCategories.forEach((cat: any) => {
         if (cat && Array.isArray(cat.accounts)) {
           cat.accounts.forEach((acc: any) => {
-            registerInMap(acc.code, acc.name);
+            registerInMap(acc.code, acc.name, true);
           });
         }
       });
@@ -78,7 +82,7 @@ export function buildAccountMetaIndex(params: {
     params.budgetRowsByDept.forEach((rows) => {
       if (Array.isArray(rows)) {
         rows.forEach((row: any) => {
-          registerInMap(row.code, row.name);
+          registerInMap(row.code, row.name, false);
         });
       }
     });
@@ -87,7 +91,7 @@ export function buildAccountMetaIndex(params: {
   // 4. actualRows
   if (Array.isArray(params.actualRows)) {
     params.actualRows.forEach((row: any) => {
-      registerInMap(row.accountCode, row.accountName);
+      registerInMap(row.accountCode, row.accountName, false);
     });
   }
 
