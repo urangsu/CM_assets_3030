@@ -1004,7 +1004,7 @@ export default function VarianceComparison() {
         { text: '증감률(%)', options: { fill: 'f9fafb', bold: true } }
       ];
       tableRows = filteredAndSortedRows.slice(0, 15).map(row => [
-        row.name,
+        getCompareRowName(row, selectedDept === 'by_dept'),
         formatCurrency(row.baseAmount),
         formatCurrency(row.targetAmount),
         `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
@@ -1023,7 +1023,7 @@ export default function VarianceComparison() {
       filteredAndSortedRows.forEach(row => {
         tableRows.push([
           row.accountCode || '',
-          row.accountName,
+          getCompareRowName(row, selectedDept === 'by_dept'),
           formatCurrency(row.baseAmount),
           formatCurrency(row.targetAmount),
           `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
@@ -1087,10 +1087,12 @@ export default function VarianceComparison() {
     let head = [];
     let body = [];
 
+    const pdfRows = filteredAndSortedRows.slice(0, 100);
+
     if (selectedDept === 'by_dept') {
       head = [['부서명', baseName, targetName, '차액', '증감률(%)']];
-      body = filteredAndSortedRows.map(row => [
-        row.name,
+      body = pdfRows.map(row => [
+        getCompareRowName(row, selectedDept === 'by_dept'),
         formatCurrency(row.baseAmount),
         formatCurrency(row.targetAmount),
         `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
@@ -1099,10 +1101,10 @@ export default function VarianceComparison() {
     } else {
       head = [['계정코드', '계정명', baseName, targetName, '차액', '증감률(%)']];
       
-      filteredAndSortedRows.forEach(row => {
+      pdfRows.forEach(row => {
         body.push([
           row.accountCode || '',
-          row.accountName,
+          getCompareRowName(row, selectedDept === 'by_dept'),
           formatCurrency(row.baseAmount),
           formatCurrency(row.targetAmount),
           `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
