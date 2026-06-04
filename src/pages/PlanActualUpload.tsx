@@ -125,12 +125,19 @@ const SortableResizableHeader = ({
 };
 
 function getUploadRowKey(row: ActualData, target: string): string {
+  const month =
+    row.periodMonth ||
+    (() => {
+      const parsed = parsePeriodMonth(row.period);
+      return parsed !== null ? parsed + 1 : row.period;
+    })();
+
   return [
     row.year,
     target,
     row.usageCode,
     row.accountCode,
-    row.period
+    month,
   ].join('|');
 }
 
@@ -557,7 +564,16 @@ export default function PlanActualUpload() {
     let finalHeaders: any[] = [];
     let finalBodyRows: any[][] = [];
 
-    if (!firstRowIsHeader && compactRows[0] && isProbablyHeaderlessMonthlyRow(compactRows[0])) {
+    const isStandardHeaderlessMonthly =
+      compactRows[0] &&
+      isProbablyHeaderlessMonthlyRow(compactRows[0]) &&
+      compactRows[0].length >= 4;
+
+    if (isStandardHeaderlessMonthly) {
+      // 회사 표준: A 부서코드, B 계정코드, C 계정명, D부터 1월
+      finalHeaders = buildHeaderlessMonthlyHeaders(compactRows[0], 1);
+      finalBodyRows = compactRows;
+    } else if (!firstRowIsHeader && compactRows[0] && isProbablyHeaderlessMonthlyRow(compactRows[0])) {
       finalHeaders = buildHeaderlessMonthlyHeaders(compactRows[0], headerlessStartMonth);
       finalBodyRows = compactRows;
     } else {
@@ -1273,6 +1289,36 @@ export default function PlanActualUpload() {
                    </div>
                  </div>
               </div>
+
+              {/* 월별 생성 건수 진단 표시 */}
+              {(() => {
+                const generatedByMonth = validationResult.actualRows.reduce((acc, row) => {
+                  const mParsed = parsePeriodMonth(row.period);
+                  const month = row.periodMonth || (mParsed !== null ? mParsed + 1 : 0);
+                  if (!month) return acc;
+                  acc[month] = (acc[month] || 0) + 1;
+                  return acc;
+                }, {} as Record<number, number>);
+
+                const activeMonths = Array.from({ length: 12 }, (_, i) => i + 1).filter(month => generatedByMonth[month]);
+
+                if (activeMonths.length === 0) return null;
+
+                return (
+                  <div className="bg-[#f4f6fa] p-4 rounded-xl border border-zinc-200">
+                    <p className="text-xs text-[#8b95a1] mb-2 font-bold flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> 월별 상세 업로드 미리보기
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs text-zinc-600">
+                      {activeMonths.map(month => (
+                        <span key={month} className="bg-white px-2.5 py-1 rounded-md border border-zinc-200 font-semibold shadow-sm">
+                          {month}월: <strong className="text-brand-600 font-bold">{generatedByMonth[month]}건</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {duplicateUploadCount > 0 && (
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">

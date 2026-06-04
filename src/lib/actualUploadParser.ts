@@ -1,10 +1,12 @@
 import { getAllDepartments } from '../constants';
 import { resolveAccountByCode } from './accountResolver';
+import { parsePeriodMonth } from './budgetAggregation';
 
 export interface ActualData {
   id: number;
   year: string;
   period: string;
+  periodMonth?: number;
   accountCode: string;
   accountName: string;
   controlType: string;
@@ -231,6 +233,7 @@ export function parseWideMonthlyRows(params: {
                 sourceRowId: `src_wide_${rowNum}_${i}`,
                 year: params.year,
                 period: `${i}월`,
+                periodMonth: i,
                 accountCode: resolvedAccount.code,
                 accountName: resolvedAccount.name,
                 controlType: 'D.부서',
@@ -335,11 +338,14 @@ export function parseFlatRows(params: {
           });
         }
 
+        const monthIndexFromPeriod = parsePeriodMonth(period);
+
         actualRows.push({
             id: params.existingCount + actualRows.length + 1,
             sourceRowId: `src_flat_${rowNum}`,
             year: String(getRecordValue(record, ['연도']) || params.year),
             period,
+            periodMonth: monthIndexFromPeriod !== null ? monthIndexFromPeriod + 1 : undefined,
             accountCode: resolvedAccount.code,
             accountName: resolvedAccount.name,
             controlType: String(getRecordValue(record, HEADER_ALIASES.controlType) || '').trim() || 'D.부서',

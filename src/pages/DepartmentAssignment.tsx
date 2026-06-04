@@ -533,6 +533,15 @@ export default function DepartmentAssignment() {
     return 12;
   };
 
+  const getActualRowMonth = (row: any): number => {
+    if (!row) return 12;
+    const targetRow = row.row ? row.row : row;
+    if (targetRow.periodMonth !== undefined && Number(targetRow.periodMonth) >= 1 && Number(targetRow.periodMonth) <= 12) {
+      return Number(targetRow.periodMonth);
+    }
+    return getPeriodMonthIndex(targetRow.period || targetRow.month);
+  };
+
   // Convert Ignored recommendation updates to local storage
   const saveExcludedRowIds = (nextSet: Set<string | number>) => {
     setExcludedRowIds(nextSet);
@@ -628,7 +637,7 @@ export default function DepartmentAssignment() {
           rowId: row.id,
           row,
           period: row.period || row.month || '12월',
-          monthIndex: getPeriodMonthIndex(row.period || row.month),
+          monthIndex: getActualRowMonth(row),
           accountCode: row.accountCode,
           accountName: row.accountName,
           originalDeptCode: row.usageCode,
@@ -660,7 +669,7 @@ export default function DepartmentAssignment() {
 
       // Month
       if (selectedMonth !== 'all') {
-        const monthIndex = getPeriodMonthIndex(item.period);
+        const monthIndex = getActualRowMonth(item.row || item);
         if (monthMode === 'YTD') {
           if (monthIndex > Number(selectedMonth)) return false;
         } else {
@@ -804,7 +813,7 @@ export default function DepartmentAssignment() {
       if (excludeResult.excluded) {
         // Apply Month filter
         if (selectedMonth !== 'all') {
-          const monthIndex = getPeriodMonthIndex(row.period || row.month);
+          const monthIndex = getActualRowMonth(row);
           if (monthMode === 'YTD') {
             if (monthIndex > Number(selectedMonth)) return;
           } else {
@@ -857,7 +866,7 @@ export default function DepartmentAssignment() {
       if (!isViewable) return false;
 
       if (selectedMonth !== 'all') {
-        const monthIndex = getPeriodMonthIndex(row.period);
+        const monthIndex = getActualRowMonth(row);
         if (monthMode === 'YTD') {
           if (monthIndex > Number(selectedMonth)) return false;
         } else {
@@ -1792,8 +1801,16 @@ export default function DepartmentAssignment() {
         
         {/* Table list is full width */}
         <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-700">귀속 추천 목록</span>
+          <div className="px-4 py-3.5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
+            <div className="flex flex-col items-start gap-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-zinc-800">1. 귀속 추천 목록 (추천 귀속부서 목록)</span>
+                <span className="inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded border border-indigo-100">AI 자동 부서추천</span>
+              </div>
+              <span className="text-[11px] text-zinc-500">
+                경영계획 예산 배치 기준 및 타 부서 실적 사용 이력을 분석하여 귀속 보정이 유력한 실적을 자동으로 추출하여 추천합니다.
+              </span>
+            </div>
             <div className="flex items-center gap-2.5">
               <span className="text-[11.5px] font-mono text-zinc-500">
                 조회 결과: <strong>{filteredAndSortedRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
@@ -2335,15 +2352,15 @@ export default function DepartmentAssignment() {
               return next;
             });
           }}
-          className="w-full flex items-center justify-between px-4 py-3 bg-zinc-50 border-b border-zinc-200 cursor-pointer text-left select-none"
+          className="w-full flex items-center justify-between px-4 py-3.5 bg-zinc-50 border-b border-zinc-200 cursor-pointer text-left select-none"
         >
           <div className="flex flex-col items-start gap-0.5">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-zinc-700">실적 귀속부서 수동 직접 보정</span>
-              <span className="inline-block px-1.5 py-0.5 bg-[#008f83]/10 text-[#008f83] text-[10px] font-bold rounded">전체 실적 대상</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-zinc-800">2. 전체 실적 직접 보정 목록 (전체 실적 데이터 목록)</span>
+              <span className="inline-block px-1.5 py-0.5 bg-[#008f83]/10 text-[#008f83] text-[10px] font-bold rounded border border-[#008f83]/20">전체 실적 대상</span>
             </div>
             <span className="text-[11px] text-zinc-500">
-              추천 목록에 없는 실적도 전체 실적 대상에서 직접 찾아 귀속부서를 수정 및 보정할 수 있습니다. (클릭하여 열기)
+              추천 대상 여부와 무관하게 업로드된 모든 실적 데이터를 이 테이블에서 직접 찾고 귀속부서를 선택하여 개별 보정할 수 있습니다. (클릭하여 열기)
             </span>
           </div>
 

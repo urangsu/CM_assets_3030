@@ -36,6 +36,7 @@ export interface ActualData {
   id?: number;
   year?: string;
   period: string;
+  periodMonth?: number;
   accountCode: string;
   accountName?: string;
   usageCode: string;
