@@ -30,6 +30,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, getActualDataKey, isBudgetLocked } from '../lib/storageKeys';
+import { BudgetRepository } from '../repositories/BudgetRepository';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
@@ -716,9 +717,8 @@ export default function PlanActualUpload() {
             }
           }
         });
-        localStorage.setItem(key, JSON.stringify(budgetRows));
+        BudgetRepository.saveRows(deptCode, year, uploadTarget, budgetRows);
       });
-      clearDataLoaderCache();
       
       if (lockedDepts.length > 0) {
         setSuccessBanner({
@@ -756,7 +756,7 @@ export default function PlanActualUpload() {
           // Clear budget data for relevant depts
           const deptsToClear = currentUser?.code === '99999' ? getAllDepartments() : viewableDepts;
           deptsToClear.forEach(dept => {
-            localStorage.removeItem(getBudgetDataKey(dept.code, year, viewPlanType));
+            BudgetRepository.deleteRows(dept.code, year, viewPlanType);
           });
           setData([]);
         }

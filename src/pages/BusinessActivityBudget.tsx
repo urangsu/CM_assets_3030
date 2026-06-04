@@ -4,6 +4,7 @@ import { Download, Save, Send, Trash2, Plus, Building2, FileDown, Divide, Copy }
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
 import { getBudgetDataKey, isBudgetLocked } from '../lib/storageKeys';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
+import { BudgetRepository } from '../repositories/BudgetRepository';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { AppTable, AppTableHeader, AppTableRow, AppTableHead, AppTableBody, AppTableCell } from '../components/ui/AppTable';
@@ -287,8 +288,7 @@ export default function BusinessActivityBudget() {
           // Only remove AUTO type rows
           budgetData = budgetData.filter(row => !(targetAccountCodes.includes(row.code) && row.sourceType === 'BUSINESS_ACTIVITY_AUTO'));
           if (budgetData.length !== originalLength) {
-            localStorage.setItem(storageKey, JSON.stringify(budgetData));
-            clearDataLoaderCache();
+            BudgetRepository.saveRows(deptCode, year, planType, budgetData);
           }
         }
       });
@@ -393,7 +393,7 @@ export default function BusinessActivityBudget() {
         const originalLength = budgetData.length;
         budgetData = budgetData.filter(row => !(targetAccountCodes.includes(row.code) && row.sourceType === 'BUSINESS_ACTIVITY_AUTO'));
         if (budgetData.length !== originalLength) {
-          localStorage.setItem(storageKey, JSON.stringify(budgetData));
+          BudgetRepository.saveRows(dept.code, year, planType, budgetData);
         }
       }
     });
@@ -440,9 +440,8 @@ export default function BusinessActivityBudget() {
         }
       });
 
-      localStorage.setItem(storageKey, JSON.stringify(budgetData));
+      BudgetRepository.saveRows(deptCode, year, planType, budgetData);
     });
-    clearDataLoaderCache();
     setPreviewApplyConfig(null);
     showAlert('예산작성에 반영되었습니다.');
   };
@@ -462,11 +461,10 @@ export default function BusinessActivityBudget() {
           // Protect manual rows
           budgetData = budgetData.filter(row => !(targetAccountCodes.includes(row.code) && row.sourceType === 'BUSINESS_ACTIVITY_AUTO'));
           if (budgetData.length !== originalLength) {
-            localStorage.setItem(storageKey, JSON.stringify(budgetData));
+            BudgetRepository.saveRows(dept.code, year, planType, budgetData);
           }
         }
       });
-      clearDataLoaderCache();
     });
   };
 

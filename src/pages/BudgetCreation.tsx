@@ -9,6 +9,7 @@ import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { inferBudgetTypeByAccountCode, inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { PLAN_TYPE_OPTIONS, BUDGET_PLAN_TYPE_OPTIONS, normalizePlanType } from '../lib/planTypes';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
+import { BudgetRepository } from '../repositories/BudgetRepository';
 
 import { usePermission } from '../lib/permissions';
 
@@ -684,9 +685,7 @@ export default function BudgetCreation() {
         localStorage.setItem(STORAGE_KEYS.DEPT_SELECTIONS, JSON.stringify(allSelections));
       }
 
-      const key = `${STORAGE_KEYS.BUDGET_DATA}_${selectedDeptCode}_${year}_${planType}`;
-      localStorage.setItem(key, JSON.stringify(newData));
-      clearDataLoaderCache();
+      BudgetRepository.saveRows(selectedDeptCode, year, planType, newData);
 
       setSelectedRows(new Set());
       showAlert('선택한 계정이 삭제되었습니다.');
@@ -1083,9 +1082,7 @@ export default function BudgetCreation() {
       showAlert('이미 상신 및 승인된 예산은 수정할 수 없습니다.');
       return;
     }
-    const key = getBudgetDataKey(selectedDeptCode, year, planType);
-    localStorage.setItem(key, JSON.stringify(data));
-    clearDataLoaderCache();
+    BudgetRepository.saveRows(selectedDeptCode, year, planType, data);
     showAlert('예산 데이터가 임시 저장되었습니다.');
   };
 
@@ -1099,9 +1096,7 @@ export default function BudgetCreation() {
       return;
     }
     showConfirm('정말 초기화하시겠습니까?', () => {
-      const key = getBudgetDataKey(selectedDeptCode, year, planType);
-      localStorage.removeItem(key);
-      clearDataLoaderCache();
+      BudgetRepository.deleteRows(selectedDeptCode, year, planType);
       setReloadTrigger(prev => prev + 1);
       showAlert('초기화되었습니다.');
     });
@@ -1113,9 +1108,7 @@ export default function BudgetCreation() {
       return;
     }
     showConfirm('작성한 예산을 상신하시겠습니까? 상신 후에는 수정이 제한될 수 있습니다.', async () => {
-      const key = getBudgetDataKey(selectedDeptCode, year, planType);
-      localStorage.setItem(key, JSON.stringify(data));
-      clearDataLoaderCache();
+      BudgetRepository.saveRows(selectedDeptCode, year, planType, data);
       
       // Save submission status
       const statusKey = STORAGE_KEYS.SUBMISSION_STATUS;

@@ -226,7 +226,7 @@ export function buildAtomicCompareRows(params: {
         }
 
         // Aggregate unique composites in raw source file (sourceDeptCode + accCode) to avoid duplicating
-        const compositeKey = `${dCode}_${row.code}`;
+        const compositeKey = `${rowDeptCode}_${row.code}`;
         const existing = internalAggregated.get(compositeKey);
         if (existing) {
           existing.amount += amount;

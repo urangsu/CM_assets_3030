@@ -13,5 +13,11 @@ export const BudgetRepository = {
     const key = getBudgetDataKey(deptCode, year, planType);
     localStorage.setItem(key, JSON.stringify(rows));
     clearDataLoaderCache();
+  },
+
+  deleteRows: (deptCode: string, year: string, planType: string): void => {
+    const key = getBudgetDataKey(deptCode, year, planType);
+    localStorage.removeItem(key);
+    clearDataLoaderCache();
   }
 };

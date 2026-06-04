@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Minus, Download, FileSpreadsheet, Presentation, FileText, X, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, readBudgetData } from '../lib/storageKeys';
+import { getBudgetDataKey, readBudgetData, getEffectiveDeptCodeForActual } from '../lib/storageKeys';
 import { getDeptGroups, getDeptCodesByGroup, DeptGroup } from '../lib/departmentGroups';
 import { normalizePlanType } from '../lib/planTypes';
 import { usePermission } from '../lib/permissions';
@@ -1003,10 +1003,10 @@ export default function VarianceComparison() {
         { text: '차액', options: { fill: 'f9fafb', bold: true } },
         { text: '증감률(%)', options: { fill: 'f9fafb', bold: true } }
       ];
-      tableRows = chartData.slice(0, 15).map(row => [
+      tableRows = filteredAndSortedRows.slice(0, 15).map(row => [
         row.name,
-        formatCurrency(row[baseName]),
-        formatCurrency(row[targetName]),
+        formatCurrency(row.baseAmount),
+        formatCurrency(row.targetAmount),
         `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
         formatVarianceRate(row.variancePercent, 1)
       ]);
@@ -1020,7 +1020,7 @@ export default function VarianceComparison() {
         { text: '증감률(%)', options: { fill: 'f9fafb', bold: true } }
       ];
 
-      salaryFilteredComparisonRows.forEach(row => {
+      filteredAndSortedRows.forEach(row => {
         tableRows.push([
           row.accountCode || '',
           row.accountName,
@@ -1089,17 +1089,17 @@ export default function VarianceComparison() {
 
     if (selectedDept === 'by_dept') {
       head = [['부서명', baseName, targetName, '차액', '증감률(%)']];
-      body = chartData.map(row => [
+      body = filteredAndSortedRows.map(row => [
         row.name,
-        formatCurrency(row[baseName]),
-        formatCurrency(row[targetName]),
+        formatCurrency(row.baseAmount),
+        formatCurrency(row.targetAmount),
         `${row.variance > 0 ? '+' : ''}${formatCurrency(row.variance)}`,
         formatVarianceRate(row.variancePercent, 1)
       ]);
     } else {
       head = [['계정코드', '계정명', baseName, targetName, '차액', '증감률(%)']];
       
-      salaryFilteredComparisonRows.forEach(row => {
+      filteredAndSortedRows.forEach(row => {
         body.push([
           row.accountCode || '',
           row.accountName,
@@ -1162,7 +1162,12 @@ export default function VarianceComparison() {
   }, [selectedDept, viewableDepts, isAdmin, isPlanningTeam]);
 
   const accountMetaMap = useMemo(() => {
-    const actualRows = loadActualRows(baseYear).concat(loadActualRows(targetYear));
+    const rawActuals = loadActualRows(baseYear).concat(loadActualRows(targetYear));
+    const deptCodesSet = new Set(selectedDeptCodes);
+    const actualRows = rawActuals.filter(row => {
+      const effDept = getEffectiveDeptCodeForActual(row);
+      return deptCodesSet.has(effDept);
+    });
     const budgetRowsByDept = new Map<string, any[]>();
 
     if (basePlanType !== '실적') {
