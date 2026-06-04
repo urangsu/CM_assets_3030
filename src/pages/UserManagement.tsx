@@ -294,6 +294,7 @@ export default function UserManagement() {
       const customUsers = JSON.parse(savedCustomUsers);
       const updatedCustomUsers = customUsers.filter((u: any) => u.code !== userToDelete.code);
       localStorage.setItem(STORAGE_KEYS.CUSTOM_USERS, JSON.stringify(updatedCustomUsers));
+      window.dispatchEvent(new Event('custom-users-changed'));
     }
 
     // Remove from USER_SETTINGS
@@ -343,6 +344,7 @@ export default function UserManagement() {
       if (userIndex !== -1) {
         customUsers[userIndex].name = userName;
         localStorage.setItem(STORAGE_KEYS.CUSTOM_USERS, JSON.stringify(customUsers));
+        window.dispatchEvent(new Event('custom-users-changed'));
       }
     }
 
@@ -409,6 +411,7 @@ export default function UserManagement() {
     
     const updatedCustomUsers = [...customUsers, newUser];
     localStorage.setItem(STORAGE_KEYS.CUSTOM_USERS, JSON.stringify(updatedCustomUsers));
+    window.dispatchEvent(new Event('custom-users-changed'));
 
     const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
     const settings = savedSettings ? JSON.parse(savedSettings) : {};

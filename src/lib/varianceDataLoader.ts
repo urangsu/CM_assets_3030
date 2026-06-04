@@ -1,4 +1,4 @@
-import { getActualDataKey, readBudgetData } from './storageKeys';
+import { getActualDataKey, readBudgetData, clearEffectiveDeptCache } from './storageKeys';
 
 // Memory cache for parsed datasets to guarantee maximum performance and zero redundant JSON.parse calls
 const actualRowsCache = new Map<string, any[]>();
@@ -7,6 +7,7 @@ const budgetRowsCache = new Map<string, any[]>();
 export function clearDataLoaderCache() {
   actualRowsCache.clear();
   budgetRowsCache.clear();
+  clearEffectiveDeptCache();
 }
 
 export function loadActualRows(year: string): any[] {

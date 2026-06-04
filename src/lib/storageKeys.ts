@@ -139,6 +139,42 @@ export function appendBudgetLockAuditLog(log: Omit<BudgetLockAuditLog, 'id' | 't
 }
 
 export function getEffectiveDeptCodeForActual(row: any): string {
-  return row.attributedDeptCode || row.usageCode;
+  if (row.attributedDeptCode) {
+    return row.attributedDeptCode;
+  }
+
+  // Fallback to cached lookup
+  const year = row.year || '2026';
+  if (!actualsMapsByYear.has(year)) {
+    const map = new Map<string, string>();
+    try {
+      const key = getActualDataKey(year);
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item: any) => {
+          if (item.attributedDeptCode) {
+            const itemId = item.id || item.sourceRowId || item.rowNo || item._rowIndex || 'no-id';
+            const signature = `${item.period}_${item.usageCode}_${item.accountCode}_${itemId}`;
+            map.set(signature, item.attributedDeptCode);
+          }
+        });
+      }
+    } catch (e) {
+      console.error('Failed to load effective dept map', e);
+    }
+    actualsMapsByYear.set(year, map);
+  }
+
+  const itemId = row.id || row.sourceRowId || row.rowNo || row._rowIndex || 'no-id';
+  const itemSignature = `${row.period}_${row.usageCode}_${row.accountCode}_${itemId}`;
+  const override = actualsMapsByYear.get(year)?.get(itemSignature);
+  return override || row.usageCode || '';
+}
+
+const actualsMapsByYear = new Map<string, Map<string, string>>();
+
+export function clearEffectiveDeptCache() {
+  actualsMapsByYear.clear();
 }
 

@@ -18,6 +18,8 @@ export interface ActualData {
   completed: number;
   balance: number;
   remarks: string;
+  sourceRowId?: string;
+  attributedDeptCode?: string;
 }
 
 export interface ValidationIssue {
@@ -226,6 +228,7 @@ export function parseWideMonthlyRows(params: {
             const isActual = params.uploadKind === 'monthlyActual' || params.planType === '실적';
             actualRows.push({
                 id: params.existingCount + actualRows.length + 1,
+                sourceRowId: `src_wide_${rowNum}_${i}`,
                 year: params.year,
                 period: `${i}월`,
                 accountCode: resolvedAccount.code,
@@ -334,6 +337,7 @@ export function parseFlatRows(params: {
 
         actualRows.push({
             id: params.existingCount + actualRows.length + 1,
+            sourceRowId: `src_flat_${rowNum}`,
             year: String(getRecordValue(record, ['연도']) || params.year),
             period,
             accountCode: resolvedAccount.code,

@@ -43,6 +43,7 @@ export interface ActualData {
   attributedDeptName?: string;
   amount: number;
   completed: number; 
+  sourceRowId?: string;
   // ... other fields
 }
 

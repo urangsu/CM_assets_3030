@@ -276,7 +276,29 @@ export default function VarianceComparison() {
 
   const toMillions = (val: number) => Math.round(val / 1000000);
 
-  const allDepts = useMemo(() => getAllDepartments(), []);
+  const [deptMasterVersion, setDeptMasterVersion] = useState(0);
+
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEYS.CUSTOM_USERS || e.key === 'cleanmetal_dept_master_custom') {
+        setDeptMasterVersion(prev => prev + 1);
+      }
+    };
+    const handleCustomChange = () => {
+      setDeptMasterVersion(prev => prev + 1);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('custom-users-changed', handleCustomChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('custom-users-changed', handleCustomChange);
+    };
+  }, []);
+
+  const allDepts = useMemo(() => {
+    return getAllDepartments();
+  }, [deptMasterVersion]);
 
   const getDeptName = () => {
     if (selectedDept === 'all') return '전체부서';
@@ -807,7 +829,9 @@ export default function VarianceComparison() {
     const wb = XLSX.utils.book_new();
     const usedSheetNames = new Set<string>();
 
-    const deptDetailRowsRaw = buildDeptDetailComparisonRows(deptCodes);
+    const deptDetailRowsRaw = deptCodes.flatMap(deptCode =>
+      buildDeptDetailComparisonRows([deptCode])
+    );
     const deptDetailRows = applySalaryVisibilityFilter(deptDetailRowsRaw);
 
     // 1. 전체 요약 시트
@@ -842,7 +866,9 @@ export default function VarianceComparison() {
 
         if (groupDeptCodes.length === 0) return;
 
-        const groupRowsRaw = buildDeptDetailComparisonRows(groupDeptCodes);
+        const groupRowsRaw = groupDeptCodes.flatMap(deptCode =>
+          buildDeptDetailComparisonRows([deptCode])
+        );
         const groupRows = applySalaryVisibilityFilter(groupRowsRaw);
 
         if (groupRows.length > 0) {

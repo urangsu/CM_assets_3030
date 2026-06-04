@@ -134,7 +134,8 @@ export function buildAtomicCompareRows(params: {
     const savedActualsMap = new Map<string, string>();
     actualRows.forEach(item => {
       if (item.attributedDeptCode) {
-        const key = `${year}_${item.period}_${item.usageCode}_${item.accountCode}_${item.id}`;
+        const itemId = item.id || item.sourceRowId || item.rowNo || item._rowIndex || 'no-id';
+        const key = `${year}_${item.period}_${item.usageCode}_${item.accountCode}_${itemId}`;
         savedActualsMap.set(key, item.attributedDeptCode);
       }
     });
@@ -142,7 +143,8 @@ export function buildAtomicCompareRows(params: {
     const internalAggregated = new Map<string, { deptCode: string; accountCode: string; accountName: string; amount: number }>();
 
     actualRows.forEach(item => {
-       const key = `${year}_${item.period}_${item.usageCode}_${item.accountCode}_${item.id}`;
+       const itemId = item.id || item.sourceRowId || item.rowNo || item._rowIndex || 'no-id';
+       const key = `${year}_${item.period}_${item.usageCode}_${item.accountCode}_${itemId}`;
        const overriddenDeptCode = savedActualsMap.get(key);
        const effectiveDeptCode = overriddenDeptCode || getEffectiveDeptCodeForActual(item);
 
@@ -198,7 +200,7 @@ export function buildAtomicCompareRows(params: {
     const budgetRowsByDept = loadBudgetRowsByDept({
       year,
       planType,
-      deptCodes: allDepts.map(d => d.code),
+      deptCodes: deptCodes,
     });
 
     const internalAggregated = new Map<string, { deptCode: string; accountCode: string; accountName: string; amount: number }>();

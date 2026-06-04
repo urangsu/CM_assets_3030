@@ -322,6 +322,7 @@ export default function DepartmentManagement() {
       });
     }
     localStorage.setItem('cleanmetal_custom_users', JSON.stringify(updatedUsers));
+    window.dispatchEvent(new Event('custom-users-changed'));
 
     // Dynamic credentials settings injection for immediate login compatibility
     const settingsKey = 'cleanmetal_user_settings';
@@ -377,6 +378,7 @@ export default function DepartmentManagement() {
             u.departmentCode === code ? { ...u, isActive: !currentActive } : u
           );
           localStorage.setItem('cleanmetal_custom_users', JSON.stringify(updatedUsers));
+          window.dispatchEvent(new Event('custom-users-changed'));
         }
 
         const savedSettings = localStorage.getItem('cleanmetal_user_settings');
@@ -413,6 +415,7 @@ export default function DepartmentManagement() {
       '부서 영구 제거',
       `부서코드 [${code}]를 정말 영구적으로 삭제하시겠습니까? 관련 데이터 열람이 제한되거나 예산 장애가 일어날 수 있습니다.`,
       () => {
+        // Sync user Status
         const newList = depts.filter(d => d.code !== code);
         setDepts(newList);
         localStorage.setItem('cleanmetal_dept_master_custom', JSON.stringify(newList));
@@ -424,6 +427,7 @@ export default function DepartmentManagement() {
           const filteredUsers = customUsers.filter((u: any) => u.departmentCode !== code);
           localStorage.setItem('cleanmetal_custom_users', JSON.stringify(filteredUsers));
         }
+        window.dispatchEvent(new Event('custom-users-changed'));
 
         showToast('success', '부서 원장이 삭제되었습니다.');
       },
