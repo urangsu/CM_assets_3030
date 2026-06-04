@@ -138,7 +138,20 @@ export function appendBudgetLockAuditLog(log: Omit<BudgetLockAuditLog, 'id' | 't
   localStorage.setItem(key, JSON.stringify(rows));
 }
 
-export function getEffectiveDeptCodeForActual(row: any): string {
+export function getEffectiveDeptCodeForActual(row: any, attributionIndex?: Map<string, string> | Record<string, string>): string {
+  const itemId = row.id || row.sourceRowId || row.rowNo || row._rowIndex || 'no-id';
+  const itemSignature = `${row.period}_${row.usageCode}_${row.accountCode}_${itemId}`;
+
+  if (attributionIndex) {
+    if (attributionIndex instanceof Map) {
+      const val = attributionIndex.get(itemSignature) || attributionIndex.get(String(itemId));
+      if (val) return val;
+    } else {
+      const val = attributionIndex[itemSignature] || attributionIndex[String(itemId)];
+      if (val) return val;
+    }
+  }
+
   if (row.attributedDeptCode) {
     return row.attributedDeptCode;
   }
@@ -154,8 +167,8 @@ export function getEffectiveDeptCodeForActual(row: any): string {
       if (Array.isArray(parsed)) {
         parsed.forEach((item: any) => {
           if (item.attributedDeptCode) {
-            const itemId = item.id || item.sourceRowId || item.rowNo || item._rowIndex || 'no-id';
-            const signature = `${item.period}_${item.usageCode}_${item.accountCode}_${itemId}`;
+            const currentId = item.id || item.sourceRowId || item.rowNo || item._rowIndex || 'no-id';
+            const signature = `${item.period}_${item.usageCode}_${item.accountCode}_${currentId}`;
             map.set(signature, item.attributedDeptCode);
           }
         });
@@ -166,8 +179,6 @@ export function getEffectiveDeptCodeForActual(row: any): string {
     actualsMapsByYear.set(year, map);
   }
 
-  const itemId = row.id || row.sourceRowId || row.rowNo || row._rowIndex || 'no-id';
-  const itemSignature = `${row.period}_${row.usageCode}_${row.accountCode}_${itemId}`;
   const override = actualsMapsByYear.get(year)?.get(itemSignature);
   return override || row.usageCode || '';
 }

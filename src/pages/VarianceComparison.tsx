@@ -347,13 +347,13 @@ export default function VarianceComparison() {
     isSalary?: boolean;
   }
 
-  const buildDeptDetailComparisonRows = (deptCodes: string[]): DeptDetailCompareRow[] => {
+  const buildDeptDetailComparisonRows = (deptCode: string): DeptDetailCompareRow[] => {
     const baseRows = buildAtomicCompareRows({
       year: baseYear,
       planType: basePlanType,
       monthMode: baseMonthMode,
       selectedMonth: baseSelectedMonth,
-      deptCodes,
+      deptCodes: [deptCode],
       accountMetaMap,
       hasSalaryAccess: hasSalaryAccess && includeSalaryRows,
       allDepts,
@@ -364,7 +364,7 @@ export default function VarianceComparison() {
       planType: targetPlanType,
       monthMode: targetMonthMode,
       selectedMonth: targetSelectedMonth,
-      deptCodes,
+      deptCodes: [deptCode],
       accountMetaMap,
       hasSalaryAccess: hasSalaryAccess && includeSalaryRows,
       allDepts,
@@ -375,7 +375,7 @@ export default function VarianceComparison() {
       targetRows,
       groupBy: 'account',
       allDepts,
-      activeDept: deptCodes.length === 1 ? deptCodes[0] : 'group',
+      activeDept: deptCode,
       selectedAccountingType,
       selectedAccountClass,
       basePlanType,
@@ -383,10 +383,8 @@ export default function VarianceComparison() {
     });
 
     return result.rows.map(row => ({
-      deptCode: deptCodes.length === 1 ? deptCodes[0] : '',
-      deptName: deptCodes.length === 1
-        ? allDepts.find(d => d.code === deptCodes[0])?.name || deptCodes[0]
-        : '',
+      deptCode: deptCode,
+      deptName: allDepts.find(d => d.code === deptCode)?.name || deptCode,
       accountingType: row.accountingType,
       accountClass: row.accountClass,
       accountCode: row.accountCode,
@@ -830,7 +828,7 @@ export default function VarianceComparison() {
     const usedSheetNames = new Set<string>();
 
     const deptDetailRowsRaw = deptCodes.flatMap(deptCode =>
-      buildDeptDetailComparisonRows([deptCode])
+      buildDeptDetailComparisonRows(deptCode)
     );
     const deptDetailRows = applySalaryVisibilityFilter(deptDetailRowsRaw);
 
@@ -867,7 +865,7 @@ export default function VarianceComparison() {
         if (groupDeptCodes.length === 0) return;
 
         const groupRowsRaw = groupDeptCodes.flatMap(deptCode =>
-          buildDeptDetailComparisonRows([deptCode])
+          buildDeptDetailComparisonRows(deptCode)
         );
         const groupRows = applySalaryVisibilityFilter(groupRowsRaw);
 
@@ -1154,19 +1152,35 @@ export default function VarianceComparison() {
     setCollapsedCategories(newCollapsed);
   };
 
+  const selectedDeptCodes = useMemo(() => {
+    return resolveSelectedDeptCodes({
+      selectedDept,
+      viewableDepts,
+      isAdmin,
+      isPlanningTeam,
+    });
+  }, [selectedDept, viewableDepts, isAdmin, isPlanningTeam]);
+
   const accountMetaMap = useMemo(() => {
     const actualRows = loadActualRows(baseYear).concat(loadActualRows(targetYear));
     const budgetRowsByDept = new Map<string, any[]>();
-    const deptCodes = allDepts.map(d => d.code);
 
     if (basePlanType !== '실적') {
-      const baseBudgets = loadBudgetRowsByDept({ year: baseYear, planType: basePlanType, deptCodes });
+      const baseBudgets = loadBudgetRowsByDept({
+        year: baseYear,
+        planType: basePlanType,
+        deptCodes: selectedDeptCodes,
+      });
       baseBudgets.forEach((rows, dCode) => {
         budgetRowsByDept.set(`${baseYear}_${dCode}`, rows);
       });
     }
     if (targetPlanType !== '실적') {
-      const targetBudgets = loadBudgetRowsByDept({ year: targetYear, planType: targetPlanType, deptCodes });
+      const targetBudgets = loadBudgetRowsByDept({
+        year: targetYear,
+        planType: targetPlanType,
+        deptCodes: selectedDeptCodes,
+      });
       targetBudgets.forEach((rows, dCode) => {
         budgetRowsByDept.set(`${targetYear}_${dCode}`, rows);
       });
@@ -1178,16 +1192,7 @@ export default function VarianceComparison() {
       actualRows,
       budgetRowsByDept,
     });
-  }, [baseYear, targetYear, basePlanType, targetPlanType, categories, allDepts]);
-
-  const selectedDeptCodes = useMemo(() => {
-    return resolveSelectedDeptCodes({
-      selectedDept,
-      viewableDepts,
-      isAdmin,
-      isPlanningTeam,
-    });
-  }, [selectedDept, viewableDepts, isAdmin, isPlanningTeam]);
+  }, [baseYear, targetYear, basePlanType, targetPlanType, categories, selectedDeptCodes]);
 
   const baseAtomicRows = useMemo(() => {
     return buildAtomicCompareRows({

@@ -378,8 +378,8 @@ export default function DepartmentManagement() {
             u.departmentCode === code ? { ...u, isActive: !currentActive } : u
           );
           localStorage.setItem('cleanmetal_custom_users', JSON.stringify(updatedUsers));
-          window.dispatchEvent(new Event('custom-users-changed'));
         }
+        window.dispatchEvent(new Event('custom-users-changed'));
 
         const savedSettings = localStorage.getItem('cleanmetal_user_settings');
         if (savedSettings) {

@@ -1,5 +1,6 @@
 // A thin wrapper around localStorage for Budgets
 import { getBudgetDataKey } from '../lib/storageKeys';
+import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 
 export const BudgetRepository = {
   getRows: (deptCode: string, year: string, planType: string): any[] => {
@@ -11,5 +12,6 @@ export const BudgetRepository = {
   saveRows: (deptCode: string, year: string, planType: string, rows: any[]): void => {
     const key = getBudgetDataKey(deptCode, year, planType);
     localStorage.setItem(key, JSON.stringify(rows));
+    clearDataLoaderCache();
   }
 };
