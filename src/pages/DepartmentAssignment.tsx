@@ -264,7 +264,18 @@ export default function DepartmentAssignment() {
 
   // Filter States
   const [year, setYear] = useState('2026');
-  const [planType, setPlanType] = useState<'경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('경영계획');
+  type AttributionDataFilter =
+    | '실적'
+    | '경영계획'
+    | '수정경영계획'
+    | '1차 RP'
+    | '2차 RP';
+
+  const [planType, setPlanType] = useState<AttributionDataFilter>('실적');
+
+  const recommendationPlanType = useMemo(() => {
+    return planType === '실적' ? '경영계획' : planType;
+  }, [planType]);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [monthMode, setMonthMode] = useState<'SINGLE' | 'YTD'>('YTD');
   const [selectedWriterDept, setSelectedWriterDept] = useState('all');
@@ -454,7 +465,7 @@ export default function DepartmentAssignment() {
   const budgetRowsByDept = useMemo(() => {
     const map = new Map<string, any[]>();
     allDepts.forEach(d => {
-      const bKey = getBudgetDataKey(d.code, year, planType);
+      const bKey = getBudgetDataKey(d.code, year, recommendationPlanType);
       const savedData = localStorage.getItem(bKey);
       if (savedData) {
         try {
@@ -465,7 +476,7 @@ export default function DepartmentAssignment() {
       }
     });
     return map;
-  }, [allDepts, year, planType]);
+  }, [allDepts, year, recommendationPlanType]);
 
   // Load Initial Storage Data
   const loadData = () => {
@@ -506,10 +517,20 @@ export default function DepartmentAssignment() {
   // Helper: Month parser
   const getPeriodMonthIndex = (period: string): number => {
     const idx = parsePeriodMonth(period);
-    if (idx !== null) return idx + 1; // Convert 0-indexed to 1-indexed (1 to 12)
-    if (!period) return 12;
-    const num = parseInt(period.replace(/[^0-9]/g, ''), 10);
-    return isNaN(num) ? 12 : num;
+    if (idx !== null) return idx + 1;
+
+    const text = String(period || '').trim();
+
+    const ymdMatch = text.match(/20\d{2}[-./년\s]*(0?[1-9]|1[0-2])/);
+    if (ymdMatch) return Number(ymdMatch[1]);
+
+    const monthMatch = text.match(/(?:^|[^0-9])(0?[1-9]|1[0-2])\s*월?/);
+    if (monthMatch) return Number(monthMatch[1]);
+
+    const numeric = Number(text);
+    if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 12) return numeric;
+
+    return 12;
   };
 
   // Convert Ignored recommendation updates to local storage
@@ -580,7 +601,7 @@ export default function DepartmentAssignment() {
       const rec = recommendAttributionForRow({
         row,
         year,
-        planType,
+        planType: recommendationPlanType,
         monthMode: monthMode === 'SINGLE' ? 'MONTH' : 'YTD',
         selectedMonth: selectedMonth === 'all' ? 12 : Number(selectedMonth),
         departments: recDepts,
@@ -626,7 +647,7 @@ export default function DepartmentAssignment() {
     });
 
     return result.sort((a, b) => b.score - a.score);
-  }, [actualRowsList, year, allDepts, viewableDepts, planType, monthMode, selectedMonth, budgetRowsByDept, overrides, excludedRowIds, currentUser]);
+  }, [actualRowsList, year, allDepts, viewableDepts, recommendationPlanType, monthMode, selectedMonth, budgetRowsByDept, overrides, excludedRowIds, currentUser]);
 
   // Apply UI Filters
   const filteredRecommendationRows = useMemo(() => {
@@ -1444,7 +1465,7 @@ export default function DepartmentAssignment() {
 
   // Reset Filters
   const handleResetFilters = () => {
-    setPlanType('경영계획');
+    setPlanType('실적');
     setSelectedMonth('all');
     setMonthMode('YTD');
     setSelectedWriterDept('all');
@@ -1542,19 +1563,25 @@ export default function DepartmentAssignment() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-2.5">
-          {/* Plan Type (계획 구분) */}
+          {/* Plan Type (데이터 구분) */}
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-zinc-400">계획 구분</span>
+            <span className="text-[10px] font-bold text-zinc-400">데이터 구분</span>
             <select
               value={planType}
               onChange={(e) => setPlanType(e.target.value as any)}
               className="px-2 py-1 text-xs border border-[#008f83] rounded bg-white font-medium text-zinc-800"
             >
+              <option value="실적">실적</option>
               <option value="경영계획">경영계획</option>
               <option value="수정경영계획">수정경영계획</option>
               <option value="1차 RP">1차 RP</option>
               <option value="2차 RP">2차 RP</option>
             </select>
+            {planType === '실적' && (
+              <span className="mt-0.5 text-[9px] leading-tight text-zinc-400">
+                추천 기준: 경영계획
+              </span>
+            )}
           </div>
 
           {/* Month Mode Selector */}
