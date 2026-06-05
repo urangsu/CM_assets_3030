@@ -234,11 +234,12 @@ interface RecommendationRow {
   currentAttributedDeptName?: string;
   recommendedDeptCode: string;
   recommendedDeptName: string;
-  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
   score: number;
   reasons: { label: string; weight: number }[];
   status: '대기' | '적용됨' | '무시됨' | '수동 변경';
   amount: number;
+  excludeReason?: string;
 }
 
 const DEFAULT_ATTRIBUTION_COL_WIDTHS = {
@@ -284,6 +285,7 @@ export default function DepartmentAssignment() {
   const [selectedAccountClass, setSelectedAccountClass] = useState('전체');
   const [selectedConfidence, setSelectedConfidence] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('대기');
+  const [activeAttributionTab, setActiveAttributionTab] = useState<'ALL' | 'RECOMMENDED' | 'EXCLUDED' | 'APPLIED' | 'IGNORED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [showExcludedAccounts, setShowExcludedAccounts] = useState(false);
   const [isRecommendationListOpen, setIsRecommendationListOpen] = useState(true);
@@ -453,13 +455,70 @@ export default function DepartmentAssignment() {
     }
   });
 
-  const allDepts = useMemo(() => getAllDepartments(), []);
+  const [deptMasterVersion, setDeptMasterVersion] = useState(0);
+
+  useEffect(() => {
+    const handleDeptMasterChanged = () => {
+      setDeptMasterVersion(v => v + 1);
+    };
+
+    window.addEventListener('storage', handleDeptMasterChanged);
+    window.addEventListener('custom-users-changed', handleDeptMasterChanged);
+    window.addEventListener('department-master-changed', handleDeptMasterChanged);
+
+    return () => {
+      window.removeEventListener('storage', handleDeptMasterChanged);
+      window.removeEventListener('custom-users-changed', handleDeptMasterChanged);
+      window.removeEventListener('department-master-changed', handleDeptMasterChanged);
+    };
+  }, []);
+
+  const allDepts = useMemo(() => getAllDepartments(), [deptMasterVersion]);
 
   const viewableDepts = useMemo(() => {
     if (!currentUser) return [];
     if (['99999', '32100'].includes(currentUser.code)) return getAllDepartments();
     return getViewableDepts(currentUser.code);
-  }, [currentUser]);
+  }, [currentUser, deptMasterVersion]);
+
+  function sameDeptCode(a: unknown, b: unknown) {
+    return String(a ?? '').trim() === String(b ?? '').trim();
+  }
+
+  function getEffectiveDeptCode(row: any) {
+    return String(row?.attributedDeptCode || row?.usageCode || '').trim();
+  }
+
+  function resolveDeptLabel(code: unknown, fallback?: string) {
+    const normalized = String(code ?? '').trim();
+    const dept = allDepts.find(d => sameDeptCode(d.code, normalized));
+
+    if (dept) return `[${dept.code}] ${dept.name}`;
+    if (fallback) return `[${normalized}] ${fallback} · 미등록`;
+    return `[${normalized}] 미등록 부서`;
+  }
+
+  function renderDeptCellContent(code: unknown, name?: string) {
+    const normalized = String(code ?? '').trim();
+    const dept = allDepts.find(d => sameDeptCode(d.code, normalized));
+    if (dept) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className="font-mono text-zinc-500">[{dept.code}]</span>
+          <span className="font-medium text-zinc-900">{dept.name}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="font-mono text-zinc-400">[{normalized}]</span>
+        <span className="text-zinc-500 italic truncate max-w-[120px]">{name || '미등록 부서'}</span>
+        <span className="inline-flex items-center rounded bg-red-50 px-1 py-0.5 text-[9px] font-bold text-red-650 ring-1 ring-inset ring-red-600/15 select-none shrink-0">
+          미등록
+        </span>
+      </span>
+    );
+  }
 
   // Budget Rows cache to score recommendations
   const budgetRowsByDept = useMemo(() => {
@@ -477,42 +536,6 @@ export default function DepartmentAssignment() {
     });
     return map;
   }, [allDepts, year, recommendationPlanType]);
-
-  // Load Initial Storage Data
-  const loadData = () => {
-    // 1. Overrides
-    try {
-      const stored = localStorage.getItem('hycm_department_assignment_overrides');
-      if (stored) setOverrides(JSON.parse(stored));
-    } catch (e) {
-      console.error(e);
-    }
-
-    // 2. Actuals
-    const actKey = getActualDataKey(year);
-    const savedActuals = localStorage.getItem(actKey);
-    if (savedActuals) {
-      try {
-        setActualRowsList(JSON.parse(savedActuals));
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      setActualRowsList([]);
-    }
-
-    // 3. Audit Logs
-    try {
-      const storedLogs = localStorage.getItem('hycm_attribution_audit_log');
-      if (storedLogs) setAuditLogs(JSON.parse(storedLogs));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, [year]);
 
   // Helper: Month parser
   const getPeriodMonthIndex = (period: string): number => {
@@ -541,6 +564,58 @@ export default function DepartmentAssignment() {
     }
     return getPeriodMonthIndex(targetRow.period || targetRow.month);
   };
+
+  // Load Initial Storage Data
+  const loadData = () => {
+    // 1. Overrides
+    try {
+      const stored = localStorage.getItem('hycm_department_assignment_overrides');
+      if (stored) setOverrides(JSON.parse(stored));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // 2. Actuals
+    const actKey = getActualDataKey(year);
+    const savedActuals = localStorage.getItem(actKey);
+    if (savedActuals) {
+      try {
+        const parsed = JSON.parse(savedActuals);
+        const normalizedRows = parsed.map((row: any) => {
+          return {
+            ...row,
+            usageCode: String(row.usageCode ?? '').trim(),
+            accountCode: String(row.accountCode ?? '').trim(),
+            attributedDeptCode: row.attributedDeptCode
+              ? String(row.attributedDeptCode).trim()
+              : row.attributedDeptCode,
+            periodMonth:
+              Number(row.periodMonth) >= 1 && Number(row.periodMonth) <= 12
+                ? Number(row.periodMonth)
+                : getPeriodMonthIndex(row.period || row.month),
+          };
+        });
+        setActualRowsList(normalizedRows);
+        localStorage.setItem(actKey, JSON.stringify(normalizedRows));
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      setActualRowsList([]);
+    }
+
+    // 3. Audit Logs
+    try {
+      const storedLogs = localStorage.getItem('hycm_attribution_audit_log');
+      if (storedLogs) setAuditLogs(JSON.parse(storedLogs));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [year]);
 
   // Convert Ignored recommendation updates to local storage
   const saveExcludedRowIds = (nextSet: Set<string | number>) => {
@@ -603,8 +678,11 @@ export default function DepartmentAssignment() {
     const recDepts = isFinanceOrAdmin ? allDepts : viewableDepts;
 
     actualRowsList.forEach((row: any) => {
-      // 권한 부서 필터링 (사용자별 조회 가능 부서에 해당하는 실적만 대상으로 삼음)
-      const isViewable = viewableDepts.some(d => d.code === row.usageCode || (row.attributedDeptCode && d.code === row.attributedDeptCode));
+      // 권한 부서 필터링 (사용자별 조회 가능 부서에 해당하는 실적만 대상으로 삼음) using sameDeptCode
+      const isViewable = viewableDepts.some(d => 
+        sameDeptCode(d.code, row.usageCode) || 
+        (row.attributedDeptCode && sameDeptCode(d.code, row.attributedDeptCode))
+      );
       if (!isViewable) return;
 
       const rec = recommendAttributionForRow({
@@ -619,40 +697,44 @@ export default function DepartmentAssignment() {
         previousOverrides: overrides,
       });
 
+      const excludeResult = getAttributionExcludeResult(row.accountCode, row.accountName);
       const isIgnored = excludedRowIds.has(row.id);
-      const hasOverride = row.attributedDeptCode && row.attributedDeptCode !== row.usageCode;
-      const isManual = row.attributionSource === 'manual' || (hasOverride && (!rec || row.attributedDeptCode !== rec.recommendedDeptCode));
+      const hasOverride = row.attributedDeptCode && !sameDeptCode(row.attributedDeptCode, row.usageCode);
+      const isManual = row.attributionSource === 'manual' || (hasOverride && (!rec || !sameDeptCode(row.attributedDeptCode, rec.recommendedDeptCode)));
 
-      if (rec || hasOverride || isIgnored) {
-        let status: '대기' | '적용됨' | '무시됨' | '수동 변경' = '대기';
-        if (isIgnored) {
-          status = '무시됨';
-        } else if (row.attributedDeptCode === (rec?.recommendedDeptCode || '')) {
-          status = '적용됨';
-        } else if (isManual) {
-          status = '수동 변경';
-        }
-
-        result.push({
-          rowId: row.id,
-          row,
-          period: row.period || row.month || '12월',
-          monthIndex: getActualRowMonth(row),
-          accountCode: row.accountCode,
-          accountName: row.accountName,
-          originalDeptCode: row.usageCode,
-          originalDeptName: row.usageDept || row.usageCode,
-          currentAttributedDeptCode: row.attributedDeptCode,
-          currentAttributedDeptName: row.attributedDeptName,
-          recommendedDeptCode: rec ? rec.recommendedDeptCode : '',
-          recommendedDeptName: rec ? rec.recommendedDeptName : '',
-          confidence: rec ? rec.confidence : 'LOW',
-          score: rec ? rec.score : 0,
-          reasons: rec ? rec.reasons : [{ label: '부서 직접 지정 변경', weight: 0 }],
-          status,
-          amount: Number(row.completed || row.amount || 0),
-        });
+      let status: '대기' | '적용됨' | '무시됨' | '수동 변경' = '대기';
+      if (isIgnored) {
+        status = '무시됨';
+      } else if (row.attributedDeptCode && rec && sameDeptCode(row.attributedDeptCode, rec.recommendedDeptCode)) {
+        status = '적용됨';
+      } else if (isManual) {
+        status = '수동 변경';
+      } else if (hasOverride) {
+        status = '적용됨';
       }
+
+      const isActuallyExcluded = excludeResult.excluded;
+
+      result.push({
+        rowId: row.id,
+        row,
+        period: row.period || row.month || `${row.periodMonth || 12}월`,
+        monthIndex: getActualRowMonth(row),
+        accountCode: row.accountCode,
+        accountName: row.accountName,
+        originalDeptCode: row.usageCode,
+        originalDeptName: row.usageDept || row.usageCode,
+        currentAttributedDeptCode: row.attributedDeptCode,
+        currentAttributedDeptName: row.attributedDeptName,
+        recommendedDeptCode: rec ? rec.recommendedDeptCode : '',
+        recommendedDeptName: rec ? rec.recommendedDeptName : '',
+        confidence: rec ? rec.confidence : (isActuallyExcluded ? 'NONE' : 'LOW'),
+        score: rec ? rec.score : 0,
+        reasons: rec ? rec.reasons : (isActuallyExcluded ? [{ label: `${excludeResult.label} (추천 분류 배제)`, weight: 0 }] : [{ label: '부서 직접 지정 변경', weight: 0 }]),
+        status,
+        amount: Number(row.completed || row.amount || 0),
+        excludeReason: isActuallyExcluded ? excludeResult.label : undefined,
+      });
     });
 
     return result.sort((a, b) => b.score - a.score);
@@ -661,11 +743,19 @@ export default function DepartmentAssignment() {
   // Apply UI Filters
   const filteredRecommendationRows = useMemo(() => {
     return allRecommendationRows.filter(item => {
-      const effectiveCurrentDeptCode =
-        item.currentAttributedDeptCode || item.originalDeptCode;
-
-      if (!item.recommendedDeptCode) return false;
-      if (item.recommendedDeptCode === effectiveCurrentDeptCode) return false;
+      // 1. Filter by active tab first
+      if (activeAttributionTab === 'RECOMMENDED') {
+        if (item.excludeReason) return false;
+        if (item.status !== '대기') return false;
+        if (!item.recommendedDeptCode) return false;
+      } else if (activeAttributionTab === 'EXCLUDED') {
+        if (!item.excludeReason) return false;
+      } else if (activeAttributionTab === 'APPLIED') {
+        if (item.status !== '적용됨' && item.status !== '수동 변경') return false;
+      } else if (activeAttributionTab === 'IGNORED') {
+        if (item.status !== '무시됨') return false;
+      }
+      // If 'ALL', show everything.
 
       // Month
       if (selectedMonth !== 'all') {
@@ -677,11 +767,14 @@ export default function DepartmentAssignment() {
         }
       }
 
-      // Original Dept
-      if (selectedWriterDept !== 'all' && item.originalDeptCode !== selectedWriterDept) return false;
+      // Original Dept using sameDeptCode
+      if (selectedWriterDept !== 'all' && !sameDeptCode(item.originalDeptCode, selectedWriterDept)) return false;
 
-      // Recommended Dept
-      if (selectedAttributedDept !== 'all' && item.recommendedDeptCode !== selectedAttributedDept) return false;
+      // Recommended Dept using sameDeptCode
+      if (selectedAttributedDept !== 'all') {
+        const effectiveDept = item.currentAttributedDeptCode || item.originalDeptCode;
+        if (!sameDeptCode(effectiveDept, selectedAttributedDept)) return false;
+      }
 
       // Accounting Type & Account Class Filter (회계 구분, 비용 성격)
       const accountingType = getAccountingType(item.accountCode, item.accountName);
@@ -694,7 +787,9 @@ export default function DepartmentAssignment() {
       if (selectedConfidence !== 'all' && item.confidence !== selectedConfidence) return false;
 
       // Status
-      if (selectedStatus !== 'all' && item.status !== selectedStatus) return false;
+      if (activeAttributionTab === 'ALL') {
+        if (selectedStatus !== 'all' && item.status !== selectedStatus) return false;
+      }
 
       // Search Query
       if (searchQuery) {
@@ -714,7 +809,79 @@ export default function DepartmentAssignment() {
 
       return true;
     });
-  }, [allRecommendationRows, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, selectedConfidence, selectedStatus, searchQuery]);
+  }, [allRecommendationRows, activeAttributionTab, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, selectedConfidence, selectedStatus, searchQuery]);
+
+  // Tab counts for badge display
+  const tabCounts = useMemo(() => {
+    let allCount = 0;
+    let recCount = 0;
+    let excCount = 0;
+    let appCount = 0;
+    let ignCount = 0;
+
+    allRecommendationRows.forEach(item => {
+      // Standard UI filters: Month
+      if (selectedMonth !== 'all') {
+        const monthIndex = getActualRowMonth(item.row || item);
+        if (monthMode === 'YTD') {
+          if (monthIndex > Number(selectedMonth)) return;
+        } else {
+          if (monthIndex !== Number(selectedMonth)) return;
+        }
+      }
+
+      // Original Dept using sameDeptCode
+      if (selectedWriterDept !== 'all' && !sameDeptCode(item.originalDeptCode, selectedWriterDept)) return;
+
+      // Recommended Dept using sameDeptCode
+      if (selectedAttributedDept !== 'all') {
+        const effectiveDept = item.currentAttributedDeptCode || item.originalDeptCode;
+        if (!sameDeptCode(effectiveDept, selectedAttributedDept)) return;
+      }
+
+      // Accounting Type & Account Class Filter
+      const accountingType = getAccountingType(item.accountCode, item.accountName);
+      const accountClass = classifyAccount(item.accountCode, item.accountName);
+      if (selectedAccountingType !== '전체' && accountingType !== selectedAccountingType) return;
+      if (selectedAccountClass !== '전체' && accountClass !== selectedAccountClass) return;
+
+      // Search Query
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const codeMatch = item.accountCode.includes(query);
+        const nameMatch = item.accountName.toLowerCase().includes(query);
+        const origCodeMatch = item.originalDeptCode.includes(query);
+        const origNameMatch = item.originalDeptName.toLowerCase().includes(query);
+        const recCodeMatch = item.recommendedDeptCode?.includes(query);
+        const recNameMatch = item.recommendedDeptName?.toLowerCase().includes(query);
+        const reasonMatch = item.reasons.some(r => r.label.toLowerCase().includes(query));
+
+        if (!codeMatch && !nameMatch && !origCodeMatch && !origNameMatch && !recCodeMatch && !recNameMatch && !reasonMatch) {
+          return;
+        }
+      }
+
+      allCount++;
+
+      if (item.excludeReason) {
+        excCount++;
+      } else if (item.status === '무시됨') {
+        ignCount++;
+      } else if (item.status === '적용됨' || item.status === '수동 변경') {
+        appCount++;
+      } else if (item.status === '대기' && item.recommendedDeptCode) {
+        recCount++;
+      }
+    });
+
+    return {
+      ALL: allCount,
+      RECOMMENDED: recCount,
+      EXCLUDED: excCount,
+      APPLIED: appCount,
+      IGNORED: ignCount,
+    };
+  }, [allRecommendationRows, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, searchQuery]);
 
   // Combined Column Filters and Sort for Recommendation Grid
   const filteredAndSortedRecommendationRows = useMemo(() => {
@@ -806,7 +973,7 @@ export default function DepartmentAssignment() {
     const result: any[] = [];
     actualRowsList.forEach((row: any) => {
       // 권한 부서 필터링 (사용자별 조회 가능 부서에 해당하는 실적만 대상으로 삼음)
-      const isViewable = viewableDepts.some(d => d.code === row.usageCode || (row.attributedDeptCode && d.code === row.attributedDeptCode));
+      const isViewable = viewableDepts.some(d => sameDeptCode(d.code, row.usageCode) || (row.attributedDeptCode && sameDeptCode(d.code, row.attributedDeptCode)));
       if (!isViewable) return;
 
       const excludeResult = getAttributionExcludeResult(row.accountCode, row.accountName);
@@ -822,7 +989,7 @@ export default function DepartmentAssignment() {
         }
 
         // Original Dept filter
-        if (selectedWriterDept !== 'all' && row.usageCode !== selectedWriterDept) return;
+        if (selectedWriterDept !== 'all' && !sameDeptCode(row.usageCode, selectedWriterDept)) return;
 
         // Search Query filter
         if (searchQuery) {
@@ -862,7 +1029,7 @@ export default function DepartmentAssignment() {
   // Filter for manual selection list (independent of wait status or recommendations)
   const filteredActualRowsForManualGrid = useMemo(() => {
     return actualRowsList.filter((row: any) => {
-      const isViewable = viewableDepts.some(d => d.code === row.usageCode || (row.attributedDeptCode && d.code === row.attributedDeptCode));
+      const isViewable = viewableDepts.some(d => sameDeptCode(d.code, row.usageCode) || (row.attributedDeptCode && sameDeptCode(d.code, row.attributedDeptCode)));
       if (!isViewable) return false;
 
       if (selectedMonth !== 'all') {
@@ -874,13 +1041,13 @@ export default function DepartmentAssignment() {
         }
       }
 
-      if (selectedWriterDept !== 'all' && row.usageCode !== selectedWriterDept) {
+      if (selectedWriterDept !== 'all' && !sameDeptCode(row.usageCode, selectedWriterDept)) {
         return false;
       }
 
       if (selectedAttributedDept !== 'all') {
         const effectiveDept = row.attributedDeptCode || row.usageCode;
-        if (effectiveDept !== selectedAttributedDept) return false;
+        if (!sameDeptCode(effectiveDept, selectedAttributedDept)) return false;
       }
 
       const accountingType = getAccountingType(row.accountCode, row.accountName);
@@ -1799,6 +1966,109 @@ export default function DepartmentAssignment() {
       {/* 4. Main Contents Area: Full width table representation with inline detail rows */}
       <div className="flex flex-col gap-4">
         
+        {/* Tabs Control */}
+        <div className="flex flex-wrap gap-1 bg-zinc-100 p-1 rounded-xl max-w-fit border border-zinc-200">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveAttributionTab('ALL');
+              setSelectedRowId(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer ${
+              activeAttributionTab === 'ALL'
+                ? 'bg-white text-[#008f83] shadow-sm'
+                : 'text-zinc-600 hover:text-[#008f83] hover:bg-white/50'
+            }`}
+          >
+            전체 실적 [ALL]
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+              activeAttributionTab === 'ALL' ? 'bg-[#008f83] text-white' : 'bg-zinc-200 text-zinc-650'
+            }`}>
+              {tabCounts.ALL}
+            </span>
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => {
+              setActiveAttributionTab('RECOMMENDED');
+              setSelectedRowId(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer ${
+              activeAttributionTab === 'RECOMMENDED'
+                ? 'bg-white text-[#008f83] shadow-sm'
+                : 'text-zinc-600 hover:text-[#008f83] hover:bg-white/50'
+            }`}
+          >
+            추천 필요 [RECOMMENDED]
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+              activeAttributionTab === 'RECOMMENDED' ? 'bg-[#008f83] text-white' : 'bg-amber-100 text-amber-800'
+            }`}>
+              {tabCounts.RECOMMENDED}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveAttributionTab('EXCLUDED');
+              setSelectedRowId(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer ${
+              activeAttributionTab === 'EXCLUDED'
+                ? 'bg-white text-[#008f83] shadow-sm'
+                : 'text-zinc-600 hover:text-[#008f83] hover:bg-white/50'
+            }`}
+          >
+            추천 제외 [EXCLUDED]
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+              activeAttributionTab === 'EXCLUDED' ? 'bg-[#008f83] text-white' : 'bg-red-100 text-red-800'
+            }`}>
+              {tabCounts.EXCLUDED}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveAttributionTab('APPLIED');
+              setSelectedRowId(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer ${
+              activeAttributionTab === 'APPLIED'
+                ? 'bg-white text-[#008f83] shadow-sm'
+                : 'text-zinc-600 hover:text-[#008f83] hover:bg-white/50'
+            }`}
+          >
+            보정 적용 [APPLIED]
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+              activeAttributionTab === 'APPLIED' ? 'bg-[#008f83] text-white' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              {tabCounts.APPLIED}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveAttributionTab('IGNORED');
+              setSelectedRowId(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer ${
+              activeAttributionTab === 'IGNORED'
+                ? 'bg-white text-[#008f83] shadow-sm'
+                : 'text-zinc-600 hover:text-[#008f83] hover:bg-white/50'
+            }`}
+          >
+            무시됨 [IGNORED]
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+              activeAttributionTab === 'IGNORED' ? 'bg-[#008f83] text-white' : 'bg-zinc-200 text-zinc-600'
+            }`}>
+              {tabCounts.IGNORED}
+            </span>
+          </button>
+        </div>
+
         {/* Table list is full width */}
         <div className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
           <div className="px-4 py-3.5 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
@@ -2115,8 +2385,8 @@ export default function DepartmentAssignment() {
                             </span>
                           </td>
                           <td className="py-3 px-3">
-                            <span className="block truncate text-zinc-600" title={`[${item.originalDeptCode}] ${item.originalDeptName}`}>
-                              [{item.originalDeptCode}] {item.originalDeptName}
+                            <span className="block truncate text-zinc-650" title={`[${item.originalDeptCode}] ${item.originalDeptName}`}>
+                              {renderDeptCellContent(item.originalDeptCode, item.originalDeptName)}
                             </span>
                           </td>
                           <td
@@ -2207,7 +2477,7 @@ export default function DepartmentAssignment() {
                               >
                                 {item.currentAttributedDeptCode ? (
                                   <span className="block truncate font-semibold text-[#008f83]">
-                                    [{item.currentAttributedDeptCode}] {item.currentAttributedDeptName}
+                                    {renderDeptCellContent(item.currentAttributedDeptCode, item.currentAttributedDeptName)}
                                   </span>
                                 ) : (
                                   <span className="font-medium text-zinc-400">
@@ -2228,7 +2498,7 @@ export default function DepartmentAssignment() {
                                 className="block truncate text-left font-bold text-[#008f83] hover:underline cursor-pointer"
                                 title="귀속 추천 상세 보기"
                               >
-                                [{item.recommendedDeptCode}] {item.recommendedDeptName}
+                                {renderDeptCellContent(item.recommendedDeptCode, item.recommendedDeptName)}
                               </button>
                             ) : (
                               <span className="text-zinc-400 font-mono">-</span>
@@ -2531,12 +2801,12 @@ export default function DepartmentAssignment() {
                           {row.accountName}
                         </td>
                         <td className="py-2 px-3 text-zinc-650 truncate max-w-[180px]" title={`[${row.originalDeptCode}] ${row.originalDeptName}`}>
-                          [{row.originalDeptCode}] {row.originalDeptName}
+                          {renderDeptCellContent(row.originalDeptCode, row.originalDeptName)}
                         </td>
                         <td className="py-2 px-3 truncate max-w-[180px]">
                           {row.currentDeptCode !== row.originalDeptCode ? (
                             <span className="font-bold text-[#008f83]" title={`[${row.currentDeptCode}] ${row.currentDeptName}`}>
-                              [{row.currentDeptCode}] {row.currentDeptName}
+                              {renderDeptCellContent(row.currentDeptCode, row.currentDeptName)}
                             </span>
                           ) : (
                             <span className="text-zinc-400 font-medium font-sans">원 사용처 기준 동일</span>

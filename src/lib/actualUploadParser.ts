@@ -178,8 +178,8 @@ export function parseWideMonthlyRows(params: {
   
   params.records.forEach((record, index) => {
     const rowNum = index + 2;
-    const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '');
-    const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '');
+    const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '').trim();
+    const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '').trim();
     const providedUsageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '').trim();
 
     if (!usageCode || !accountCode) {

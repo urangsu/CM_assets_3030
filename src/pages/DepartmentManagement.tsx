@@ -262,6 +262,7 @@ export default function DepartmentManagement() {
 
     setDepts(newList);
     localStorage.setItem('cleanmetal_dept_master_custom', JSON.stringify(newList));
+    window.dispatchEvent(new Event('department-master-changed'));
     
     // Sync custom user Account
     let updatedUsers = [...customUsers];
@@ -369,6 +370,7 @@ export default function DepartmentManagement() {
         );
         setDepts(newList);
         localStorage.setItem('cleanmetal_dept_master_custom', JSON.stringify(newList));
+        window.dispatchEvent(new Event('department-master-changed'));
         
         // Sync user Status
         const savedCustomUsers = localStorage.getItem('cleanmetal_custom_users');
@@ -419,6 +421,7 @@ export default function DepartmentManagement() {
         const newList = depts.filter(d => d.code !== code);
         setDepts(newList);
         localStorage.setItem('cleanmetal_dept_master_custom', JSON.stringify(newList));
+        window.dispatchEvent(new Event('department-master-changed'));
         
         // Remove associated user from custom users too
         const savedCustomUsers = localStorage.getItem('cleanmetal_custom_users');
