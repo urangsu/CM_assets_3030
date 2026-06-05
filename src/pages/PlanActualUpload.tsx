@@ -30,7 +30,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, getActualDataKey, isBudgetLocked } from '../lib/storageKeys';
-import { BudgetRepository } from '../repositories/BudgetRepository';
+import { BudgetRepository, normalizeBudgetRows } from '../repositories/BudgetRepository';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
@@ -133,10 +133,10 @@ function getUploadRowKey(row: ActualData, target: string): string {
     })();
 
   return [
-    row.year,
-    target,
-    row.usageCode,
-    row.accountCode,
+    String(row.year || '').trim(),
+    String(target || '').trim(),
+    String(row.usageCode || '').trim(),
+    String(row.accountCode || '').trim(),
     month,
   ].join('|');
 }
@@ -746,12 +746,15 @@ export default function PlanActualUpload() {
         savedDeptNames.push(dept.name);
 
         const existingData = localStorage.getItem(key);
-        const budgetRows: any[] = existingData ? JSON.parse(existingData) : [];
+        let budgetRows: any[] = existingData ? JSON.parse(existingData) : [];
+        budgetRows = normalizeBudgetRows(budgetRows, deptCode);
         
         deptData.forEach(uploadRow => {
           const monthIndex = parsePeriodMonth(uploadRow.period);
           if (monthIndex !== null) {
-            let budgetRow = budgetRows.find((r: any) => r.code === uploadRow.accountCode);
+            let budgetRow = budgetRows.find((r: any) => 
+              String(r.code || '').trim() === String(uploadRow.accountCode || '').trim()
+            );
             if (budgetRow) {
               budgetRow.values[monthIndex] = uploadRow.amount;
               if (uploadRow.remarks) budgetRow.detail = uploadRow.remarks;

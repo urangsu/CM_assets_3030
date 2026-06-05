@@ -809,23 +809,24 @@ export default function VarianceComparison() {
       freezeColCount: 6,
     });
 
-    ws['!cols'] = [];
+    ws['!cols'] = ws['!cols'] || [];
     const maxCol = data[0].length - 1;
     for (let c = 0; c <= maxCol; c++) {
-      if (c === 0) ws['!cols'][c] = { wch: 12 };
-      else if (c === 1) ws['!cols'][c] = { wch: 22 };
-      else if (c === 2) ws['!cols'][c] = { wch: 16 };
-      else if (c === 3) ws['!cols'][c] = { wch: 12 };
-      else if (c === 4) ws['!cols'][c] = { wch: 15 };
-      else if (c === 5) ws['!cols'][c] = { wch: 30 };
-      else ws['!cols'][c] = { wch: 13 };
+      const existing = ws['!cols'][c] || {};
+      if (c === 0) ws['!cols'][c] = { ...existing, wch: 12 };
+      else if (c === 1) ws['!cols'][c] = { ...existing, wch: 22 };
+      else if (c === 2) ws['!cols'][c] = { ...existing, wch: 16 };
+      else if (c === 3) ws['!cols'][c] = { ...existing, wch: 12 };
+      else if (c === 4) ws['!cols'][c] = { ...existing, wch: 15 };
+      else if (c === 5) ws['!cols'][c] = { ...existing, wch: 30 };
+      else ws['!cols'][c] = { ...existing, wch: 13 };
     }
 
-    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { wch: 18 };
-    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { wch: 18 };
-    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { wch: 18 };
-    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { wch: 14 };
-    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { wch: 11 };
+    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { ...ws['!cols'][targetTotalCol], wch: 18 };
+    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { ...ws['!cols'][baseTotalCol], wch: 18 };
+    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { ...ws['!cols'][varianceCol], wch: 18 };
+    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { ...ws['!cols'][varianceRateCol], wch: 14 };
+    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { ...ws['!cols'][statusCol], wch: 11 };
 
     appendSheetSafely(wb, ws, `${deptCode}_${deptName}`, usedSheetNames);
   };
@@ -1020,23 +1021,24 @@ export default function VarianceComparison() {
       freezeColCount: 6,
     });
 
-    ws['!cols'] = [];
+    ws['!cols'] = ws['!cols'] || [];
     const maxCol = data[0].length - 1;
     for (let c = 0; c <= maxCol; c++) {
-      if (c === 0) ws['!cols'][c] = { wch: 18 };
-      else if (c === 1) ws['!cols'][c] = { wch: 30 };
-      else if (c === 2) ws['!cols'][c] = { wch: 16 };
-      else if (c === 3) ws['!cols'][c] = { wch: 12 };
-      else if (c === 4) ws['!cols'][c] = { wch: 15 };
-      else if (c === 5) ws['!cols'][c] = { wch: 30 };
-      else ws['!cols'][c] = { wch: 13 };
+      const existing = ws['!cols'][c] || {};
+      if (c === 0) ws['!cols'][c] = { ...existing, wch: 18 };
+      else if (c === 1) ws['!cols'][c] = { ...existing, wch: 30 };
+      else if (c === 2) ws['!cols'][c] = { ...existing, wch: 16 };
+      else if (c === 3) ws['!cols'][c] = { ...existing, wch: 12 };
+      else if (c === 4) ws['!cols'][c] = { ...existing, wch: 15 };
+      else if (c === 5) ws['!cols'][c] = { ...existing, wch: 30 };
+      else ws['!cols'][c] = { ...existing, wch: 13 };
     }
 
-    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { wch: 18 };
-    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { wch: 18 };
-    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { wch: 18 };
-    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { wch: 14 };
-    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { wch: 11 };
+    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { ...ws['!cols'][targetTotalCol], wch: 18 };
+    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { ...ws['!cols'][baseTotalCol], wch: 18 };
+    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { ...ws['!cols'][varianceCol], wch: 18 };
+    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { ...ws['!cols'][varianceRateCol], wch: 14 };
+    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { ...ws['!cols'][statusCol], wch: 11 };
 
     appendSheetSafely(wb, ws, `그룹_${group.deptCodes?.[0] || group.id}_${group.name}`, usedSheetNames);
   };
@@ -1351,21 +1353,22 @@ export default function VarianceComparison() {
       freezeColCount: 4,
     });
 
-    ws['!cols'] = [];
+    ws['!cols'] = ws['!cols'] || [];
     const maxCol = excelData[0].length - 1;
     for (let c = 0; c <= maxCol; c++) {
-      if (c === 0) ws['!cols'][c] = { wch: 16 };
-      else if (c === 1) ws['!cols'][c] = { wch: 12 };
-      else if (c === 2) ws['!cols'][c] = { wch: 15 };
-      else if (c === 3) ws['!cols'][c] = { wch: 30 };
-      else ws['!cols'][c] = { wch: 13 };
+      const existing = ws['!cols'][c] || {};
+      if (c === 0) ws['!cols'][c] = { ...existing, wch: 16 };
+      else if (c === 1) ws['!cols'][c] = { ...existing, wch: 12 };
+      else if (c === 2) ws['!cols'][c] = { ...existing, wch: 15 };
+      else if (c === 3) ws['!cols'][c] = { ...existing, wch: 30 };
+      else ws['!cols'][c] = { ...existing, wch: 13 };
     }
 
-    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { wch: 18 };
-    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { wch: 18 };
-    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { wch: 18 };
-    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { wch: 14 };
-    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { wch: 11 };
+    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { ...ws['!cols'][targetTotalCol], wch: 18 };
+    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { ...ws['!cols'][baseTotalCol], wch: 18 };
+    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { ...ws['!cols'][varianceCol], wch: 18 };
+    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { ...ws['!cols'][varianceRateCol], wch: 14 };
+    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { ...ws['!cols'][statusCol], wch: 11 };
 
     appendSheetSafely(wb, ws, '비교분석');
     XLSX.writeFile(wb, getDownloadFileName('xlsx'));
