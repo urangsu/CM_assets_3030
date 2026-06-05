@@ -384,6 +384,35 @@ export default function DepartmentAssignment() {
   const [showHistory, setShowHistory] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  const [uploadHistory, setUploadHistory] = useState<any[]>([]);
+  const [historyModalTab, setHistoryModalTab] = useState<'ATTRIBUTION' | 'UPLOAD'>('ATTRIBUTION');
+
+  const reloadAuditLogs = () => {
+    try {
+      const storedLogs = localStorage.getItem('hycm_attribution_audit_log');
+      setAuditLogs(storedLogs ? JSON.parse(storedLogs) : []);
+    } catch {
+      setAuditLogs([]);
+    }
+    try {
+      const storedUploads = localStorage.getItem('hycm_actual_upload_history');
+      setUploadHistory(storedUploads ? JSON.parse(storedUploads) : []);
+    } catch {
+      setUploadHistory([]);
+    }
+  };
+
+  const appendAttributionAuditLogs = (newLogs: any[]) => {
+    try {
+      const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
+      const nextLogs = [...newLogs, ...currentLogs];
+      localStorage.setItem('hycm_attribution_audit_log', JSON.stringify(nextLogs));
+      setAuditLogs(nextLogs);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Selected Row for Details (Master-Detail)
   const [selectedRowId, setSelectedRowId] = useState<string | number | null>(null);
   const [editingAttributionRowId, setEditingAttributionRowId] = useState<string | number | null>(null);
@@ -605,12 +634,7 @@ export default function DepartmentAssignment() {
     }
 
     // 3. Audit Logs
-    try {
-      const storedLogs = localStorage.getItem('hycm_attribution_audit_log');
-      if (storedLogs) setAuditLogs(JSON.parse(storedLogs));
-    } catch (e) {
-      console.error(e);
-    }
+    reloadAuditLogs();
   };
 
   useEffect(() => {
@@ -638,7 +662,6 @@ export default function DepartmentAssignment() {
     reasons: string[];
     score: number;
   }) => {
-    const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
     let actionLabel = '';
     switch (params.action) {
       case 'APPLY': actionLabel = '추천 적용'; break;
@@ -664,9 +687,7 @@ export default function DepartmentAssignment() {
       reason: params.reasons.join(', '),
     };
 
-    const nextLogs = [newLog, ...currentLogs];
-    localStorage.setItem('hycm_attribution_audit_log', JSON.stringify(nextLogs));
-    setAuditLogs(nextLogs);
+    appendAttributionAuditLogs([newLog]);
   };
 
   // Construct All Recommendation rows dynamically
@@ -1385,6 +1406,26 @@ export default function DepartmentAssignment() {
     nextSet.delete(rowId);
     saveExcludedRowIds(nextSet);
 
+    const matchRec = allRecommendationRows.find(r => r.rowId === rowId);
+    if (matchRec) {
+      saveAuditLog({
+        rowId,
+        action: 'REVERT',
+        accountCode: matchRec.accountCode,
+        accountName: matchRec.accountName,
+        originalDeptCode: matchRec.originalDeptCode,
+        originalDeptName: matchRec.originalDeptName,
+        beforeAttributedDeptCode: undefined,
+        beforeAttributedDeptName: '추천 제외됨 (사용자 무시)',
+        afterAttributedDeptCode: matchRec.recommendedDeptCode || undefined,
+        afterAttributedDeptName: matchRec.recommendedDeptCode 
+          ? `[${matchRec.recommendedDeptCode}] ${matchRec.recommendedDeptName}` 
+          : '원 사용처 기준',
+        reasons: ['추천 무시 취소'],
+        score: matchRec.score,
+      });
+    }
+
     setFeedbackMsg({
       type: 'success',
       text: '무시 처리가 해제되어 정상 대기 상태로 복구되었습니다.'
@@ -1411,7 +1452,6 @@ export default function DepartmentAssignment() {
         const actKey = getActualDataKey(year);
         const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
         const opName = currentUser?.name || '기획재무담당';
-        const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
         let updateCount = 0;
         const newLogs: any[] = [];
 
@@ -1452,7 +1492,7 @@ export default function DepartmentAssignment() {
         });
 
         localStorage.setItem(actKey, JSON.stringify(updated));
-        localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
+        appendAttributionAuditLogs(newLogs);
         clearDataLoaderCache();
 
         setFeedbackMsg({
@@ -1489,7 +1529,6 @@ export default function DepartmentAssignment() {
         const actKey = getActualDataKey(year);
         const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
         const opName = currentUser?.name || '기획재무담당';
-        const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
         const newLogs: any[] = [];
         let count = 0;
 
@@ -1530,7 +1569,7 @@ export default function DepartmentAssignment() {
         });
 
         localStorage.setItem(actKey, JSON.stringify(updated));
-        localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
+        appendAttributionAuditLogs(newLogs);
         clearDataLoaderCache();
 
         setFeedbackMsg({
@@ -1566,7 +1605,6 @@ export default function DepartmentAssignment() {
       `선택한 ${targets.length}건을 추천 귀속에서 제외하시겠습니까?`,
       () => {
         const nextSet = new Set<string | number>(excludedRowIds);
-        const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
         const newLogs: any[] = [];
 
         targets.forEach(item => {
@@ -1588,7 +1626,7 @@ export default function DepartmentAssignment() {
         });
 
         saveExcludedRowIds(nextSet);
-        localStorage.setItem('hycm_attribution_audit_log', JSON.stringify([...newLogs, ...currentLogs]));
+        appendAttributionAuditLogs(newLogs);
 
         setFeedbackMsg({
           type: 'success',
@@ -1951,13 +1989,16 @@ export default function DepartmentAssignment() {
             </button>
 
             <button
-              onClick={() => setShowHistory(!showHistory)}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded font-bold border transition ${
+              onClick={() => {
+                reloadAuditLogs();
+                setShowHistory(!showHistory);
+              }}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded font-bold border transition transition-all cursor-pointer ${
                 showHistory ? 'border-zinc-800 bg-zinc-900 text-white' : 'border-zinc-200 hover:bg-zinc-100 text-zinc-700'
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              이력 {showHistory ? '닫기' : '보기'}
+              {showHistory ? '이력 닫기' : '귀속 보정 이력'}
             </button>
           </div>
         </div>
@@ -2949,91 +2990,242 @@ export default function DepartmentAssignment() {
 
 
 
-      {/* 5. Audit History Log Table representation (Collapsible Section) */}
+      {/* 5. Audit History Log Table representation (Absolute Dialog Modal) */}
       {showHistory && (
-        <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden mt-2 animate-in slide-in-from-bottom duration-200">
-          <div className="px-4 py-3 bg-zinc-800 text-white font-bold text-xs flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <History className="w-4 h-4" />
-              최근 귀속부서 보정 변경 이력
-            </span>
-            <button
-              onClick={() => {
-                showConfirm(
-                  '이력 전체 비우기',
-                  '모든 로컬 보정 이력을 비우시겠습니까? 이 작업은 되돌릴 수 없습니다.',
-                  () => {
-                    localStorage.removeItem('hycm_attribution_audit_log');
-                    setAuditLogs([]);
-                  },
-                  '비우기'
-                );
-              }}
-              className="text-red-300 hover:text-red-200 font-semibold"
-            >
-              이력 비우기
-            </button>
-          </div>
-          <div className="overflow-x-auto max-h-[350px]">
-            <table className="w-full text-left text-xs font-sans">
-              <thead>
-                <tr className="bg-zinc-100 border-b border-zinc-200 text-zinc-500 font-bold font-sans text-[10.5px]">
-                  <th className="py-2.5 px-4 w-40">시간</th>
-                  <th className="py-2.5 px-3 w-24">작업</th>
-                  <th className="py-2.5 px-3">계정과목 (코드/명)</th>
-                  <th className="py-2.5 px-3">원본 사용처</th>
-                  <th className="py-2.5 px-3">변경 전 귀속부서</th>
-                  <th className="py-2.5 px-3">변경 후 귀속부서</th>
-                  <th className="py-2.5 px-3 text-center w-24">처리자</th>
-                  <th className="py-2.5 px-4">사유 및 상세</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-150 font-sans text-zinc-650">
-                {auditLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-10 text-center text-zinc-400">
-                      최근 감지 및 사용자 처리 귀속 조정 감사 이력이 존재하지 않습니다.
-                    </td>
-                  </tr>
-                ) : (
-                  auditLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-zinc-50/50">
-                      <td className="py-2.5 px-4 font-mono font-medium text-zinc-400">{log.time}</td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          log.action === '추천 적용' || log.action?.includes('일괄')
-                            ? 'bg-emerald-100 text-emerald-800' 
-                            : log.action === '수동 변경' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : log.action === '원복' 
-                            ? 'bg-orange-100 text-orange-800' 
-                            : 'bg-zinc-100 text-zinc-650'
-                        }`}>
-                          {log.action}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 font-semibold">
-                        <span className="font-mono bg-zinc-50 border px-1 rounded mr-2 text-zinc-500">
-                          {log.accountCode}
-                        </span>
-                        {log.accountName}
-                      </td>
-                      <td className="py-2.5 px-3 font-medium text-zinc-600">{log.originalDeptName}</td>
-                      <td className="py-2.5 px-3 text-zinc-500">
-                        {log.beforeAttributedDeptName}
-                      </td>
-                      <td className="py-2.5 px-3 font-semibold text-zinc-900">
-                        {log.afterAttributedDeptName}
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-zinc-550 font-medium">{log.user}</td>
-                      <td className="py-2.5 px-4 font-mono text-zinc-500 max-w-[200px] truncate" title={log.reason}>
-                        {log.reason}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs px-4" id="history-modal-overlay">
+          <div className="w-[1000px] max-w-[calc(100vw-32px)] max-h-[85vh] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-zinc-200 bg-zinc-900 px-5 py-4 text-white">
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <History className="w-4 h-4 text-[#008f83]" />
+                  실적 및 귀속 처리 감사 이력
+                </h3>
+                <p className="mt-0.5 text-[11px] text-zinc-300">
+                  귀속부서 추천 반영/수동 변경/원복/무시 보정 이력 및 실적 업로드 로그를 한눈에 모니터링합니다.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/10 shadow-xs cursor-pointer transition"
+              >
+                닫기
+              </button>
+            </div>
+
+            {/* Modal Tab Controller */}
+            <div className="px-5 py-2.5 bg-zinc-100/70 border-b border-zinc-200 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setHistoryModalTab('ATTRIBUTION')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition ${
+                  historyModalTab === 'ATTRIBUTION' 
+                    ? 'bg-zinc-800 text-white shadow-sm' 
+                    : 'text-zinc-600 hover:text-zinc-805 hover:bg-zinc-200'
+                }`}
+              >
+                귀속 보정 이력 ({auditLogs.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryModalTab('UPLOAD')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition ${
+                  historyModalTab === 'UPLOAD' 
+                    ? 'bg-zinc-800 text-white shadow-sm' 
+                    : 'text-zinc-600 hover:text-zinc-805 hover:bg-zinc-200'
+                }`}
+              >
+                실적 업로드 이력 ({uploadHistory.length})
+              </button>
+            </div>
+
+            {/* Modal Content Scroll Area */}
+            <div className="flex-1 overflow-y-auto max-h-[calc(85vh-130px)]">
+              {/* TAB 1: Attribution Change History */}
+              {historyModalTab === 'ATTRIBUTION' && (
+                <div className="p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-500 font-bold">
+                      총 {auditLogs.length}건의 귀속 보정 이력이 존재합니다.
+                    </span>
+                    {auditLogs.length > 0 && (
+                      <button
+                        onClick={() => {
+                          showConfirm(
+                            '이력 전체 비우기',
+                            '모든 로컬 귀속 보정 이력을 비우시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+                            () => {
+                              localStorage.removeItem('hycm_attribution_audit_log');
+                              setAuditLogs([]);
+                            },
+                            '비우기'
+                          );
+                        }}
+                        className="text-red-500 border border-red-200 bg-red-50 hover:bg-red-100 font-bold text-[11px] px-2.5 py-1 rounded-md transition cursor-pointer"
+                      >
+                        귀속 이력 전체 비우기
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="border border-zinc-200 rounded-xl overflow-hidden bg-white">
+                    <table className="w-full text-left text-xs font-sans">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-bold font-sans text-[10.5px]">
+                          <th className="py-2.5 px-4 w-40">시간</th>
+                          <th className="py-2.5 px-3 w-28">작업</th>
+                          <th className="py-2.5 px-3">계정과목 (코드/명)</th>
+                          <th className="py-2.5 px-3">원본 사용처</th>
+                          <th className="py-2.5 px-3">변경 전 귀속부서</th>
+                          <th className="py-2.5 px-3">변경 후 귀속부서</th>
+                          <th className="py-2.5 px-3 text-center w-24">처리자</th>
+                          <th className="py-2.5 px-4">사유 및 상세</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 font-sans text-zinc-650">
+                        {auditLogs.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-14 text-center text-zinc-500 leading-relaxed font-sans">
+                              <div className="text-zinc-700 font-extrabold text-[12.5px] mb-1">
+                                아직 귀속부서 보정 이력이 없습니다.
+                              </div>
+                              <div className="text-[11px] text-zinc-400 max-w-md mx-auto">
+                                실적 업로드만으로는 이력이 생성되지 않으며, 추천 적용·수동 변경·원복·무시 처리 시 이력이 기록됩니다.
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          auditLogs.map((log) => (
+                            <tr key={log.id} className="hover:bg-zinc-50/55 transition-colors">
+                              <td className="py-2.5 px-4 font-mono font-medium text-zinc-400">{log.time}</td>
+                              <td className="py-2.5 px-3">
+                                <span className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold inline-block ${
+                                  log.action?.includes('일괄') || log.action?.includes('적용')
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
+                                    : log.action === '수동 변경' 
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-100' 
+                                    : log.action === '원복' 
+                                    ? 'bg-orange-50 text-orange-700 border border-orange-100' 
+                                    : 'bg-zinc-100 text-zinc-600 border border-zinc-200'
+                                }`}>
+                                  {log.action}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-bold text-zinc-800">
+                                <span className="font-mono bg-zinc-100 text-zinc-500 text-[10px] px-1 py-0.5 rounded mr-1.5">
+                                  {log.accountCode}
+                                </span>
+                                {log.accountName}
+                              </td>
+                              <td className="py-2.5 px-3 font-medium text-zinc-500">{log.originalDeptName}</td>
+                              <td className="py-2.5 px-3 text-zinc-455">
+                                {log.beforeAttributedDeptName}
+                              </td>
+                              <td className="py-2.5 px-3 font-bold text-zinc-900">
+                                {log.afterAttributedDeptName}
+                              </td>
+                              <td className="py-2.5 px-3 text-center text-zinc-550 font-medium">{log.user}</td>
+                              <td className="py-2.5 px-4 font-mono text-zinc-500 max-w-[200px] truncate" title={log.reason}>
+                                {log.reason}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: Actuals Upload History */}
+              {historyModalTab === 'UPLOAD' && (
+                <div className="p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-500 font-bold">
+                      총 {uploadHistory.length}건의 업로드 저장 이력이 존재합니다.
+                    </span>
+                    {uploadHistory.length > 0 && (
+                      <button
+                        onClick={() => {
+                          showConfirm(
+                            '업로드 이력 전체 비우기',
+                            '모든 로컬 업로드 이력을 비우시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+                            () => {
+                              localStorage.removeItem('hycm_actual_upload_history');
+                              setUploadHistory([]);
+                            },
+                            '비우기'
+                          );
+                        }}
+                        className="text-red-500 border border-red-200 bg-red-50 hover:bg-red-100 font-bold text-[11px] px-2.5 py-1 rounded-md transition cursor-pointer"
+                      >
+                        업로드 이력 전체 비우기
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="border border-zinc-200 rounded-xl overflow-hidden bg-white">
+                    <table className="w-full text-left text-xs font-sans">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-bold font-sans text-[10.5px]">
+                          <th className="py-2.5 px-4 w-44">시간</th>
+                          <th className="py-2.5 px-3 w-16 text-center">연도</th>
+                          <th className="py-2.5 px-3 w-24 text-center">업로드 대상</th>
+                          <th className="py-2.5 px-3 w-28 text-right">반영 행(Row) 수</th>
+                          <th className="py-2.5 px-3 text-center w-24">처리자</th>
+                          <th className="py-2.5 px-4">월별 반영 상세 요약</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 font-sans text-zinc-650">
+                        {uploadHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-14 text-center text-zinc-400 font-sans">
+                              <div className="text-zinc-600 font-bold text-[12.5px] mb-1">
+                                아직 업로드 저장 이력이 존재하지 않습니다.
+                              </div>
+                              <div className="text-[11px] text-zinc-400">
+                                실적 업로드 엑셀 업로드 완료 후 데이터 저장 시 보정이력이 아닌 업로드 이력으로 여기에 자동 로깅됩니다.
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          uploadHistory.map((history) => (
+                            <tr key={history.id} className="hover:bg-zinc-50/55 transition-colors">
+                              <td className="py-2.5 px-4 font-mono font-medium text-zinc-400">{history.time}</td>
+                              <td className="py-2.5 px-3 text-center font-bold text-zinc-700">{history.year}년</td>
+                              <td className="py-2.5 px-3 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold ${
+                                  history.target === '실적' 
+                                    ? 'bg-[#008f83]/10 text-[#008f83]' 
+                                    : 'bg-indigo-50 text-indigo-700'
+                                }`}>
+                                  {history.target}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-zinc-800">
+                                {history.rowCount?.toLocaleString()}건
+                              </td>
+                              <td className="py-2.5 px-3 text-center text-zinc-550 font-medium">{history.user}</td>
+                              <td className="py-2.5 px-4">
+                                <div className="flex flex-wrap gap-1">
+                                  {Object.entries(history.monthSummary || {}).map(([m, cnt]) => (
+                                    <span key={m} className="inline-flex items-center gap-1 bg-zinc-100 border border-zinc-200/60 text-[10px] px-1.5 py-0.5 rounded text-zinc-600 font-mono font-semibold">
+                                      {m === '미지정' ? '미지정' : `${m}월`}: <span className="text-[#008f83] font-bold">{cnt}건</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

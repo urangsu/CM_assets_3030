@@ -19,6 +19,7 @@ import { buildAccountMetaIndex, AccountMeta } from '../lib/varianceAccountIndex'
 import { loadActualRows, loadBudgetRowsByDept } from '../lib/varianceDataLoader';
 import { buildAtomicCompareRows, buildVarianceComparison, resolveSelectedDeptCodes, AtomicCompareRow as EngineAtomicCompareRow, getVarianceStatus, VarianceStatus } from '../lib/varianceEngine';
 import { calcVarianceRate, formatVarianceRate, toExcelPercentValue } from '../lib/varianceMath';
+import { buildMonthlyMatrix, buildAccountMonthlyCompareRows, buildDeptMonthlyCompareRows, MonthlyCompareMatrixRow } from '../lib/varianceMonthlyExport';
 
 let cachedPretendardBase64: string | null = null;
 let XLSX: any = null;
@@ -477,8 +478,10 @@ export default function VarianceComparison() {
       amountColumnIndexes?: number[];
       percentColumnIndexes?: number[];
       leftAlignColumnIndexes?: number[];
+      headerRowCount?: number;
     } = {}
   ) => {
+    const headerRows = options.headerRowCount !== undefined ? options.headerRowCount : 1;
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
 
     const amountSet = new Set(options.amountColumnIndexes || []);
@@ -491,7 +494,7 @@ export default function VarianceComparison() {
         const cell = ws[cellAddress];
         if (!cell) continue;
 
-        if (row === 0) {
+        if (row < headerRows) {
           cell.s = headerStyle;
           continue;
         }
@@ -518,23 +521,69 @@ export default function VarianceComparison() {
     }
   };
 
-  const applyWorksheetView = (ws: any) => {
+  const applyWorksheetView = (ws: any, options: { headerRowCount?: number; freezeColCount?: number } = {}) => {
     if (!ws['!ref']) return;
 
     ws['!autofilter'] = { ref: ws['!ref'] };
 
+    const ySplit = options.headerRowCount !== undefined ? options.headerRowCount : 1;
+    const xSplit = options.freezeColCount !== undefined ? options.freezeColCount : 0;
+    const topLeftCell = XLSX.utils.encode_cell({ r: ySplit, c: xSplit });
+
     ws['!freeze'] = {
-      xSplit: 0,
-      ySplit: 1,
-      topLeftCell: 'A2',
-      activePane: 'bottomLeft',
+      xSplit,
+      ySplit,
+      topLeftCell,
+      activePane: xSplit > 0 || ySplit > 0 ? 'bottomRight' : 'bottomLeft',
       state: 'frozen',
+    };
+  };
+
+  const applyMonthlyColumnGroups = (ws: any, params: {
+    targetStartCol: number;
+    targetMonthCount: number;
+    baseStartCol: number;
+    baseMonthCount: number;
+  }) => {
+    if (!ws['!cols']) ws['!cols'] = [];
+
+    const { targetStartCol, targetMonthCount, baseStartCol, baseMonthCount } = params;
+
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+    const maxCol = range.e.c;
+    for (let c = 0; c <= maxCol; c++) {
+      if (!ws['!cols'][c]) ws['!cols'][c] = { wch: 12 };
+    }
+
+    for (let i = 0; i < targetMonthCount; i += 1) {
+      const idx = targetStartCol + i;
+      ws['!cols'][idx] = {
+        ...(ws['!cols'][idx] || {}),
+        hidden: true,
+        level: 1,
+        wch: 13,
+      };
+    }
+
+    for (let i = 0; i < baseMonthCount; i += 1) {
+      const idx = baseStartCol + i;
+      ws['!cols'][idx] = {
+        ...(ws['!cols'][idx] || {}),
+        hidden: true,
+        level: 1,
+        wch: 13,
+      };
+    }
+
+    ws['!outline'] = {
+      left: false,
+      symbols: true,
     };
   };
 
   const appendSummarySheet = (
     wb: any,
-    rows: DeptDetailCompareRow[],
+    rows: MonthlyCompareMatrixRow[],
     deptCodes: string[],
     usedSheetNames?: Set<string>
   ) => {
@@ -546,15 +595,16 @@ export default function VarianceComparison() {
     }>();
 
     rows.forEach(row => {
+      if (!row.deptCode) return;
       const prev = summaryByDept.get(row.deptCode) || {
         deptCode: row.deptCode,
-        deptName: row.deptName,
+        deptName: row.deptName || '',
         baseAmount: 0,
         targetAmount: 0,
       };
 
-      prev.baseAmount += row.baseAmount;
-      prev.targetAmount += row.targetAmount;
+      prev.baseAmount += row.baseTotal;
+      prev.targetAmount += row.targetTotal;
 
       summaryByDept.set(row.deptCode, prev);
     });
@@ -614,24 +664,58 @@ export default function VarianceComparison() {
     wb: any,
     deptCode: string,
     deptName: string,
-    rows: DeptDetailCompareRow[],
+    rows: MonthlyCompareMatrixRow[],
+    exportMonths: number[],
     usedSheetNames?: Set<string>
   ) => {
-    const data: any[] = [
-      [
-        '부서코드',
-        '부서명',
-        '비용 성격',
-        '회계 구분',
-        '계정코드',
-        '계정명',
-        baseName,
-        targetName,
-        '차액',
-        '증감률(%)',
-        '상태',
-      ],
+    const rangeArray = (start: number, count: number) => Array.from({ length: count }, (_, i) => start + i);
+
+    const targetMonthStart = 6;
+    const targetMonthCount = exportMonths.length;
+    const targetTotalCol = targetMonthStart + targetMonthCount;
+    const baseMonthStart = targetTotalCol + 1;
+    const baseMonthCount = exportMonths.length;
+    const baseTotalCol = baseMonthStart + baseMonthCount;
+    const varianceCol = baseTotalCol + 1;
+    const varianceRateCol = varianceCol + 1;
+    const statusCol = varianceRateCol + 1;
+
+    const targetShortName = `${targetYear} ${targetPlanType}`;
+    const baseShortName = `${baseYear} ${basePlanType}`;
+
+    const headerRow1 = [
+      '부서코드',
+      '부서명',
+      '비용 성격',
+      '회계 구분',
+      '계정코드',
+      '계정명',
+      ...exportMonths.map(() => `비교대상: ${targetShortName}`),
+      `비교대상: ${targetShortName}`,
+      ...exportMonths.map(() => `기준: ${baseShortName}`),
+      `기준: ${baseShortName}`,
+      '비교 결과',
+      '비교 결과',
+      '비교 결과',
     ];
+
+    const headerRow2 = [
+      '부서코드',
+      '부서명',
+      '비용 성격',
+      '회계 구분',
+      '계정코드',
+      '계정명',
+      ...exportMonths.map(m => `${m}월`),
+      '합계',
+      ...exportMonths.map(m => `${m}월`),
+      '합계',
+      '누계 차액',
+      '증감률',
+      '상태',
+    ];
+
+    const data: any[] = [headerRow1, headerRow2];
 
     rows.forEach(row => {
       data.push([
@@ -641,18 +725,30 @@ export default function VarianceComparison() {
         row.accountingType,
         row.accountCode,
         row.accountName,
-        row.baseAmount,
-        row.targetAmount,
+        ...row.targetMonthly,
+        row.targetTotal,
+        ...row.baseMonthly,
+        row.baseTotal,
         row.variance,
-        toExcelPercentValue(row.variancePercent),
+        toExcelPercentValue(row.varianceRate),
         row.status,
       ]);
     });
 
-    const totalBase = rows.reduce((sum, row) => sum + row.baseAmount, 0);
-    const totalTarget = rows.reduce((sum, row) => sum + row.targetAmount, 0);
-    const totalVariance = totalTarget - totalBase;
-    const totalVariancePercent = calcVarianceRate(totalBase, totalTarget);
+    const baseTotalMonthly = Array(exportMonths.length).fill(0);
+    const targetTotalMonthly = Array(exportMonths.length).fill(0);
+
+    rows.forEach(row => {
+      for (let i = 0; i < exportMonths.length; i++) {
+        baseTotalMonthly[i] += row.baseMonthly[i];
+        targetTotalMonthly[i] += row.targetMonthly[i];
+      }
+    });
+
+    const sumBaseTotal = baseTotalMonthly.reduce((a, b) => a + b, 0);
+    const sumTargetTotal = targetTotalMonthly.reduce((a, b) => a + b, 0);
+    const sumVariance = sumTargetTotal - sumBaseTotal;
+    const sumVariancePercent = calcVarianceRate(sumBaseTotal, sumTargetTotal);
 
     data.push([]);
     data.push([
@@ -662,97 +758,175 @@ export default function VarianceComparison() {
       '',
       '',
       '부서 합계',
-      totalBase,
-      totalTarget,
-      totalVariance,
-      toExcelPercentValue(totalVariancePercent),
+      ...targetTotalMonthly,
+      sumTargetTotal,
+      ...baseTotalMonthly,
+      sumBaseTotal,
+      sumVariance,
+      toExcelPercentValue(sumVariancePercent),
       '',
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet(data);
 
-    ws['!cols'] = [
-      { wch: 12 },
-      { wch: 22 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 34 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 14 },
-      { wch: 10 },
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+      { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
+      { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },
+      { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } },
+
+      { s: { r: 0, c: targetMonthStart }, e: { r: 0, c: targetTotalCol } },
+      { s: { r: 0, c: baseMonthStart }, e: { r: 0, c: baseTotalCol } },
+      { s: { r: 0, c: varianceCol }, e: { r: 0, c: statusCol } },
+    ];
+
+    const amountColumnIndexes = [
+      ...rangeArray(targetMonthStart, exportMonths.length),
+      targetTotalCol,
+      ...rangeArray(baseMonthStart, exportMonths.length),
+      baseTotalCol,
+      varianceCol,
     ];
 
     applyWorksheetStyle(ws, {
-      amountColumnIndexes: [6, 7, 8],
-      percentColumnIndexes: [9],
+      amountColumnIndexes,
+      percentColumnIndexes: [varianceRateCol],
       leftAlignColumnIndexes: [5],
+      headerRowCount: 2,
     });
 
-    applyWorksheetView(ws);
+    applyMonthlyColumnGroups(ws, {
+      targetStartCol: targetMonthStart,
+      targetMonthCount: exportMonths.length,
+      baseStartCol: baseMonthStart,
+      baseMonthCount: exportMonths.length,
+    });
+
+    applyWorksheetView(ws, {
+      headerRowCount: 2,
+      freezeColCount: 6,
+    });
+
+    ws['!cols'] = [];
+    const maxCol = data[0].length - 1;
+    for (let c = 0; c <= maxCol; c++) {
+      if (c === 0) ws['!cols'][c] = { wch: 12 };
+      else if (c === 1) ws['!cols'][c] = { wch: 22 };
+      else if (c === 2) ws['!cols'][c] = { wch: 16 };
+      else if (c === 3) ws['!cols'][c] = { wch: 12 };
+      else if (c === 4) ws['!cols'][c] = { wch: 15 };
+      else if (c === 5) ws['!cols'][c] = { wch: 30 };
+      else ws['!cols'][c] = { wch: 13 };
+    }
+
+    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { wch: 18 };
+    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { wch: 18 };
+    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { wch: 18 };
+    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { wch: 14 };
+    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { wch: 11 };
 
     appendSheetSafely(wb, ws, `${deptCode}_${deptName}`, usedSheetNames);
   };
 
-  function applySalaryVisibilityFilter<T extends { isSalary?: boolean }>(rows: T[]): T[] {
-    if (hasSalaryAccess && includeSalaryRows) return rows;
-    return rows.filter(row => !row.isSalary);
-  }
-
-  function aggregateGroupRowsByAccount(rows: DeptDetailCompareRow[]): DeptDetailCompareRow[] {
-    const map = new Map<string, DeptDetailCompareRow>();
+  const aggregateMonthlyGroupRowsByAccount = (
+    rows: MonthlyCompareMatrixRow[],
+    exportMonths: number[]
+  ): MonthlyCompareMatrixRow[] => {
+    const map = new Map<string, MonthlyCompareMatrixRow>();
 
     rows.forEach(row => {
       const key = `${row.accountCode}|${row.accountName}`;
       const prev = map.get(key);
 
       if (prev) {
-        prev.baseAmount += row.baseAmount;
-        prev.targetAmount += row.targetAmount;
-        prev.variance = prev.targetAmount - prev.baseAmount;
-        prev.variancePercent = calcVarianceRate(prev.baseAmount, prev.targetAmount);
+        for (let i = 0; i < exportMonths.length; i++) {
+          prev.baseMonthly[i] += row.baseMonthly[i];
+          prev.targetMonthly[i] += row.targetMonthly[i];
+        }
+        prev.baseTotal += row.baseTotal;
+        prev.targetTotal += row.targetTotal;
+        prev.variance = prev.targetTotal - prev.baseTotal;
+        prev.varianceRate = calcVarianceRate(prev.baseTotal, prev.targetTotal);
         prev.status = getVarianceStatus({
-          baseAmount: prev.baseAmount,
-          targetAmount: prev.targetAmount,
+          baseAmount: prev.baseTotal,
+          targetAmount: prev.targetTotal,
           basePlanType,
           targetPlanType,
         });
       } else {
-        map.set(key, { ...row });
+        map.set(key, {
+          ...row,
+          baseMonthly: [...row.baseMonthly],
+          targetMonthly: [...row.targetMonthly]
+        });
       }
     });
 
     return Array.from(map.values())
-      .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
+      .filter(row => row.baseTotal !== 0 || row.targetTotal !== 0)
       .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
-  }
+  };
 
   const appendGroupDetailSheet = (
     wb: any,
     group: DeptGroup,
     deptCodes: string[],
-    rows: DeptDetailCompareRow[],
+    rows: MonthlyCompareMatrixRow[],
+    exportMonths: number[],
     usedSheetNames?: Set<string>
   ) => {
-    const aggregatedRows = aggregateGroupRowsByAccount(rows);
+    const rangeArray = (start: number, count: number) => Array.from({ length: count }, (_, i) => start + i);
 
-    const data: any[] = [
-      [
-        '그룹명',
-        '포함 부서코드',
-        '비용 성격',
-        '회계 구분',
-        '계정코드',
-        '계정명',
-        baseName,
-        targetName,
-        '차액',
-        '증감률(%)',
-        '상태',
-      ],
+    const targetMonthStart = 6;
+    const targetMonthCount = exportMonths.length;
+    const targetTotalCol = targetMonthStart + targetMonthCount;
+    const baseMonthStart = targetTotalCol + 1;
+    const baseMonthCount = exportMonths.length;
+    const baseTotalCol = baseMonthStart + baseMonthCount;
+    const varianceCol = baseTotalCol + 1;
+    const varianceRateCol = varianceCol + 1;
+    const statusCol = varianceRateCol + 1;
+
+    const aggregatedRows = aggregateMonthlyGroupRowsByAccount(rows, exportMonths);
+
+    const targetShortName = `${targetYear} ${targetPlanType}`;
+    const baseShortName = `${baseYear} ${basePlanType}`;
+
+    const headerRow1 = [
+      '그룹명',
+      '포함 부서코드',
+      '비용 성격',
+      '회계 구분',
+      '계정코드',
+      '계정명',
+      ...exportMonths.map(() => `비교대상: ${targetShortName}`),
+      `비교대상: ${targetShortName}`,
+      ...exportMonths.map(() => `기준: ${baseShortName}`),
+      `기준: ${baseShortName}`,
+      '비교 결과',
+      '비교 결과',
+      '비교 결과',
     ];
+
+    const headerRow2 = [
+      '그룹명',
+      '포함 부서코드',
+      '비용 성격',
+      '회계 구분',
+      '계정코드',
+      '계정명',
+      ...exportMonths.map(m => `${m}월`),
+      '합계',
+      ...exportMonths.map(m => `${m}월`),
+      '합계',
+      '누계 차액',
+      '증감률',
+      '상태',
+    ];
+
+    const data: any[] = [headerRow1, headerRow2];
 
     aggregatedRows.forEach(row => {
       data.push([
@@ -762,57 +936,108 @@ export default function VarianceComparison() {
         row.accountingType,
         row.accountCode,
         row.accountName,
-        row.baseAmount,
-        row.targetAmount,
+        ...row.targetMonthly,
+        row.targetTotal,
+        ...row.baseMonthly,
+        row.baseTotal,
         row.variance,
-        toExcelPercentValue(row.variancePercent),
+        toExcelPercentValue(row.varianceRate),
         row.status,
       ]);
     });
 
-    const totalBase = aggregatedRows.reduce((sum, row) => sum + row.baseAmount, 0);
-    const totalTarget = aggregatedRows.reduce((sum, row) => sum + row.targetAmount, 0);
-    const totalVariance = totalTarget - totalBase;
-    const totalVariancePercent = calcVarianceRate(totalBase, totalTarget);
+    const baseTotalMonthly = Array(exportMonths.length).fill(0);
+    const targetTotalMonthly = Array(exportMonths.length).fill(0);
+
+    aggregatedRows.forEach(row => {
+      for (let i = 0; i < exportMonths.length; i++) {
+        baseTotalMonthly[i] += row.baseMonthly[i];
+        targetTotalMonthly[i] += row.targetMonthly[i];
+      }
+    });
+
+    const sumBaseTotal = baseTotalMonthly.reduce((a, b) => a + b, 0);
+    const sumTargetTotal = targetTotalMonthly.reduce((a, b) => a + b, 0);
+    const sumVariance = sumTargetTotal - sumBaseTotal;
+    const sumVariancePercent = calcVarianceRate(sumBaseTotal, sumTargetTotal);
 
     data.push([]);
     data.push([
       group.name,
-      deptCodes.join(', '),
-      '',
-      '',
-      '',
       '그룹 합계',
-      totalBase,
-      totalTarget,
-      totalVariance,
-      toExcelPercentValue(totalVariancePercent),
+      '',
+      '',
+      '',
+      '',
+      ...targetTotalMonthly,
+      sumTargetTotal,
+      ...baseTotalMonthly,
+      sumBaseTotal,
+      sumVariance,
+      toExcelPercentValue(sumVariancePercent),
       '',
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet(data);
 
-    ws['!cols'] = [
-      { wch: 18 },
-      { wch: 36 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 34 },
-      { wch: 22 },
-      { wch: 22 },
-      { wch: 18 },
-      { wch: 14 },
-      { wch: 12 },
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+      { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
+      { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } },
+      { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } },
+
+      { s: { r: 0, c: targetMonthStart }, e: { r: 0, c: targetTotalCol } },
+      { s: { r: 0, c: baseMonthStart }, e: { r: 0, c: baseTotalCol } },
+      { s: { r: 0, c: varianceCol }, e: { r: 0, c: statusCol } },
+    ];
+
+    const amountColumnIndexes = [
+      ...rangeArray(targetMonthStart, exportMonths.length),
+      targetTotalCol,
+      ...rangeArray(baseMonthStart, exportMonths.length),
+      baseTotalCol,
+      varianceCol,
     ];
 
     applyWorksheetStyle(ws, {
-      amountColumnIndexes: [6, 7, 8],
-      percentColumnIndexes: [9],
-      leftAlignColumnIndexes: [0, 1, 5],
+      amountColumnIndexes,
+      percentColumnIndexes: [varianceRateCol],
+      leftAlignColumnIndexes: [5],
+      headerRowCount: 2,
     });
 
-    applyWorksheetView(ws);
+    applyMonthlyColumnGroups(ws, {
+      targetStartCol: targetMonthStart,
+      targetMonthCount: exportMonths.length,
+      baseStartCol: baseMonthStart,
+      baseMonthCount: exportMonths.length,
+    });
+
+    applyWorksheetView(ws, {
+      headerRowCount: 2,
+      freezeColCount: 6,
+    });
+
+    ws['!cols'] = [];
+    const maxCol = data[0].length - 1;
+    for (let c = 0; c <= maxCol; c++) {
+      if (c === 0) ws['!cols'][c] = { wch: 18 };
+      else if (c === 1) ws['!cols'][c] = { wch: 30 };
+      else if (c === 2) ws['!cols'][c] = { wch: 16 };
+      else if (c === 3) ws['!cols'][c] = { wch: 12 };
+      else if (c === 4) ws['!cols'][c] = { wch: 15 };
+      else if (c === 5) ws['!cols'][c] = { wch: 30 };
+      else ws['!cols'][c] = { wch: 13 };
+    }
+
+    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { wch: 18 };
+    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { wch: 18 };
+    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { wch: 18 };
+    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { wch: 14 };
+    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { wch: 11 };
+
     appendSheetSafely(wb, ws, `그룹_${group.deptCodes?.[0] || group.id}_${group.name}`, usedSheetNames);
   };
 
@@ -827,10 +1052,41 @@ export default function VarianceComparison() {
     const wb = XLSX.utils.book_new();
     const usedSheetNames = new Set<string>();
 
-    const deptDetailRowsRaw = deptCodes.flatMap(deptCode =>
-      buildDeptDetailComparisonRows(deptCode)
-    );
-    const deptDetailRows = applySalaryVisibilityFilter(deptDetailRowsRaw);
+    const baseMatrix = buildMonthlyMatrix({
+      year: baseYear,
+      planType: basePlanType,
+      monthMode: baseMonthMode,
+      selectedMonth: baseSelectedMonth,
+      deptCodes: deptCodes,
+      accountMetaMap,
+      hasSalaryAccess,
+      includeSalaryRows,
+      allDepts,
+    });
+
+    const targetMatrix = buildMonthlyMatrix({
+      year: targetYear,
+      planType: targetPlanType,
+      monthMode: targetMonthMode,
+      selectedMonth: targetSelectedMonth,
+      deptCodes: deptCodes,
+      accountMetaMap,
+      hasSalaryAccess,
+      includeSalaryRows,
+      allDepts,
+    });
+
+    const exportMonthLimit = Math.max(baseSelectedMonth, targetSelectedMonth);
+    const exportMonths = Array.from({ length: exportMonthLimit }, (_, i) => i + 1);
+
+    const deptDetailRows = buildDeptMonthlyCompareRows({
+      baseMatrix,
+      targetMatrix,
+      exportMonths,
+      basePlanType,
+      targetPlanType,
+      deptCodes,
+    });
 
     // 1. 전체 요약 시트
     if (includeSummarySheet) {
@@ -846,7 +1102,7 @@ export default function VarianceComparison() {
         const rows = deptDetailRows.filter(row => row.deptCode === deptCode);
 
         if (rows.length > 0) {
-          appendDeptDetailSheet(wb, deptCode, deptName, rows, usedSheetNames);
+          appendDeptDetailSheet(wb, deptCode, deptName, rows, exportMonths, usedSheetNames);
         }
       });
     }
@@ -864,13 +1120,10 @@ export default function VarianceComparison() {
 
         if (groupDeptCodes.length === 0) return;
 
-        const groupRowsRaw = groupDeptCodes.flatMap(deptCode =>
-          buildDeptDetailComparisonRows(deptCode)
-        );
-        const groupRows = applySalaryVisibilityFilter(groupRowsRaw);
+        const groupRows = deptDetailRows.filter(row => groupDeptCodes.includes(row.deptCode || ''));
 
         if (groupRows.length > 0) {
-          appendGroupDetailSheet(wb, group, groupDeptCodes, groupRows, usedSheetNames);
+          appendGroupDetailSheet(wb, group, groupDeptCodes, groupRows, exportMonths, usedSheetNames);
         }
       });
     }
@@ -882,86 +1135,237 @@ export default function VarianceComparison() {
     await ensureXLSX();
     const wb = XLSX.utils.book_new();
 
-    const excelData: any[] = [];
+    const currentActiveDeptCodes = resolveSelectedDeptCodes({
+      selectedDept,
+      viewableDepts,
+      isAdmin,
+      isPlanningTeam,
+    });
 
-    excelData.push([
+    const baseMatrix = buildMonthlyMatrix({
+      year: baseYear,
+      planType: basePlanType,
+      monthMode: baseMonthMode,
+      selectedMonth: baseSelectedMonth,
+      deptCodes: currentActiveDeptCodes,
+      accountMetaMap,
+      hasSalaryAccess,
+      includeSalaryRows,
+      allDepts,
+    });
+
+    const targetMatrix = buildMonthlyMatrix({
+      year: targetYear,
+      planType: targetPlanType,
+      monthMode: targetMonthMode,
+      selectedMonth: targetSelectedMonth,
+      deptCodes: currentActiveDeptCodes,
+      accountMetaMap,
+      hasSalaryAccess,
+      includeSalaryRows,
+      allDepts,
+    });
+
+    const exportMonthLimit = Math.max(baseSelectedMonth, targetSelectedMonth);
+    const exportMonths = Array.from({ length: exportMonthLimit }, (_, i) => i + 1);
+
+    const monthlyRows = buildAccountMonthlyCompareRows({
+      baseMatrix,
+      targetMatrix,
+      exportMonths,
+      basePlanType,
+      targetPlanType,
+      activeDept: selectedDept,
+      selectedAccountingType,
+      selectedAccountClass,
+    });
+
+    const targetShortName = `${targetYear} ${targetPlanType}`;
+    const baseShortName = `${baseYear} ${basePlanType}`;
+
+    const headerRow1 = [
       '비용 성격',
       '회계 구분',
       '계정코드',
       '계정명',
-      baseName,
-      targetName,
-      '차액',
-      '증감률(%)',
-      '상태'
-    ]);
+      ...exportMonths.map(() => `비교대상: ${targetShortName}`),
+      `비교대상: ${targetShortName}`,
+      ...exportMonths.map(() => `기준: ${baseShortName}`),
+      `기준: ${baseShortName}`,
+      '비교 결과',
+      '비교 결과',
+      '비교 결과',
+    ];
 
-    salaryFilteredComparisonRows.forEach(row => {
+    const headerRow2 = [
+      '비용 성격',
+      '회계 구분',
+      '계정코드',
+      '계정명',
+      ...exportMonths.map(m => `${m}월`),
+      '합계',
+      ...exportMonths.map(m => `${m}월`),
+      '합계',
+      '누계 차액',
+      '증감률',
+      '상태',
+    ];
+
+    const excelData: any[] = [headerRow1, headerRow2];
+
+    monthlyRows.forEach(row => {
       excelData.push([
         row.accountClass,
         row.accountingType,
-        row.accountCode || '',
+        row.accountCode,
         row.accountName,
-        row.baseAmount,
-        row.targetAmount,
+        ...row.targetMonthly,
+        row.targetTotal,
+        ...row.baseMonthly,
+        row.baseTotal,
         row.variance,
-        toExcelPercentValue(row.variancePercent),
-        row.status
+        toExcelPercentValue(row.varianceRate),
+        row.status,
       ]);
     });
 
-    let excelBaseMfg = 0;
-    let excelTargetMfg = 0;
-    let excelBaseSga = 0;
-    let excelTargetSga = 0;
+    let baseMfgMonthly = Array(exportMonths.length).fill(0);
+    let targetMfgMonthly = Array(exportMonths.length).fill(0);
+    let baseSgaMonthly = Array(exportMonths.length).fill(0);
+    let targetSgaMonthly = Array(exportMonths.length).fill(0);
 
-    salaryFilteredComparisonRows.forEach(row => {
+    monthlyRows.forEach(row => {
       if (row.accountingType === '제조') {
-        excelBaseMfg += row.baseAmount;
-        excelTargetMfg += row.targetAmount;
+        for (let i = 0; i < exportMonths.length; i++) {
+          baseMfgMonthly[i] += row.baseMonthly[i];
+          targetMfgMonthly[i] += row.targetMonthly[i];
+        }
       } else if (row.accountingType === '판관') {
-        excelBaseSga += row.baseAmount;
-        excelTargetSga += row.targetAmount;
+        for (let i = 0; i < exportMonths.length; i++) {
+          baseSgaMonthly[i] += row.baseMonthly[i];
+          targetSgaMonthly[i] += row.targetMonthly[i];
+        }
       }
     });
 
-    const mfgVar = excelTargetMfg - excelBaseMfg;
-    const mfgVarRate = calcVarianceRate(excelBaseMfg, excelTargetMfg);
+    const mfgBaseTotal = baseMfgMonthly.reduce((a, b) => a + b, 0);
+    const mfgTargetTotal = targetMfgMonthly.reduce((a, b) => a + b, 0);
+    const mfgVariance = mfgTargetTotal - mfgBaseTotal;
+    const mfgVarianceRate = calcVarianceRate(mfgBaseTotal, mfgTargetTotal);
 
-    const sgaVar = excelTargetSga - excelBaseSga;
-    const sgaVarRate = calcVarianceRate(excelBaseSga, excelTargetSga);
+    const sgaBaseTotal = baseSgaMonthly.reduce((a, b) => a + b, 0);
+    const sgaTargetTotal = targetSgaMonthly.reduce((a, b) => a + b, 0);
+    const sgaVariance = sgaTargetTotal - sgaBaseTotal;
+    const sgaVarianceRate = calcVarianceRate(sgaBaseTotal, sgaTargetTotal);
 
-    const excelTotalBase = excelBaseMfg + excelBaseSga;
-    const excelTotalTarget = excelTargetMfg + excelTargetSga;
-    const totalVar = excelTotalTarget - excelTotalBase;
-    const totalVarRate = calcVarianceRate(excelTotalBase, excelTotalTarget);
+    const totalBaseMonthly = baseMfgMonthly.map((b, idx) => b + baseSgaMonthly[idx]);
+    const totalTargetMonthly = targetMfgMonthly.map((t, idx) => t + targetSgaMonthly[idx]);
+    const grandBaseTotal = totalBaseMonthly.reduce((a, b) => a + b, 0);
+    const grandTargetTotal = totalTargetMonthly.reduce((a, b) => a + b, 0);
+    const grandVariance = grandTargetTotal - grandBaseTotal;
+    const grandVarianceRate = calcVarianceRate(grandBaseTotal, grandTargetTotal);
 
-    excelData.push([]); // Empty row for spacing
-    excelData.push(['', '', '', '제조 합계', excelBaseMfg, excelTargetMfg, mfgVar, toExcelPercentValue(mfgVarRate), '']);
-    excelData.push(['', '', '', '판관 합계', excelBaseSga, excelTargetSga, sgaVar, toExcelPercentValue(sgaVarRate), '']);
-    excelData.push(['', '', '', '총 합계', excelTotalBase, excelTotalTarget, totalVar, toExcelPercentValue(totalVarRate), '']);
+    const rangeArray = (start: number, count: number) => Array.from({ length: count }, (_, i) => start + i);
+    const targetMonthStart = 4;
+    const targetMonthCount = exportMonths.length;
+    const targetTotalCol = targetMonthStart + targetMonthCount;
+    const baseMonthStart = targetTotalCol + 1;
+    const baseMonthCount = exportMonths.length;
+    const baseTotalCol = baseMonthStart + baseMonthCount;
+    const varianceCol = baseTotalCol + 1;
+    const varianceRateCol = varianceCol + 1;
+    const statusCol = varianceRateCol + 1;
+
+    excelData.push(Array(statusCol + 1).fill(''));
+
+    excelData.push([
+      '', '', '', '제조 합계',
+      ...targetMfgMonthly,
+      mfgTargetTotal,
+      ...baseMfgMonthly,
+      mfgBaseTotal,
+      mfgVariance,
+      toExcelPercentValue(mfgVarianceRate),
+      '',
+    ]);
+
+    excelData.push([
+      '', '', '', '판관 합계',
+      ...targetSgaMonthly,
+      sgaTargetTotal,
+      ...baseSgaMonthly,
+      sgaBaseTotal,
+      sgaVariance,
+      toExcelPercentValue(sgaVarianceRate),
+      '',
+    ]);
+
+    excelData.push([
+      '', '', '', '총 합계',
+      ...totalTargetMonthly,
+      grandTargetTotal,
+      ...totalBaseMonthly,
+      grandBaseTotal,
+      grandVariance,
+      toExcelPercentValue(grandVarianceRate),
+      '',
+    ]);
 
     const ws = XLSX.utils.aoa_to_sheet(excelData);
-    
-    applyWorksheetStyle(ws, {
-      amountColumnIndexes: [4, 5, 6],
-      percentColumnIndexes: [7],
-      leftAlignColumnIndexes: [3],
-    });
-    
-    ws['!cols'] = [
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 25 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 15 },
-      { wch: 10 }
+
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+      { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
+
+      { s: { r: 0, c: targetMonthStart }, e: { r: 0, c: targetTotalCol } },
+      { s: { r: 0, c: baseMonthStart }, e: { r: 0, c: baseTotalCol } },
+      { s: { r: 0, c: varianceCol }, e: { r: 0, c: statusCol } },
     ];
 
-    applyWorksheetView(ws);
+    const amountColumnIndexes = [
+      ...rangeArray(targetMonthStart, exportMonths.length),
+      targetTotalCol,
+      ...rangeArray(baseMonthStart, exportMonths.length),
+      baseTotalCol,
+      varianceCol,
+    ];
+
+    applyWorksheetStyle(ws, {
+      amountColumnIndexes,
+      percentColumnIndexes: [varianceRateCol],
+      leftAlignColumnIndexes: [3],
+      headerRowCount: 2,
+    });
+
+    applyMonthlyColumnGroups(ws, {
+      targetStartCol: targetMonthStart,
+      targetMonthCount: exportMonths.length,
+      baseStartCol: baseMonthStart,
+      baseMonthCount: exportMonths.length,
+    });
+
+    applyWorksheetView(ws, {
+      headerRowCount: 2,
+      freezeColCount: 4,
+    });
+
+    ws['!cols'] = [];
+    const maxCol = excelData[0].length - 1;
+    for (let c = 0; c <= maxCol; c++) {
+      if (c === 0) ws['!cols'][c] = { wch: 16 };
+      else if (c === 1) ws['!cols'][c] = { wch: 12 };
+      else if (c === 2) ws['!cols'][c] = { wch: 15 };
+      else if (c === 3) ws['!cols'][c] = { wch: 30 };
+      else ws['!cols'][c] = { wch: 13 };
+    }
+
+    if (ws['!cols'][targetTotalCol]) ws['!cols'][targetTotalCol] = { wch: 18 };
+    if (ws['!cols'][baseTotalCol]) ws['!cols'][baseTotalCol] = { wch: 18 };
+    if (ws['!cols'][varianceCol]) ws['!cols'][varianceCol] = { wch: 18 };
+    if (ws['!cols'][varianceRateCol]) ws['!cols'][varianceRateCol] = { wch: 14 };
+    if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { wch: 11 };
 
     appendSheetSafely(wb, ws, '비교분석');
     XLSX.writeFile(wb, getDownloadFileName('xlsx'));

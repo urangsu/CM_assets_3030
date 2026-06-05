@@ -685,6 +685,32 @@ export default function PlanActualUpload() {
          message: `실적 데이터가 저장되었습니다.\n저장 위치: 실적DB ${year}\n대상 부서: ${affectedCodes.size}개`,
          location: `실적DB ${year}`
       });
+
+      // Save upload history
+      const monthSummary: Record<string, number> = {};
+      dedupedData.forEach((row: any) => {
+        const mIndex = parsePeriodMonth(row.period || row.month);
+        const mKey = mIndex !== null ? String(mIndex + 1) : '미지정';
+        monthSummary[mKey] = (monthSummary[mKey] || 0) + 1;
+      });
+      const uploadLogItem = {
+        id: `${Date.now()}_upload`,
+        time: new Date().toLocaleString(),
+        year,
+        target: uploadTarget,
+        rowCount: dedupedData.length,
+        monthSummary,
+        user: currentUser?.name || '사용자'
+      };
+      try {
+        const existingHistoryStr = localStorage.getItem('hycm_actual_upload_history');
+        const existingHistory = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
+        existingHistory.unshift(uploadLogItem);
+        localStorage.setItem('hycm_actual_upload_history', JSON.stringify(existingHistory));
+        window.dispatchEvent(new Event('actual-upload-history-changed'));
+      } catch (e) {
+        console.error('Failed to save actual upload history', e);
+      }
     } else {
       const groupedByDept = new Map<string, ActualData[]>();
       const rowsToSave = dedupeRowsByKey(data, uploadTarget);
@@ -760,6 +786,32 @@ export default function PlanActualUpload() {
            message: `경영계획 예산DB에 저장되었습니다.\n대상 부서: ${savedDeptNames.length}개`,
            location: `예산DB ${year} (${uploadTarget})`
         });
+      }
+
+      // Save upload history
+      const monthSummary: Record<string, number> = {};
+      rowsToSave.forEach((row: any) => {
+        const mIndex = parsePeriodMonth(row.period || row.month);
+        const mKey = mIndex !== null ? String(mIndex + 1) : '미지정';
+        monthSummary[mKey] = (monthSummary[mKey] || 0) + 1;
+      });
+      const uploadLogItem = {
+        id: `${Date.now()}_upload`,
+        time: new Date().toLocaleString(),
+        year,
+        target: uploadTarget,
+        rowCount: rowsToSave.length,
+        monthSummary,
+        user: currentUser?.name || '사용자'
+      };
+      try {
+        const existingHistoryStr = localStorage.getItem('hycm_actual_upload_history');
+        const existingHistory = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
+        existingHistory.unshift(uploadLogItem);
+        localStorage.setItem('hycm_actual_upload_history', JSON.stringify(existingHistory));
+        window.dispatchEvent(new Event('actual-upload-history-changed'));
+      } catch (e) {
+        console.error('Failed to save actual upload history', e);
       }
     }
   };
