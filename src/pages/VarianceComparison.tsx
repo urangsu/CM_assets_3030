@@ -472,6 +472,32 @@ export default function VarianceComparison() {
     border: thinBorder,
   };
 
+  const boldCenterStyle = {
+    font: { bold: true },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: thinBorder,
+  };
+
+  const boldLeftStyle = {
+    font: { bold: true },
+    alignment: { horizontal: 'left', vertical: 'center', wrapText: true },
+    border: thinBorder,
+  };
+
+  const boldAmountStyle = {
+    font: { bold: true },
+    alignment: { horizontal: 'right', vertical: 'center' },
+    numFmt: '#,##0',
+    border: thinBorder,
+  };
+
+  const boldPercentStyle = {
+    font: { bold: true },
+    alignment: { horizontal: 'right', vertical: 'center' },
+    numFmt: '0.00%',
+    border: thinBorder,
+  };
+
   const applyWorksheetStyle = (
     ws: any,
     options: {
@@ -488,7 +514,53 @@ export default function VarianceComparison() {
     const percentSet = new Set(options.percentColumnIndexes || []);
     const leftSet = new Set(options.leftAlignColumnIndexes || []);
 
+    const totalRowIndices = new Set<number>();
+    for (let r = headerRows; r <= range.e.r; r += 1) {
+      let isTotal = false;
+      for (let c = range.s.c; c <= range.e.c; c += 1) {
+        const addr = XLSX.utils.encode_cell({ r: r, c });
+        const cell = ws[addr];
+        if (cell && cell.v !== undefined && cell.v !== null) {
+          const valStr = String(cell.v);
+          if (
+            valStr.includes('합계') ||
+            valStr === '총계' ||
+            valStr === '소계' ||
+            valStr.toLowerCase().includes('total') ||
+            valStr.toLowerCase().includes('subtotal')
+          ) {
+            isTotal = true;
+            break;
+          }
+        }
+      }
+      if (isTotal) {
+        totalRowIndices.add(r);
+      }
+    }
+
+    const boldColIndices = new Set<number>();
+    for (let col = range.s.c; col <= range.e.c; col += 1) {
+      for (let r = 0; r < headerRows; r += 1) {
+        const addr = XLSX.utils.encode_cell({ r, c: col });
+        const cell = ws[addr];
+        if (cell && cell.v !== undefined && cell.v !== null) {
+          const valStr = String(cell.v).toLowerCase();
+          if (
+            valStr.includes('차액') ||
+            valStr.includes('증감률') ||
+            valStr.includes('variance') ||
+            valStr.includes('rate') ||
+            valStr.includes('percent')
+          ) {
+            boldColIndices.add(col);
+          }
+        }
+      }
+    }
+
     for (let row = range.s.r; row <= range.e.r; row += 1) {
+      const isBoldRow = totalRowIndices.has(row);
       for (let col = range.s.c; col <= range.e.c; col += 1) {
         const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
         const cell = ws[cellAddress];
@@ -499,24 +571,27 @@ export default function VarianceComparison() {
           continue;
         }
 
+        const isBoldCol = boldColIndices.has(col);
+        const forceBold = isBoldRow || isBoldCol;
+
         if (amountSet.has(col)) {
-          cell.s = amountStyle;
+          cell.s = forceBold ? boldAmountStyle : amountStyle;
           cell.z = '#,##0';
           continue;
         }
 
         if (percentSet.has(col)) {
-          cell.s = percentStyle;
+          cell.s = forceBold ? boldPercentStyle : percentStyle;
           cell.z = '0.00%';
           continue;
         }
 
         if (leftSet.has(col)) {
-          cell.s = leftStyle;
+          cell.s = forceBold ? boldLeftStyle : leftStyle;
           continue;
         }
 
-        cell.s = centerStyle;
+        cell.s = forceBold ? boldCenterStyle : centerStyle;
       }
     }
   };

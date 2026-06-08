@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Users, Upload, FileUp, Plus, MoreVertical, X, Calendar, FileText, CheckCircle2, Clock, ArrowUp, ArrowDown, Bell, Trash2 } from 'lucide-react';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
-import { getSubmissionStatusMapKey, getBudgetDataKey } from '../lib/storageKeys';
-import { normalizeBudgetRows } from '../repositories/BudgetRepository';
+import { getSubmissionStatusMapKey, getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
+import { normalizeBudgetRows, normalizeActualRows } from '../repositories/BudgetRepository';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { hashPassword } from '../lib/auth';
 import { motion, AnimatePresence } from 'motion/react';
@@ -198,6 +198,47 @@ export default function UserManagement() {
     } catch (e) {
       console.error(e);
       alert('중복 정리 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleMigrateActualDuplicates = () => {
+    try {
+      const years = ['2024', '2025', '2026', '2027', '2028'];
+
+      let beforeRowsTotal = 0;
+      let afterRowsTotal = 0;
+      let migrationExecutedCount = 0;
+
+      years.forEach(yr => {
+        const key = getActualDataKey(yr);
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+
+        try {
+          const rows = JSON.parse(raw);
+          if (!Array.isArray(rows)) return;
+
+          beforeRowsTotal += rows.length;
+
+          const normalizedRows = normalizeActualRows(rows);
+          afterRowsTotal += normalizedRows.length;
+
+          if (normalizedRows.length !== rows.length) {
+            localStorage.setItem(key, JSON.stringify(normalizedRows));
+            migrationExecutedCount++;
+          }
+        } catch (err) {
+          console.error(`Failed to migrate actual key: ${key}`, err);
+        }
+      });
+
+      clearDataLoaderCache();
+
+      const diff = beforeRowsTotal - afterRowsTotal;
+      alert(`[실적 정리 결과]\n정리 전: ${beforeRowsTotal}행\n정리 후: ${afterRowsTotal}행\n중복 제거: ${diff}행\n실행 적용된 세트수: ${migrationExecutedCount}개`);
+    } catch (e) {
+      console.error(e);
+      alert('실적 중복 정리 중 오류가 발생했습니다.');
     }
   };
 
@@ -638,6 +679,14 @@ export default function UserManagement() {
             >
               <Trash2 className="w-4 h-4 text-red-500" />
               예산 중복 row 정리
+            </AppButton>
+            <AppButton
+              variant="default"
+              className="flex items-center gap-2 bg-[#f2f4f6] text-[#4e5968] hover:bg-[#e5e8eb] border border-[#d1d6db]"
+              onClick={handleMigrateActualDuplicates}
+            >
+              <Trash2 className="w-4 h-4 text-orange-500" />
+              실적 중복 row 정리
             </AppButton>
           </div>
         </AppCard>

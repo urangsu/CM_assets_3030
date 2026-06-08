@@ -50,6 +50,45 @@ export function normalizeBudgetRows(rows: any[], deptCode: string): any[] {
   return Array.from(map.values());
 }
 
+export function normalizeActualRows(rows: any[]): any[] {
+  const map = new Map<string, any>();
+
+  rows.forEach((rawRow) => {
+    const year = String(rawRow.year || '').trim();
+    const period = String(rawRow.period || '').trim();
+    const usageCode = String(rawRow.usageCode || '').trim();
+    const accountCode = String(rawRow.accountCode || '').trim();
+
+    if (!usageCode || !accountCode || !period || !year) return;
+
+    const key = `${year}|${period}|${usageCode}|${accountCode}`;
+
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, {
+        ...rawRow,
+        year,
+        period,
+        usageCode,
+        accountCode,
+      });
+      return;
+    }
+
+    // 뒤 행 우선 덮어쓰기 방식으로 머지하여 중복 제거
+    map.set(key, {
+      ...existing,
+      ...rawRow,
+      year,
+      period,
+      usageCode,
+      accountCode,
+    });
+  });
+
+  return Array.from(map.values());
+}
+
 export const BudgetRepository = {
   getRows: (deptCode: string, year: string, planType: string): any[] => {
     const key = getBudgetDataKey(deptCode, year, planType);
