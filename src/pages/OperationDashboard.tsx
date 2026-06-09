@@ -22,6 +22,30 @@ import { OperationStorage, ProductLedgerRecord, RawMaterialLedgerRecord } from '
 import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
 import { OperationWorldMap } from '../components/OperationWorldMap';
 
+const G_PER_TON = 1_000_000;
+const KRW_PER_MILLION = 1_000_000;
+
+// Conversion helpers
+const gram_to_ton = (value: number): number => (value || 0) / G_PER_TON;
+const krw_to_million_krw = (value: number): number => (value || 0) / KRW_PER_MILLION;
+const krw_to_usd = (value: number, rate: number): number => rate > 0 ? (value || 0) / rate : 0;
+
+// Formatting helpers
+const fmt_ton = (value: number): string => {
+  return `${value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Ton`;
+};
+
+const fmt_million_krw = (value: number): string => {
+  if (Math.abs(value) < 0.0001) {
+    return "-";
+  }
+  return `${Math.round(value).toLocaleString()}백만원`;
+};
+
+const fmt_usd = (value: number): string => {
+  return `$${Math.round(value).toLocaleString()}`;
+};
+
 interface OperationMapPoint {
   id: string;
   countryCode: string;
@@ -62,6 +86,7 @@ export default function OperationDashboard() {
   const [activeYear, setActiveYear] = useState<string>('2026');
   const [activeMonth, setActiveMonth] = useState<string>('all'); // 'all' or '1'~'12'
   const [currencyMode, setCurrencyMode] = useState<'KRW' | 'USD'>('KRW');
+  const [showExchangeRateDetail, setShowExchangeRateDetail] = useState<boolean>(false);
   const [isSyncingExchange, setIsSyncingExchange] = useState<boolean>(false);
   const [customRateInput, setCustomRateInput] = useState<string>('');
   const [isEditingExchange, setIsEditingExchange] = useState<boolean>(false);
@@ -213,10 +238,55 @@ export default function OperationDashboard() {
     setCustomRateInput(currentRate !== null ? String(currentRate) : '');
   }, [activeYear, activeMonth]);
 
-  // --- Currency Conversion Utility ---
+  // --- Currency Conversion Utility & Fallback Resolution ---
+  const getAppliedExchangeRateAndSource = (): {
+    rate: number;
+    isFallback: boolean;
+    sourceText: string;
+    successDays?: number;
+    fetchedAt?: string;
+  } => {
+    const checkMonth = activeMonth === 'all' ? 5 : Number(activeMonth);
+    const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkMonth);
+    
+    if (rateRec && rateRec.averageRate > 0) {
+      const srcText = rateRec.source === 'api' ? '한국수출입은행 월평균 환율' : '사용자 수동 입력 환율';
+      return { 
+        rate: rateRec.averageRate, 
+        isFallback: false, 
+        sourceText: srcText,
+        successDays: rateRec.success_days,
+        fetchedAt: rateRec.fetched_at || rateRec.updatedAt
+      };
+    }
+    
+    // Fallback: search for any saved rate in storage
+    const allRates = ExchangeRateStorage.getRates();
+    if (allRates.length > 0) {
+      const sorted = [...allRates].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      const latest = sorted[0];
+      return {
+        rate: latest.averageRate,
+        isFallback: true,
+        sourceText: '마지막 저장 환율',
+        successDays: latest.success_days,
+        fetchedAt: latest.fetched_at || latest.updatedAt
+      };
+    }
+    
+    // Absolute fallback
+    return {
+      rate: 1372,
+      isFallback: true,
+      sourceText: '마지막 저장 환율'
+    };
+  };
+
   const getCurrentExchangeRate = (monthNumber?: number): number => {
     const checkMonth = monthNumber || (activeMonth === 'all' ? 5 : Number(activeMonth));
-    return ExchangeRateStorage.getRate(activeYear, checkMonth) || 0;
+    const rate = ExchangeRateStorage.getRate(activeYear, checkMonth);
+    if (rate && rate > 0) return rate;
+    return getAppliedExchangeRateAndSource().rate;
   };
 
   const convertVal = (krwVal: number, monthNumber?: number): number => {
@@ -227,30 +297,32 @@ export default function OperationDashboard() {
     return krwVal;
   };
 
-  // Precise exact details
-  const formatKRWMillion = (valueKRW: number) => {
-    if (valueKRW === 0) return '-';
-    return `₩${Math.round(valueKRW / 1_000_000).toLocaleString()}백만원`;
-  };
-
-  const formatKRWBillion = (valueKRW: number) => {
-    if (valueKRW === 0) return '-';
-    return `₩${(valueKRW / 1_000_000_000).toFixed(1)}십억원`;
-  };
-
-  // Differentiate KPIs (Billion KRW / Million USD) vs Tables (Million KRW)
   const formatCurrencyAmount = (valueKRW: number, isKPI: boolean = false) => {
-    const rate = getCurrentExchangeRate();
     if (currencyMode === 'USD') {
-      if (rate === 0) return '환율 미설정';
-      const usdVal = valueKRW / rate;
-      if (isKPI) {
-        return `$${(usdVal / 1_000_000).toFixed(1)}M`;
-      }
-      return `$${Math.round(usdVal / 1_000).toLocaleString()}K`;
+      const rate = getCurrentExchangeRate();
+      return fmt_usd(krw_to_usd(valueKRW, rate));
+    } else {
+      return fmt_million_krw(krw_to_million_krw(valueKRW));
     }
-    // KRW
-    return formatKRWMillion(valueKRW);
+  };
+
+  const getPricePerTonDisplay = (amtKRW: number, qtyG: number): number => {
+    if (qtyG <= 0) return 0;
+    const krwPerGram = amtKRW / qtyG;
+    if (currencyMode === 'USD') {
+      const rate = getCurrentExchangeRate();
+      return krwPerGram * (1_000_000 / rate);
+    } else {
+      return krwPerGram;
+    }
+  };
+
+  const formatPrice = (price: number) => {
+    if (currencyMode === 'USD') {
+      return fmt_usd(price);
+    } else {
+      return `₩${Math.round(price).toLocaleString()}`;
+    }
   };
 
   const handleExchangeAutoSync = async () => {
@@ -393,7 +465,7 @@ export default function OperationDashboard() {
       countryName: '대한민국',
       locationName: '대한민국 · 광양/포항 HQ',
       type: 'hq',
-      salesQuantity: totalSalesTons,
+      salesQuantity: gram_to_ton(totalSalesTons),
       salesRevenue: totalRevenueKRW,
       purchaseQuantity: 0,
       purchaseAmount: 0,
@@ -469,8 +541,7 @@ export default function OperationDashboard() {
     const endQty = matchedRows.reduce((sum, r) => sum + (r.endingQty || 0), 0);
     const endAmt = matchedRows.reduce((sum, r) => sum + (r.endingAmount || 0), 0);
 
-    const endPriceKRW = endQty > 0 ? (endAmt / endQty) : 0;
-    const priceConverted = convertVal(endPriceKRW) / 1_000_000;
+    const endPrice = getPricePerTonDisplay(endAmt, endQty);
 
     return {
       key: def.key,
@@ -479,7 +550,7 @@ export default function OperationDashboard() {
       purQty,
       prcQty,
       endQty,
-      endPrice: priceConverted,
+      endPrice,
     };
   });
 
@@ -497,31 +568,31 @@ export default function OperationDashboard() {
 
     const begQty = qRows.reduce((sum, r) => sum + (r.beginningInventory || 0), 0);
     const begAmt = aRows.reduce((sum, r) => sum + (r.beginningInventory || 0), 0);
-    const begPrice = begQty > 0 ? (begAmt / begQty) : 0;
+    const begPrice = getPricePerTonDisplay(begAmt, begQty);
 
     const prodQty = qRows.reduce((sum, r) => sum + (r.normalReceipt || 0), 0);
     const prodAmt = aRows.reduce((sum, r) => sum + (r.normalReceipt || 0), 0);
-    const prodPrice = prodQty > 0 ? (prodAmt / prodQty) : 0;
+    const prodPrice = getPricePerTonDisplay(prodAmt, prodQty);
 
     const salesQty = qRows.reduce((sum, r) => sum + (r.salesQuantity || 0), 0);
     const salesAmt = qRows.reduce((sum, r) => sum + (r.revenue || 0), 0);
-    const salesPrice = salesQty > 0 ? (salesAmt / salesQty) : 0;
+    const salesPrice = getPricePerTonDisplay(salesAmt, salesQty);
 
     const endQty = qRows.reduce((sum, r) => sum + (r.endingInventory || 0), 0);
     const endAmt = aRows.reduce((sum, r) => sum + (r.endingInventory || 0), 0);
-    const endPrice = endQty > 0 ? (endAmt / endQty) : 0;
+    const endPrice = getPricePerTonDisplay(endAmt, endQty);
 
     return {
       key: def.key,
       name: def.canonicalName,
       begQty,
-      begPrice: convertVal(begPrice) / 1_000_000, 
+      begPrice,
       prodQty,
-      prodPrice: convertVal(prodPrice) / 1_000_000,
+      prodPrice,
       salesQty,
-      salesPrice: convertVal(salesPrice) / 1_000_000,
+      salesPrice,
       endQty,
-      endPrice: convertVal(endPrice) / 1_000_000,
+      endPrice,
     };
   });
 
@@ -542,23 +613,75 @@ export default function OperationDashboard() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
-            <button
-              onClick={() => setCurrencyMode('KRW')}
-              className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
-                currencyMode === 'KRW' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-500'
-              }`}
-            >
-              원화 보기
-            </button>
-            <button
-              onClick={() => setCurrencyMode('USD')}
-              className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
-                currencyMode === 'USD' ? 'bg-white text-indigo-700 shadow-xs' : 'text-zinc-500'
-              }`}
-            >
-              달러 보기
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
+              <button
+                onClick={() => setCurrencyMode('KRW')}
+                className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                  currencyMode === 'KRW' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-500'
+                }`}
+              >
+                원화 보기
+              </button>
+              <button
+                onClick={() => setCurrencyMode('USD')}
+                className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                  currencyMode === 'USD' ? 'bg-white text-[#00786F] shadow-xs' : 'text-zinc-500'
+                }`}
+              >
+                달러 보기
+              </button>
+            </div>
+
+            {currencyMode === 'USD' && (() => {
+              const appliedInfo = getAppliedExchangeRateAndSource();
+              const checkM = activeMonth === 'all' ? '05' : String(activeMonth).padStart(2, '0');
+              return (
+                <div className="relative flex items-center gap-1.5 px-3 py-1.5 bg-teal-50/85 border border-teal-150 rounded-xl text-xs text-teal-950 font-medium">
+                  <span>USD 환산 기준: <strong className="font-mono text-[#00786F]">{appliedInfo.rate.toLocaleString()}원/USD</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => setShowExchangeRateDetail(!showExchangeRateDetail)}
+                    className="w-4 h-4 inline-flex items-center justify-center rounded-full hover:bg-teal-100/80 text-[11px] text-[#00786F] font-bold border-none bg-transparent cursor-pointer"
+                    title="자세한 환율 기준 정보 보기"
+                  >
+                    ⓘ
+                  </button>
+
+                  {showExchangeRateDetail && (
+                    <div className="absolute right-0 top-full mt-2 z-[150] w-64 bg-white border border-zinc-200 shadow-xl rounded-xl p-4 text-xs font-sans text-zinc-700 animate-slide-down space-y-2">
+                      <div className="font-bold text-zinc-900 border-b border-zinc-100 pb-1.5 flex justify-between items-center">
+                        <span>환율 기준 정보 상세보기</span>
+                        <button 
+                          onClick={() => setShowExchangeRateDetail(false)}
+                          className="text-zinc-400 hover:text-zinc-600 text-[10px] font-bold border-none bg-transparent"
+                        >
+                          닫기 X
+                        </button>
+                      </div>
+                      <div className="space-y-1.5 text-zinc-600">
+                        <div>
+                          • <span className="font-semibold text-zinc-800">기준:</span> {appliedInfo.sourceText}
+                        </div>
+                        <div>
+                          • <span className="font-semibold text-zinc-800">대상월:</span> {activeYear}-{checkM}
+                        </div>
+                        {appliedInfo.successDays !== undefined && (
+                          <div>
+                            • <span className="font-semibold text-zinc-800">반영 영업일:</span> {appliedInfo.successDays}일
+                          </div>
+                        )}
+                        {appliedInfo.fetchedAt && (
+                          <div>
+                            • <span className="font-semibold text-zinc-800">갱신일시:</span> {new Date(appliedInfo.fetchedAt).toLocaleString('ko-KR', { hour12: false })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-2 bg-[#f8f9fa] p-2 rounded-xl border border-zinc-150 text-xs">
@@ -727,412 +850,160 @@ export default function OperationDashboard() {
         </div>
       )}
 
-      {/* EXIM API Sync Feedback Alert */}
-      {false && syncFeedback && (
-        <div className={`p-5 rounded-2xl border text-xs flex flex-col gap-3.5 transition-all animate-fade ${
-          syncFeedback.type === 'success' 
-            ? 'bg-[#f0f9f8] border-teal-200 text-teal-980' 
-            : syncFeedback.type === 'warning' 
-            ? 'bg-amber-50/80 border-amber-250 text-amber-950' 
-            : 'bg-rose-50 border-rose-200 text-rose-950'
-        }`}>
-          <div className="flex justify-between items-start gap-4">
-            <div className="flex gap-2.5">
-              {syncFeedback.type === 'success' ? (
-                <CheckCircle className="w-4.5 h-4.5 text-[#008f83] flex-shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className={`w-4.5 h-4.5 flex-shrink-0 mt-0.5 ${
-                  syncFeedback.type === 'warning' ? 'text-amber-600' : 'text-rose-600'
-                }`} />
-              )}
-              <div>
-                <span className="font-bold text-sm block font-sans">
-                  {syncFeedback.type === 'success' 
-                    ? '한국수출입은행 실시간 환율 연동 성공' 
-                    : '한국수출입은행 실시간 환율 연동 제한/실패'}
-                </span>
-                <p className="text-[11.5px] mt-1 text-zinc-600 font-sans">
-                  {syncFeedback.text}
-                </p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setSyncFeedback(null)} 
-              className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-650 flex-shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
 
-          {/* Detailed stats summary block requested by user */}
-          <div className="bg-white/80 backdrop-blur-xs p-4 rounded-xl border border-black/5 space-y-1.5 text-[11px] font-sans">
-            <div className="font-bold text-xs text-zinc-800 border-b border-black/5 pb-1.5 flex justify-between items-center">
-              <span>📊 환율 조회 결과 요약</span>
-              <span className="font-mono text-[10px] text-zinc-400">
-                조회 대상 월: {syncFeedback.stats?.exampleRequestDate ? `${syncFeedback.stats.exampleRequestDate.substring(0, 4)}-${syncFeedback.stats.exampleRequestDate.substring(4, 6)}` : `${activeYear}-${String(activeMonth === 'all' ? 5 : activeMonth).padStart(2, '0')}`}
-              </span>
-            </div>
-
-            {/* If there are stats from server or mock parser */}
-            {syncFeedback.stats && (
-              syncFeedback.stats.successCount > 0 ? (
-                <div className="space-y-2">
-                  <div className="font-semibold text-teal-800 flex items-center gap-1">
-                    <span>조회 성공: {syncFeedback.stats.successCount}일</span>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-zinc-750 border-t border-black/5 pt-1.5">
-                    <div>• 요청 시도: <strong className="font-mono">{syncFeedback.stats.requestedDays}회</strong></div>
-                    <div>• 정상 응답 후 데이터 없음: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
-                    <div>• HTTP/API 응답 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
-                    <div>• 연결 실패/timeout: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount}회</strong></div>
-                  </div>
-                  <div className="text-zinc-[#00786F] font-semibold mt-1">
-                    • 적용 환율: <span className="font-mono font-bold text-xs underline">{syncFeedback.stats.averageRate.toLocaleString()}원 / USD</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-1.5 text-zinc-850">
-                  <div className="font-semibold text-rose-600 flex items-center gap-1 leading-snug">
-                    <span>조회 성공: 0일</span>
-                  </div>
-                  <div className="pl-2 space-y-1.5 text-zinc-700">
-                    <div>• 요청 시도: <strong className="font-mono text-zinc-900">{syncFeedback.stats.requestedDays === 0 ? 1 : syncFeedback.stats.requestedDays}회</strong></div>
-                    <div>• 정상 응답 후 데이터 없음: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
-                    <div>• HTTP/API 응답 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
-                    <div>• 연결 실패/timeout: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount > 0 ? syncFeedback.stats.networkErrorCount : 1}회</strong></div>
-                    
-                    <div className="text-zinc-900 font-semibold mt-1">
-                      • 주요 실패 원인:<br />
-                      <span className="text-rose-600 font-medium font-sans block mt-0.5 leading-normal">
-                        {syncFeedback.stats.majorFailureReason || "외부 API 서버 응답 지연 또는 네트워크 이상으로 연결을 완료하지 못했습니다."}
-                      </span>
-                      {getContextualFailureGuidance(syncFeedback.stats.majorFailureReason || "")}
-                    </div>
-
-                    <div className="text-zinc-900 font-semibold mt-1 border-t border-dashed border-black/5 pt-1">
-                      • 적용 환율:<br />
-                      <span className="text-zinc-805 font-medium font-sans block mt-0.5">
-                        마지막 저장 환율 {getCurrentExchangeRate().toLocaleString()}원/USD 유지
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Exchange Rate Card */}
-      <div className="bg-[#fcfdfd] border border-zinc-250 p-5 rounded-2xl shadow-xs space-y-4">
-        {/* Header & Main Info */}
-        <div className="flex flex-wrap justify-between items-start gap-4">
-          <div className="space-y-1">
-            {/* Year Month title */}
-            <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5 font-sans">
-              <DollarSign className="w-4 h-4 text-zinc-500 animate-pulse" />
-              <span>{activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율</span>
-            </h3>
-            
-            {/* Rate Display or Editing element */}
-            {isEditingExchange && !eximKeyMissing ? (
-              <div className="flex items-center gap-2 pt-1 font-sans">
-                <input
-                  type="text"
-                  value={customRateInput}
-                  onChange={(e) => setCustomRateInput(e.target.value)}
-                  placeholder="예: 1490.1"
-                  className="w-28 px-2.5 py-1 text-right font-mono border border-zinc-300 rounded-md text-sm font-bold focus:outline-teal-500"
-                />
-                <span className="text-zinc-[600] text-xs">원/USD</span>
-                <button 
-                  onClick={handleSaveRateInput}
-                  className="px-3 py-1 bg-[#00786F] hover:bg-[#005f58] text-white rounded-md text-xs font-bold cursor-pointer transition-colors"
-                >
-                  저장
-                </button>
-                <button 
-                  onClick={() => setIsEditingExchange(false)}
-                  className="px-2 py-1 text-zinc-400 hover:text-zinc-650 text-xs font-semibold cursor-pointer transition-colors"
-                >
-                  취소
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-1 pt-1">
-                {getCurrentExchangeRate() > 0 ? (
-                  <div className="text-2xl font-black text-[#00786F] tracking-tight font-sans">
-                    {getCurrentExchangeRate().toLocaleString()}원/USD
-                  </div>
-                ) : (
-                  <div className="text-sm font-bold text-rose-600 animate-pulse">
-                    환율 정보 없음
-                  </div>
-                )}
-                
-                {/* Criteria Detail metadata */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#647067] font-sans">
-                  <div>
-                    <span className="font-semibold text-zinc-700">기준:</span>{' '}
-                    {(() => {
-                      const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
-                      const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
-                      if (rateRec?.source === 'api') {
-                        return '한국수출입은행 월평균 환율';
-                      } else if (rateRec?.source === 'manual') {
-                        return '사용자 수동 입력 환율';
-                      }
-                      return '적용된 환율 정보가 유효하지 않습니다.';
-                    })()}
-                  </div>
-                  <div className="w-1 h-1 rounded-full bg-zinc-350"></div>
-                  <div>
-                    <span className="font-semibold text-zinc-700">상태:</span>{' '}
-                    {getCurrentExchangeRate() > 0 ? (
-                      <span className="text-teal-700 font-bold">저장됨</span>
-                    ) : (
-                      <span className="text-rose-500 font-bold">대기 중</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Action Button Controls */}
-          <div className="flex items-center gap-2">
-            {!isEditingExchange && (
-              <>
-                <button
-                  onClick={handleExchangeAutoSync}
-                  disabled={isSyncingExchange || eximKeyMissing}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border ${
-                    eximKeyMissing 
-                      ? 'bg-zinc-50 border-zinc-200 text-zinc-400 cursor-not-allowed' 
-                      : 'bg-white border-zinc-250 hover:bg-zinc-50 text-zinc-700 cursor-pointer shadow-xs'
-                  }`}
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
-                  <span>환율 새로고침</span>
-                </button>
-
-                {!eximKeyMissing && (
+      {currencyMode === 'USD' && (
+        <div id="exchange-rate-management-card" className="bg-[#fcfdfd] border border-zinc-250 p-5 rounded-2xl shadow-xs space-y-4">
+          {/* Header & Main Info */}
+          <div className="flex flex-wrap justify-between items-start gap-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5 font-sans">
+                <DollarSign className="w-4 h-4 text-zinc-500 animate-pulse" />
+                <span>{activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율 설정</span>
+              </h3>
+              
+              {/* Rate Display or Editing element */}
+              {isEditingExchange && !eximKeyMissing ? (
+                <div className="flex items-center gap-2 pt-1 font-sans">
+                  <input
+                    type="text"
+                    value={customRateInput}
+                    onChange={(e) => setCustomRateInput(e.target.value)}
+                    placeholder="예: 1490.1"
+                    className="w-28 px-2.5 py-1 text-right font-mono border border-zinc-300 rounded-md text-sm font-bold focus:outline-teal-500"
+                  />
+                  <span className="text-zinc-600 text-xs">원/USD</span>
                   <button 
-                    onClick={() => {
-                      setCustomRateInput(getCurrentExchangeRate() > 0 ? String(getCurrentExchangeRate()) : '');
-                      setIsEditingExchange(true);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-white border border-zinc-250 hover:bg-zinc-50 text-zinc-700 cursor-pointer shadow-xs"
+                    onClick={handleSaveRateInput}
+                    className="px-3 py-1 bg-[#00786F] hover:bg-[#005f58] text-white rounded-md text-xs font-bold cursor-pointer transition-colors"
                   >
-                    <Edit2 className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>수동 입력</span>
+                    저장
                   </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Sync Feedback Alert Inside Card */}
-        {syncFeedback && (
-          <div className={`p-4 rounded-xl border text-xs flex flex-col gap-2.5 transition-all animate-fade ${
-            syncFeedback.type === 'success' 
-              ? 'bg-[#f0f9f8] border-teal-200 text-teal-950 font-sans' 
-              : syncFeedback.type === 'warning' 
-              ? 'bg-amber-50/80 border-amber-250 text-amber-955 font-sans' 
-              : 'bg-rose-50 border-rose-200 text-rose-955'
-          }`}>
-            <div className="flex justify-between items-start gap-4">
-              <div className="flex gap-2">
-                {syncFeedback.type === 'success' ? (
-                  <CheckCircle className="w-4.5 h-4.5 text-[#008f83] flex-shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className={`w-4.5 h-4.5 flex-shrink-0 mt-0.5 ${
-                    syncFeedback.type === 'warning' ? 'text-amber-600' : 'text-rose-600'
-                  }`} />
-                )}
-                <div>
-                  <span className="font-bold text-xs block font-sans">
-                    {syncFeedback.type === 'success' ? (
-                      <>{activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율을 갱신했습니다.</>
-                    ) : (
-                      <>환율 자동 조회에 실패했습니다.</>
-                    )}
-                  </span>
-                  <p className="text-[11px] mt-0.5 text-zinc-650 font-sans">
-                    {syncFeedback.type === 'success' ? (
-                      <>적용 환율: <strong className="font-mono text-[#00786F]">{syncFeedback.stats?.averageRate?.toLocaleString()}원/USD</strong> ({syncFeedback.stats?.successCount}개 영업일 반영)</>
-                    ) : (
-                      <>기존 저장 환율 {getCurrentExchangeRate() > 0 ? `${getCurrentExchangeRate().toLocaleString()}원/USD` : '없음'}를 유지합니다.</>
-                    )}
-                  </p>
+                  <button 
+                    onClick={() => setIsEditingExchange(false)}
+                    className="px-2 py-1 text-zinc-400 hover:text-zinc-650 text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    취소
+                  </button>
                 </div>
-              </div>
-              <button 
-                onClick={() => setSyncFeedback(null)} 
-                className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-650 flex-shrink-0 font-sans"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Collagen Diagnosis (상세 진단 보기) */}
-            <div className="border-t border-dashed border-black/10 pt-2 font-sans font-sans">
-              <details className="group">
-                <summary className="flex items-center gap-1 text-[11px] font-bold text-zinc-500 group-hover:text-zinc-805 cursor-pointer list-none select-none font-sans">
-                  <span className="transition-transform duration-150 group-open:rotate-90 text-[9px] inline-block font-sans">▶</span>
-                  <span className="font-sans">상세 진단 보기</span>
-                </summary>
-                
-                <div className="mt-2 space-y-2 bg-white/65 p-3 rounded-lg border border-black/5 text-[11px] font-sans">
-                  {syncFeedback.stats && (
-                    <div className="space-y-1.5 text-zinc-700 font-sans">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-zinc-700 font-sans">
-                        <div>• 달력일수: <strong className="font-mono text-zinc-900">{(() => {
-                          const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
-                          return new Date(Number(activeYear), checkM, 0).getDate();
-                        })()}일</strong></div>
-                        <div>• API 요청일수: <strong className="font-mono text-zinc-900">{syncFeedback.stats.requestedDays}일</strong></div>
-                        <div>• 조회 성공: <strong className="font-mono text-teal-700">{syncFeedback.stats.successCount}일</strong></div>
-                        <div>• 요청 후 빈응답: <strong className="font-mono text-zinc-900">{syncFeedback.stats.emptyCount}일</strong></div>
-                        <div>• 비조회일 (주말): <strong className="font-mono text-zinc-900">{(() => {
-                          const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
-                          const lastD = new Date(Number(activeYear), checkM, 0).getDate();
-                          return lastD - syncFeedback.stats.requestedDays;
-                        })()}일</strong></div>
-                      </div>
-
-                      <div className="text-[10px] text-zinc-400 font-sans">
-                        * endpoint: <code className="bg-zinc-100 px-0.5 py-0.2 rounded font-mono">oapi.koreaexim.go.kr</code>, SSL: <span className="font-semibold text-teal-850">truststore</span> 자동 신뢰 모드 가동 중
-                      </div>
-
-                      {syncFeedback.type !== 'success' && (
-                        <div className="border-t border-dashed border-black/5 pt-1.5 text-rose-700 font-sans">
-                          <strong>상세 원인:</strong> {syncFeedback.stats.majorFailureReason || "외부 API 서버 응답 지연 또는 네트워크 이상"}
-                          {getContextualFailureGuidance(syncFeedback.stats.majorFailureReason || "")}
-                        </div>
+              ) : (
+                <div className="space-y-1 pt-1">
+                  {getCurrentExchangeRate() > 0 ? (
+                    <div className="text-2xl font-black text-[#00786F] tracking-tight font-sans">
+                      {getCurrentExchangeRate().toLocaleString()}원/USD
+                    </div>
+                  ) : (
+                    <div className="text-sm font-bold text-rose-600 animate-pulse">
+                      환율 정보 없음
+                    </div>
+                  )}
+                  
+                  {/* Criteria Detail metadata */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#647067] font-sans">
+                    <div>
+                      <span className="font-semibold text-zinc-700">기준:</span>{' '}
+                      {(() => {
+                        const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
+                        const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
+                        if (rateRec?.source === 'api') {
+                          return '한국수출입은행 월평균 환율';
+                        } else if (rateRec?.source === 'manual') {
+                          return '사용자 수동 입력 환율';
+                        }
+                        return '마지막 저장 환율 (임시)';
+                      })()}
+                    </div>
+                    <div className="w-1 h-1 rounded-full bg-zinc-350"></div>
+                    <div>
+                      <span className="font-semibold text-zinc-700">상태:</span>{' '}
+                      {getCurrentExchangeRate() > 0 ? (
+                        <span className="text-teal-700 font-bold">저장됨</span>
+                      ) : (
+                        <span className="text-rose-500 font-bold">대기 중</span>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </details>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Corporate Proxy Configuration: Show only if connectivity failures occur or is toggleable */}
-        {(() => {
-          const hasConnectionError = syncFeedback?.stats?.majorFailureReason?.toUpperCase().includes('CONNECT') ||
-                                     syncFeedback?.stats?.majorFailureReason?.toUpperCase().includes('TIMEOUT') ||
-                                     syncFeedback?.stats?.majorFailureReason?.toUpperCase().includes('SSL') ||
-                                     showProxySettings;
+            {/* Action Button Controls */}
+            <div className="flex items-center gap-2">
+              {!isEditingExchange && (
+                <>
+                  <button
+                    onClick={handleExchangeAutoSync}
+                    disabled={isSyncingExchange || eximKeyMissing}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border ${
+                      eximKeyMissing 
+                        ? 'bg-zinc-50 border-zinc-200 text-zinc-400 cursor-not-allowed' 
+                        : 'bg-white border-zinc-250 hover:bg-zinc-50 text-zinc-700 cursor-pointer shadow-xs'
+                    }`}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
+                    <span>환율 새로고침</span>
+                  </button>
 
-          if (hasConnectionError) {
-            return (
-              <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200 space-y-3 text-xs font-sans">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-zinc-800 flex items-center gap-1.5 font-sans">
-                    <Settings className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>고급 프록시(Proxy) 게이트웨이 연동 설정</span>
-                  </span>
-                  {!showProxySettings && (
-                    <button
-                      onClick={() => setShowProxySettings(true)}
-                      className="text-[10.5px] text-zinc-500 hover:text-zinc-800 font-bold underline cursor-pointer font-sans"
+                  {!eximKeyMissing && (
+                    <button 
+                      onClick={() => {
+                        setCustomRateInput(getCurrentExchangeRate() > 0 ? String(getCurrentExchangeRate()) : '');
+                        setIsEditingExchange(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-white border border-zinc-250 hover:bg-zinc-50 text-zinc-700 cursor-pointer shadow-xs"
                     >
-                      설정 패널 열기
+                      <Edit2 className="w-3.5 h-3.5 text-zinc-500" />
+                      <span>수동 입력</span>
                     </button>
                   )}
-                </div>
+                </>
+              )}
+            </div>
+          </div>
 
-                {showProxySettings && (
-                  <div className="space-y-3 pt-1">
-                    <p className="text-zinc-600 text-[10.5px] leading-relaxed">
-                      사내 인프라/방화벽으로 인한 TCP 접속 한계점이 식별될 때 프록시 우회 매개 변수를 직접 정의해 주십시오.
+          {/* Sync Feedback Alert Inside Card */}
+          {syncFeedback && (
+            <div className={`p-4 rounded-xl border text-xs flex flex-col gap-2.5 transition-all animate-fade ${
+              syncFeedback.type === 'success' 
+                ? 'bg-[#f0f9f8] border-teal-200 text-teal-955' 
+                : 'bg-rose-50 border-rose-200 text-rose-955'
+            }`}>
+              <div className="flex justify-between items-start gap-4">
+                <div className="flex gap-2">
+                  {syncFeedback.type === 'success' ? (
+                    <CheckCircle className="w-4.5 h-4.5 text-[#008f83] flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4.5 h-4.5 text-rose-500 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <span className="font-bold text-xs block font-sans">
+                      {syncFeedback.type === 'success' ? (
+                        <>환율이 성공적으로 업데이트되었습니다.</>
+                      ) : (
+                        <>환율 연동에 실패하였습니다.</>
+                      )}
+                    </span>
+                    <p className="text-[11px] mt-0.5 text-zinc-600 font-sans">
+                      {syncFeedback.type === 'success' ? (
+                        <>반영 환율: <strong className="font-mono text-[#00786F]">{syncFeedback.stats?.averageRate?.toLocaleString()}원/USD</strong></>
+                      ) : (
+                        <>기존 마지막 저장 환율 {getCurrentExchangeRate() > 0 ? `${getCurrentExchangeRate().toLocaleString()}원/USD` : '없음'}를 유지합니다.</>
+                      )}
                     </p>
-
-                    <label className="flex items-center gap-2 font-semibold text-zinc-750 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={proxyUse}
-                        onChange={(e) => setProxyUse(e.target.checked)}
-                        className="rounded text-teal-600 focus:ring-teal-500 pointer-events-auto"
-                      />
-                      <span>회사망 프록시 사용 활성화 (Enable Proxy)</span>
-                    </label>
-
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                      <div className="space-y-1 md:col-span-3">
-                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">프록시 서버 주소/호스트 명</span>
-                        <input
-                          type="text"
-                          value={proxyHost}
-                          onChange={(e) => setProxyHost(e.target.value)}
-                          placeholder="예: proxy.company.com"
-                          disabled={!proxyUse}
-                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">포트 (Port)</span>
-                        <input
-                          type="text"
-                          value={proxyPort}
-                          onChange={(e) => setProxyPort(e.target.value)}
-                          placeholder="8080"
-                          disabled={!proxyUse}
-                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-zinc-200 pt-2.5">
-                      <div className="space-y-1">
-                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">사용자 계정 (선택사항)</span>
-                        <input
-                          type="text"
-                          value={proxyUser}
-                          onChange={(e) => setProxyUser(e.target.value)}
-                          placeholder="username"
-                          disabled={!proxyUse}
-                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">비밀번호 (선택사항)</span>
-                        <input
-                          type="password"
-                          value={proxyPass}
-                          onChange={(e) => setProxyPass(e.target.value)}
-                          placeholder="••••••••"
-                          disabled={!proxyUse}
-                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-1.5 pt-1.5 border-t border-zinc-200">
-                      <button
-                        onClick={() => setShowProxySettings(false)}
-                        className="px-2.5 py-1.5 bg-zinc-200 hover:bg-zinc-250 text-zinc-700 font-semibold rounded text-[10.5px] cursor-pointer font-sans"
-                      >
-                        취소
-                      </button>
-                      <button
-                        onClick={handleSaveProxySettings}
-                        className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-850 text-white font-bold rounded text-[10.5px] cursor-pointer font-sans"
-                      >
-                        프록시 설정 저장
-                      </button>
-                    </div>
                   </div>
-                )}
+                </div>
+                <button 
+                  onClick={() => setSyncFeedback(null)} 
+                  className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-650 flex-shrink-0 font-sans"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
-            );
-          }
-          return null;
-        })()}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mid-section KPI Cards */}
       <div id="dashboard-metric-four-grid" className="grid grid-cols-1 md:grid-cols-4 gap-5">
