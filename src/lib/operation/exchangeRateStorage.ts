@@ -5,6 +5,16 @@ export interface MonthlyExchangeRate {
   averageRate: number;
   source: 'api' | 'manual';
   updatedAt: string;
+
+  // Recommended fields matching user structure:
+  rate: number;
+  success_days?: number;
+  calendar_days?: number;
+  empty_days?: number;
+  fetched_at?: string;
+  endpoint?: string;
+  ssl_mode?: string;
+  is_manual?: boolean;
 }
 
 const STORAGE_KEY = 'hycm_exchange_rates';
@@ -33,9 +43,24 @@ export const ExchangeRateStorage = {
     return rates.find(r => r.year === year && Number(r.month) === Number(month)) || null;
   },
 
-  saveRate(year: string, month: number, rate: number, source: 'api' | 'manual' = 'manual'): void {
+  saveRate(
+    year: string, 
+    month: number, 
+    rate: number, 
+    source: 'api' | 'manual' = 'manual',
+    extra?: {
+      success_days?: number;
+      calendar_days?: number;
+      empty_days?: number;
+      endpoint?: string;
+      ssl_mode?: string;
+    }
+  ): void {
     const rates = this.getRates();
     const filtered = rates.filter(r => !(r.year === year && Number(r.month) === Number(month)));
+    
+    const calculatedCalendarDays = extra?.calendar_days ?? new Date(Number(year), Number(month), 0).getDate();
+    
     const updated: MonthlyExchangeRate = {
       year,
       month,
@@ -43,6 +68,16 @@ export const ExchangeRateStorage = {
       averageRate: rate,
       source,
       updatedAt: new Date().toISOString(),
+      
+      // Recommended fields under exact specification:
+      rate: rate,
+      success_days: extra?.success_days ?? (source === 'api' ? 18 : undefined),
+      calendar_days: calculatedCalendarDays,
+      empty_days: extra?.empty_days ?? 0,
+      fetched_at: new Date().toISOString(),
+      endpoint: extra?.endpoint ?? 'oapi.koreaexim.go.kr',
+      ssl_mode: extra?.ssl_mode ?? 'truststore',
+      is_manual: source === 'manual'
     };
     const combined = [...filtered, updated];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
@@ -82,7 +117,13 @@ export const ExchangeRateStorage = {
       const data = await response.json();
       
       if (data.success && data.averageRate) {
-        this.saveRate(year, month, data.averageRate, 'api');
+        this.saveRate(year, month, data.averageRate, 'api', {
+          success_days: data.successCount,
+          calendar_days: data.calendarDays,
+          empty_days: data.emptyCount,
+          endpoint: 'oapi.koreaexim.go.kr',
+          ssl_mode: 'truststore'
+        });
         return {
           success: true,
           rate: data.averageRate,

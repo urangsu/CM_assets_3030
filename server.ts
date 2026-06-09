@@ -583,6 +583,7 @@ async function startServer() {
       const finalMonthlyResults: FetchDetail[] = [];
       let successCount = 0;
       let emptyCount = 0;
+      let weekendCount = 0;
       let apiErrorCount = 0;
       let networkErrorCount = 0;
       const validRates: number[] = [];
@@ -610,7 +611,7 @@ async function startServer() {
             rate: 0,
             message: "데이터 미공시 영업일 외 (주말/공휴일 등)"
           });
-          emptyCount++;
+          weekendCount++;
         }
       }
 
@@ -667,15 +668,17 @@ async function startServer() {
         }
       }
 
-      return res.json({
+       return res.json({
         success: canCalculate && successCount > 0,
         status: canCalculate && successCount > 0 ? "success" : (apiErrorCount > 0 ? "http_error" : "empty"),
         year: y,
         month: m,
         currency: "USD",
+        calendarDays: lastDay,
         requestedDays: weekdaysToQuery.length, // Only queried weekdays
         successCount,
         emptyCount,
+        weekendCount,
         apiErrorCount,
         networkErrorCount,
         averageRate,

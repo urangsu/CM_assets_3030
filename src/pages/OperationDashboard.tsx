@@ -728,7 +728,7 @@ export default function OperationDashboard() {
       )}
 
       {/* EXIM API Sync Feedback Alert */}
-      {syncFeedback && (
+      {false && syncFeedback && (
         <div className={`p-5 rounded-2xl border text-xs flex flex-col gap-3.5 transition-all animate-fade ${
           syncFeedback.type === 'success' 
             ? 'bg-[#f0f9f8] border-teal-200 text-teal-980' 
@@ -823,245 +823,315 @@ export default function OperationDashboard() {
         </div>
       )}
 
-      {/* Exchange Rate Bar */}
-      <div className="bg-[#fcfdfd] border border-zinc-250 p-4.5 rounded-2xl shadow-xs flex flex-col gap-3">
-        <div className="flex flex-wrap justify-between items-center gap-3.5">
-          <div className="flex items-center gap-2">
-            <DollarSign className="w-4.5 h-4.5 text-zinc-500 font-bold" />
-            <div className="text-xs">
-              <span className="font-bold text-zinc-800 block font-sans">
-                한국수출입은행 외환고시 월평균 상호 교환율
-              </span>
-              <div className="text-[#647067] text-[10.5px] mt-1 font-sans">
-                {(() => {
-                  const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
-                  const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
-                  const currentExcRate = getCurrentExchangeRate();
-                  
-                  if (currentExcRate > 0 && rateRec) {
-                    const isApi = rateRec.source === 'api';
-                    const successCount = syncFeedback?.stats?.successCount ?? (isApi ? 21 : 0);
-                    
-                    if (isApi) {
-                      return (
-                        <div className="space-y-0.5 leading-normal">
-                          <div><strong>환율 적용 기준:</strong> 한국수출입은행 Open API 월평균 환율</div>
-                          <div><strong>API Endpoint:</strong> <code className="bg-zinc-100 px-1 py-0.5 rounded text-[9.5px] font-mono">oapi.koreaexim.go.kr</code></div>
-                          <div><strong>SSL 처리:</strong> <span className="text-teal-700 font-semibold text-[10px]">Windows 인증서 저장소 적용</span></div>
-                          <div><strong>적용 환율:</strong> <strong className="font-mono text-[#00786F]">{currentExcRate.toLocaleString()}원/USD (월평균 USD deal_bas_r)</strong> <span className="text-[9.5px] text-zinc-400">({successCount}개 영업일 반영)</span></div>
-                        </div>
-                      );
-                    } else {
-                      return (
-                        <div className="space-y-0.5">
-                          <div><strong>환율 적용 기준:</strong> 마지막 저장 환율</div>
-                          <div><strong>적용 환율:</strong> <strong className="font-mono text-zinc-900">{currentExcRate.toLocaleString()}원/USD</strong></div>
-                          <div><strong>적용 사유:</strong> 한국수출입은행 API 네트워크 연결 실패</div>
-                          <div><strong>조회 대상:</strong> <span className="font-mono">{activeYear}-{String(checkM).padStart(2, '0')}</span></div>
-                        </div>
-                      );
-                    }
-                  } else {
-                    return (
-                      <strong className="text-rose-600">환율 정보 없음 {eximKeyMissing ? "(EXIM_API_KEY 미설정 상태로 변경 및 조회 제한)" : "(수동 환율을 입력하거나 오른쪽 자동 조회를 사용하여 동기화해 주십시오)"}</strong>
-                    );
-                  }
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {/* Sync panel */}
-          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-zinc-100 text-xs">
-            <span className="text-[11px] font-bold text-zinc-505 font-mono">
-              {activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율:
-            </span>
+      {/* Exchange Rate Card */}
+      <div className="bg-[#fcfdfd] border border-zinc-250 p-5 rounded-2xl shadow-xs space-y-4">
+        {/* Header & Main Info */}
+        <div className="flex flex-wrap justify-between items-start gap-4">
+          <div className="space-y-1">
+            {/* Year Month title */}
+            <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5 font-sans">
+              <DollarSign className="w-4 h-4 text-zinc-500 animate-pulse" />
+              <span>{activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율</span>
+            </h3>
+            
+            {/* Rate Display or Editing element */}
             {isEditingExchange && !eximKeyMissing ? (
-              <div className="flex items-center gap-1.5 font-mono">
+              <div className="flex items-center gap-2 pt-1 font-sans">
                 <input
                   type="text"
                   value={customRateInput}
                   onChange={(e) => setCustomRateInput(e.target.value)}
-                  placeholder="예: 1350.0"
-                  className="w-20 px-1.5 py-0.5 text-right font-mono border border-zinc-300 rounded text-xs font-bold"
+                  placeholder="예: 1490.1"
+                  className="w-28 px-2.5 py-1 text-right font-mono border border-zinc-300 rounded-md text-sm font-bold focus:outline-teal-500"
                 />
-                <span className="text-zinc-500 text-xs font-sans">원</span>
+                <span className="text-zinc-[600] text-xs">원/USD</span>
                 <button 
                   onClick={handleSaveRateInput}
-                  className="px-2 py-0.5 bg-zinc-900 text-white rounded text-[10px] font-bold cursor-pointer"
+                  className="px-3 py-1 bg-[#00786F] hover:bg-[#005f58] text-white rounded-md text-xs font-bold cursor-pointer transition-colors"
                 >
                   저장
                 </button>
                 <button 
                   onClick={() => setIsEditingExchange(false)}
-                  className="text-[10px] text-zinc-400 font-semibold cursor-pointer"
+                  className="px-2 py-1 text-zinc-400 hover:text-zinc-650 text-xs font-semibold cursor-pointer transition-colors"
                 >
                   취소
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 font-mono">
+              <div className="space-y-1 pt-1">
                 {getCurrentExchangeRate() > 0 ? (
-                  (() => {
-                    const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
-                    const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
-                    return (
-                      <span className="font-mono font-bold text-[#00786F]">
-                        {getCurrentExchangeRate().toLocaleString()} 원
-                        <span className="text-[9px] font-sans text-zinc-400 ml-1.5 font-normal">
-                          ({rateRec?.source === 'api' ? '수출입은행 API 연동' : '마지막 저장 환율/수동'})
-                        </span>
-                      </span>
-                    );
-                  })()
+                  <div className="text-2xl font-black text-[#00786F] tracking-tight font-sans">
+                    {getCurrentExchangeRate().toLocaleString()}원/USD
+                  </div>
                 ) : (
-                  <span className="font-sans font-bold text-rose-600 animate-pulse text-[11px]">
+                  <div className="text-sm font-bold text-rose-600 animate-pulse">
                     환율 정보 없음
-                  </span>
+                  </div>
                 )}
+                
+                {/* Criteria Detail metadata */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#647067] font-sans">
+                  <div>
+                    <span className="font-semibold text-zinc-700">기준:</span>{' '}
+                    {(() => {
+                      const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
+                      const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
+                      if (rateRec?.source === 'api') {
+                        return '한국수출입은행 월평균 환율';
+                      } else if (rateRec?.source === 'manual') {
+                        return '사용자 수동 입력 환율';
+                      }
+                      return '적용된 환율 정보가 유효하지 않습니다.';
+                    })()}
+                  </div>
+                  <div className="w-1 h-1 rounded-full bg-zinc-350"></div>
+                  <div>
+                    <span className="font-semibold text-zinc-700">상태:</span>{' '}
+                    {getCurrentExchangeRate() > 0 ? (
+                      <span className="text-teal-700 font-bold">저장됨</span>
+                    ) : (
+                      <span className="text-rose-500 font-bold">대기 중</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Action Button Controls */}
+          <div className="flex items-center gap-2">
+            {!isEditingExchange && (
+              <>
+                <button
+                  onClick={handleExchangeAutoSync}
+                  disabled={isSyncingExchange || eximKeyMissing}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border ${
+                    eximKeyMissing 
+                      ? 'bg-zinc-50 border-zinc-200 text-zinc-400 cursor-not-allowed' 
+                      : 'bg-white border-zinc-250 hover:bg-zinc-50 text-zinc-700 cursor-pointer shadow-xs'
+                  }`}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
+                  <span>환율 새로고침</span>
+                </button>
+
                 {!eximKeyMissing && (
                   <button 
                     onClick={() => {
                       setCustomRateInput(getCurrentExchangeRate() > 0 ? String(getCurrentExchangeRate()) : '');
                       setIsEditingExchange(true);
                     }}
-                    className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-700 transition-colors"
-                    title="수동 수정"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-white border border-zinc-250 hover:bg-zinc-50 text-zinc-700 cursor-pointer shadow-xs"
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
+                    <Edit2 className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>수동 입력</span>
                   </button>
                 )}
-              </div>
+              </>
             )}
-
-            <div className="w-px h-4.5 bg-zinc-200 mx-1"></div>
-
-            <button
-              onClick={handleExchangeAutoSync}
-              disabled={isSyncingExchange || eximKeyMissing}
-              className={`flex items-center gap-1.5 px-3 py-1 text-[10.5px] font-bold rounded-lg transition-colors border-none ${
-                eximKeyMissing 
-                  ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed' 
-                  : 'bg-teal-50 hover:bg-teal-100/80 text-[#008f83] cursor-pointer'
-              }`}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
-              자동 조회
-            </button>
-
-            <button
-              onClick={() => setShowProxySettings(!showProxySettings)}
-              className="flex items-center gap-1.5 px-3 py-1 text-[10.5px] font-bold rounded-lg bg-zinc-50 hover:bg-zinc-100 text-zinc-700 cursor-pointer border border-zinc-200"
-              title="연동 네트워크 및 프록시 구성"
-            >
-              <Settings className="w-3.5 h-3.5 text-zinc-500" />
-              <span>고급 설정</span>
-              {proxyUse && <span className="w-1.5 h-1.5 rounded-full bg-teal-600 inline-block animate-pulse"></span>}
-            </button>
           </div>
         </div>
 
-        {/* Collapsible Corporate Proxy Panel P1 */}
-        {showProxySettings && (
-          <div className="bg-zinc-50 p-4.5 rounded-xl border border-zinc-250 space-y-3.5 text-xs font-sans">
-            <div className="font-bold text-zinc-850 flex items-center gap-1">
-              <Settings className="w-4 h-4 text-zinc-500" />
-              <span>🏢 사내 프록시(Proxy) 게이트웨이 연동</span>
+        {/* Sync Feedback Alert Inside Card */}
+        {syncFeedback && (
+          <div className={`p-4 rounded-xl border text-xs flex flex-col gap-2.5 transition-all animate-fade ${
+            syncFeedback.type === 'success' 
+              ? 'bg-[#f0f9f8] border-teal-200 text-teal-950 font-sans' 
+              : syncFeedback.type === 'warning' 
+              ? 'bg-amber-50/80 border-amber-250 text-amber-955 font-sans' 
+              : 'bg-rose-50 border-rose-200 text-rose-955'
+          }`}>
+            <div className="flex justify-between items-start gap-4">
+              <div className="flex gap-2">
+                {syncFeedback.type === 'success' ? (
+                  <CheckCircle className="w-4.5 h-4.5 text-[#008f83] flex-shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className={`w-4.5 h-4.5 flex-shrink-0 mt-0.5 ${
+                    syncFeedback.type === 'warning' ? 'text-amber-600' : 'text-rose-600'
+                  }`} />
+                )}
+                <div>
+                  <span className="font-bold text-xs block font-sans">
+                    {syncFeedback.type === 'success' ? (
+                      <>{activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율을 갱신했습니다.</>
+                    ) : (
+                      <>환율 자동 조회에 실패했습니다.</>
+                    )}
+                  </span>
+                  <p className="text-[11px] mt-0.5 text-zinc-650 font-sans">
+                    {syncFeedback.type === 'success' ? (
+                      <>적용 환율: <strong className="font-mono text-[#00786F]">{syncFeedback.stats?.averageRate?.toLocaleString()}원/USD</strong> ({syncFeedback.stats?.successCount}개 영업일 반영)</>
+                    ) : (
+                      <>기존 저장 환율 {getCurrentExchangeRate() > 0 ? `${getCurrentExchangeRate().toLocaleString()}원/USD` : '없음'}를 유지합니다.</>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSyncFeedback(null)} 
+                className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-650 flex-shrink-0 font-sans"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <p className="text-zinc-600 text-[11px] leading-snug">
-              사내 프록시 방화벽망 뒤에 있는 개발 PC에서 한국수출입은행 API 서버 접속 타임아웃 장애 등이 기인할 시 아래 설정을 통해 프록시를 통해 우회 통신을 실행합니다. 설정 정보는 브라우저 로컬 스토리지에 유지되며 동기화 호출 시 백엔드 단프록시 세션에 동적 적재됩니다.
-            </p>
-            
-            <div className="space-y-3 pt-1">
-              <label className="flex items-center gap-2 font-bold text-zinc-750 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={proxyUse}
-                  onChange={(e) => setProxyUse(e.target.checked)}
-                  className="rounded text-teal-600 focus:ring-teal-500 pointer-events-auto"
-                />
-                <span>회사망 프록시 사용 활성화 (Enable Proxy)</span>
-              </label>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="space-y-1 md:col-span-3">
-                  <span className="block text-[11px] font-semibold text-zinc-600">프록시 서버 주소/호스트 명</span>
-                  <input
-                    type="text"
-                    value={proxyHost}
-                    onChange={(e) => setProxyHost(e.target.value)}
-                    placeholder="예: proxy.company.com 또는 10.150.1.20"
-                    disabled={!proxyUse}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="block text-[11px] font-semibold text-zinc-600">포트 (Port)</span>
-                  <input
-                    type="text"
-                    value={proxyPort}
-                    onChange={(e) => setProxyPort(e.target.value)}
-                    placeholder="예: 8080"
-                    disabled={!proxyUse}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                  />
-                </div>
-              </div>
+            {/* Collagen Diagnosis (상세 진단 보기) */}
+            <div className="border-t border-dashed border-black/10 pt-2 font-sans font-sans">
+              <details className="group">
+                <summary className="flex items-center gap-1 text-[11px] font-bold text-zinc-500 group-hover:text-zinc-805 cursor-pointer list-none select-none font-sans">
+                  <span className="transition-transform duration-150 group-open:rotate-90 text-[9px] inline-block font-sans">▶</span>
+                  <span className="font-sans">상세 진단 보기</span>
+                </summary>
+                
+                <div className="mt-2 space-y-2 bg-white/65 p-3 rounded-lg border border-black/5 text-[11px] font-sans">
+                  {syncFeedback.stats && (
+                    <div className="space-y-1.5 text-zinc-700 font-sans">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-zinc-700 font-sans">
+                        <div>• 달력일수: <strong className="font-mono text-zinc-900">{(() => {
+                          const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
+                          return new Date(Number(activeYear), checkM, 0).getDate();
+                        })()}일</strong></div>
+                        <div>• API 요청일수: <strong className="font-mono text-zinc-900">{syncFeedback.stats.requestedDays}일</strong></div>
+                        <div>• 조회 성공: <strong className="font-mono text-teal-700">{syncFeedback.stats.successCount}일</strong></div>
+                        <div>• 요청 후 빈응답: <strong className="font-mono text-zinc-900">{syncFeedback.stats.emptyCount}일</strong></div>
+                        <div>• 비조회일 (주말): <strong className="font-mono text-zinc-900">{(() => {
+                          const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
+                          const lastD = new Date(Number(activeYear), checkM, 0).getDate();
+                          return lastD - syncFeedback.stats.requestedDays;
+                        })()}일</strong></div>
+                      </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-zinc-200 pt-3">
-                <div className="space-y-1">
-                  <span className="block text-[11px] font-semibold text-zinc-600">사용자 계정 (ID) - 선택사항</span>
-                  <input
-                    type="text"
-                    value={proxyUser}
-                    onChange={(e) => setProxyUser(e.target.value)}
-                    placeholder="Proxy Username"
-                    disabled={!proxyUse}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="block text-[11px] font-semibold text-zinc-600">비밀번호 (Secret) - 선택사항</span>
-                  <input
-                    type="password"
-                    value={proxyPass}
-                    onChange={(e) => setProxyPass(e.target.value)}
-                    placeholder="••••••••"
-                    disabled={!proxyUse}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
-                  />
-                </div>
-              </div>
+                      <div className="text-[10px] text-zinc-400 font-sans">
+                        * endpoint: <code className="bg-zinc-100 px-0.5 py-0.2 rounded font-mono">oapi.koreaexim.go.kr</code>, SSL: <span className="font-semibold text-teal-850">truststore</span> 자동 신뢰 모드 가동 중
+                      </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-200">
-                <button
-                  type="button"
-                  onClick={() => setShowProxySettings(false)}
-                  className="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-250 rounded text-zinc-700 font-bold cursor-pointer transition-colors text-[11px]"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveProxySettings}
-                  className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded font-bold cursor-pointer transition-colors text-[11px]"
-                >
-                  프록시 설정 저장 적용
-                </button>
-              </div>
+                      {syncFeedback.type !== 'success' && (
+                        <div className="border-t border-dashed border-black/5 pt-1.5 text-rose-700 font-sans">
+                          <strong>상세 원인:</strong> {syncFeedback.stats.majorFailureReason || "외부 API 서버 응답 지연 또는 네트워크 이상"}
+                          {getContextualFailureGuidance(syncFeedback.stats.majorFailureReason || "")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </details>
             </div>
           </div>
         )}
 
-        {eximKeyMissing && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-850 rounded-xl text-[11px] leading-relaxed flex items-center gap-2 font-semibold font-sans">
-            <span className="text-sm">⚠️</span>
-            <span>
-              국책은행 외환고시 API 연동을 위한 인증키(EXIM_API_KEY) 설정이 누락되어 있습니다. 
-              이에 따라 실시간 자동 고시 환율 동기화 및 가공/임의 환율 수동 저장이 제한됩니다.
-            </span>
-          </div>
-        )}
+        {/* Corporate Proxy Configuration: Show only if connectivity failures occur or is toggleable */}
+        {(() => {
+          const hasConnectionError = syncFeedback?.stats?.majorFailureReason?.toUpperCase().includes('CONNECT') ||
+                                     syncFeedback?.stats?.majorFailureReason?.toUpperCase().includes('TIMEOUT') ||
+                                     syncFeedback?.stats?.majorFailureReason?.toUpperCase().includes('SSL') ||
+                                     showProxySettings;
+
+          if (hasConnectionError) {
+            return (
+              <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200 space-y-3 text-xs font-sans">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-zinc-800 flex items-center gap-1.5 font-sans">
+                    <Settings className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>고급 프록시(Proxy) 게이트웨이 연동 설정</span>
+                  </span>
+                  {!showProxySettings && (
+                    <button
+                      onClick={() => setShowProxySettings(true)}
+                      className="text-[10.5px] text-zinc-500 hover:text-zinc-800 font-bold underline cursor-pointer font-sans"
+                    >
+                      설정 패널 열기
+                    </button>
+                  )}
+                </div>
+
+                {showProxySettings && (
+                  <div className="space-y-3 pt-1">
+                    <p className="text-zinc-600 text-[10.5px] leading-relaxed">
+                      사내 인프라/방화벽으로 인한 TCP 접속 한계점이 식별될 때 프록시 우회 매개 변수를 직접 정의해 주십시오.
+                    </p>
+
+                    <label className="flex items-center gap-2 font-semibold text-zinc-750 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={proxyUse}
+                        onChange={(e) => setProxyUse(e.target.checked)}
+                        className="rounded text-teal-600 focus:ring-teal-500 pointer-events-auto"
+                      />
+                      <span>회사망 프록시 사용 활성화 (Enable Proxy)</span>
+                    </label>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="space-y-1 md:col-span-3">
+                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">프록시 서버 주소/호스트 명</span>
+                        <input
+                          type="text"
+                          value={proxyHost}
+                          onChange={(e) => setProxyHost(e.target.value)}
+                          placeholder="예: proxy.company.com"
+                          disabled={!proxyUse}
+                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">포트 (Port)</span>
+                        <input
+                          type="text"
+                          value={proxyPort}
+                          onChange={(e) => setProxyPort(e.target.value)}
+                          placeholder="8080"
+                          disabled={!proxyUse}
+                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-zinc-200 pt-2.5">
+                      <div className="space-y-1">
+                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">사용자 계정 (선택사항)</span>
+                        <input
+                          type="text"
+                          value={proxyUser}
+                          onChange={(e) => setProxyUser(e.target.value)}
+                          placeholder="username"
+                          disabled={!proxyUse}
+                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="block text-[10px] font-semibold text-zinc-500 font-sans">비밀번호 (선택사항)</span>
+                        <input
+                          type="password"
+                          value={proxyPass}
+                          onChange={(e) => setProxyPass(e.target.value)}
+                          placeholder="••••••••"
+                          disabled={!proxyUse}
+                          className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-1.5 pt-1.5 border-t border-zinc-200">
+                      <button
+                        onClick={() => setShowProxySettings(false)}
+                        className="px-2.5 py-1.5 bg-zinc-200 hover:bg-zinc-250 text-zinc-700 font-semibold rounded text-[10.5px] cursor-pointer font-sans"
+                      >
+                        취소
+                      </button>
+                      <button
+                        onClick={handleSaveProxySettings}
+                        className="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-850 text-white font-bold rounded text-[10.5px] cursor-pointer font-sans"
+                      >
+                        프록시 설정 저장
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
 
       {/* Mid-section KPI Cards */}
