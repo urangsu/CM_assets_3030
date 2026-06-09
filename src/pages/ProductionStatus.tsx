@@ -2,167 +2,173 @@ import React, { useState, useEffect } from 'react';
 import { 
   Activity, 
   Search, 
-  RefreshCw, 
-  Settings, 
-  TrendingUp, 
-  AlertCircle,
-  Calendar,
-  Layers,
+  Calendar, 
   ArrowUpRight,
   ArrowDownRight,
-  ChevronRight,
-  Info
+  Info 
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
-  AreaChart, 
-  Area, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
-  Tooltip,
-  Legend,
-  BarChart,
-  Bar
+  Tooltip, 
+  Legend, 
+  AreaChart, 
+  Area 
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, ProductLedgerRecord } from '../lib/operation/operationStorage';
+import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
 
 export default function ProductionStatus() {
   const navigate = useNavigate();
   const [activeYear, setActiveYear] = useState<string>('2026');
   const [activeMonth, setActiveMonth] = useState<string>('all'); // 'all' or '1'~'12'
+  const [currencyMode, setCurrencyMode] = useState<'KRW' | 'USD'>('KRW');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterProduct, setFilterProduct] = useState('all');
 
   const [realRecords, setRealRecords] = useState<ProductLedgerRecord[]>([]);
   const [isSampleData, setIsSampleData] = useState<boolean>(false);
 
+  // Load production records or fallback to seeds
   const loadData = () => {
     const list = OperationStorage.getProductRecords(activeYear);
     if (list && list.length > 0) {
       setRealRecords(list);
       setIsSampleData(false);
     } else {
-      // Use sample data matching the 5 canonical products for production
-      setRealRecords(getSampleProductionData(activeYear));
+      setRealRecords(getSeedProductionRecords(activeYear));
       setIsSampleData(true);
     }
   };
 
   useEffect(() => {
     loadData();
-
-    const handler = () => {
-      loadData();
-    };
-    window.addEventListener('operation-ledger-changed', handler);
+    window.addEventListener('operation-ledger-changed', loadData);
     return () => {
-      window.removeEventListener('operation-ledger-changed', handler);
+      window.removeEventListener('operation-ledger-changed', loadData);
     };
   }, [activeYear]);
 
-  // Production sample data generator
-  const getSampleProductionData = (yearStr: string): ProductLedgerRecord[] => {
+  // Seed detailed records for simulation
+  const getSeedProductionRecords = (yearStr: string): ProductLedgerRecord[] => {
     const months = Array.from({ length: 12 }, (_, i) => i + 1);
-    const sampleRecords: ProductLedgerRecord[] = [];
+    const result: ProductLedgerRecord[] = [];
 
     const products = [
       { name: '황산니켈' as const, metal: 'Ni' as const, baseQty: 130, unitPrice: 24_000_000 },
-      { name: '황산코발트' as const, metal: 'Co' as const, baseQty: 50, unitPrice: 58_000_000 },
-      { name: '탄산리튬' as const, metal: 'Li' as const, baseQty: 90, unitPrice: 38_000_000 },
-      { name: '황산망간' as const, metal: 'Mn' as const, baseQty: 160, unitPrice: 12_000_000 },
-      { name: '구리' as const, metal: 'Cu' as const, baseQty: 320, unitPrice: 9_500_000 },
+      { name: '황산코발트' as const, metal: 'Co' as const, baseQty: 48, unitPrice: 58_000_000 },
+      { name: '탄산리튬' as const, metal: 'Li' as const, baseQty: 85, unitPrice: 38_000_000 },
+      { name: '황산망간' as const, metal: 'Mn' as const, baseQty: 155, unitPrice: 12_000_000 },
+      { name: '구리' as const, metal: 'Cu' as const, baseQty: 310, unitPrice: 9_500_000 },
     ];
 
-    months.forEach((m) => {
-      const factor = 0.9 + Math.sin((m / 6) * Math.PI) * 0.15 + (m % 4) * 0.03;
-
-      products.forEach((p) => {
+    months.forEach(m => {
+      const factor = 0.88 + Math.sin((m / 6) * Math.PI) * 0.18;
+      products.forEach(p => {
         const prodQty = Math.round(p.baseQty * factor);
-        const prodAmt = Math.round(prodQty * p.unitPrice * 0.85); // approximate production cost
+        const prodAmt = prodQty * p.unitPrice * 0.78; // estimated production cost value
 
-        // Create qty record
-        const recQty: ProductLedgerRecord = {
-          id: `sample_prod_${yearStr}_${m}_${p.name}_수량`,
+        const rec: ProductLedgerRecord = {
+          id: `seed_prod_${yearStr}_${m}_${p.name}_수량`,
           year: yearStr,
           month: m,
           sourceType: '제품수불부',
           sourceRowStartIndex: 0,
-          rawProductName: `${p.metal} ${p.name}`,
+          rawProductName: p.name,
           productName: p.name,
           metal: p.metal,
           unit: '수량',
-          beginningInventory: Math.round(prodQty * p.unitPrice),
-          normalReceipt: prodQty, // D열 정상입고 = 생산량
+          beginningInventory: Math.round(prodQty * 1.15),
+          normalReceipt: prodQty, // normalReceipt (정상입고) on quantity is the designated production quantity!
           transferReceipt: 0,
           returnReceipt: 0,
           otherReceipt: 0,
           receiptTotal: prodQty,
-          salesQuantity: Math.round(prodQty * 0.95),
+          salesQuantity: Math.round(prodQty * 0.94),
           reInput: 0,
           compensation: 0,
           sample: 0,
           transferIssue: 0,
           disposal: 0,
           otherIssue: 0,
-          issueTotal: Math.round(prodQty * 0.95),
-          endingInventory: Math.round(prodQty * 1.1),
+          issueTotal: Math.round(prodQty * 0.94),
+          endingInventory: Math.round(prodQty * 1.25),
           inventoryValuationLoss: 0,
           valuationApplied: 0,
           revenue: prodQty * p.unitPrice,
-          costOfSales: prodQty * p.unitPrice * 0.8,
-          grossProfit: prodQty * p.unitPrice * 0.2,
+          costOfSales: prodQty * p.unitPrice * 0.81,
+          grossProfit: prodQty * p.unitPrice * 0.19,
           uploadedAt: new Date().toISOString()
         };
 
         // Lithium conversion
         if (p.name === '탄산리튬') {
           const rate = 18.75;
-          recQty.conversionRate = rate;
-          recQty.convertedSalesQuantity = recQty.salesQuantity / (rate / 100);
-          recQty.convertedProductionQuantity = prodQty / (rate / 100);
-          recQty.convertedEndingInventory = recQty.endingInventory / (rate / 100);
+          rec.conversionRate = rate;
+          rec.convertedProductionQuantity = prodQty / (rate / 100);
+          rec.convertedSalesQuantity = rec.salesQuantity / (rate / 100);
+          rec.convertedEndingInventory = rec.endingInventory / (rate / 100);
         } else {
-          recQty.convertedSalesQuantity = recQty.salesQuantity;
-          recQty.convertedProductionQuantity = prodQty;
-          recQty.convertedEndingInventory = recQty.endingInventory;
+          rec.convertedProductionQuantity = prodQty;
+          rec.convertedSalesQuantity = rec.salesQuantity;
+          rec.convertedEndingInventory = rec.endingInventory;
         }
 
-        // Create amt record
+        result.push(rec);
+
+        // Add corresponding '금액' row for price calculation
         const recAmt: ProductLedgerRecord = {
-          ...recQty,
-          id: `sample_prod_${yearStr}_${m}_${p.name}_금액`,
+          ...rec,
+          id: `seed_prod_${yearStr}_${m}_${p.name}_금액`,
           unit: '금액',
           normalReceipt: prodAmt,
         };
-
-        sampleRecords.push(recQty);
-        sampleRecords.push(recAmt);
+        result.push(recAmt);
       });
     });
 
-    return sampleRecords;
+    return result;
   };
 
-  // 1. Separate unit types
+  // Convert and Format Currency
+  const getExchangeRate = (mNum?: number) => {
+    const month = mNum || (activeMonth === 'all' ? 5 : Number(activeMonth));
+    return ExchangeRateStorage.getRate(activeYear, month);
+  };
+
+  const convertAmount = (krwVal: number, mNum?: number) => {
+    if (currencyMode === 'USD') {
+      return krwVal / getExchangeRate(mNum);
+    }
+    return krwVal;
+  };
+
+  const formatCurrency = (val: number) => {
+    if (currencyMode === 'USD') {
+      return `$${Math.round(val).toLocaleString()}`;
+    }
+    return `₩${Math.round(val / 1_000_000).toLocaleString()}M`;
+  };
+
+  // Separate records
   const qtyRecords = realRecords.filter(r => r.unit === '수량');
   const amtRecords = realRecords.filter(r => r.unit === '금액');
 
-  // Filter records based on selected dropdown month/search
   const filteredQtyRecords = qtyRecords.filter(r => {
     if (activeMonth !== 'all' && Number(r.month) !== Number(activeMonth)) return false;
     if (filterProduct !== 'all' && r.productName !== filterProduct) return false;
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
-      return r.productName.toLowerCase().includes(q) || r.rawProductName.toLowerCase().includes(q);
+      return r.productName.toLowerCase().includes(q);
     }
     return true;
   });
 
-  // Aggregate by canonical product
+  // Aggregates map
   const CANONICAL_PRODUCTS = [
     { name: '황산니켈' as const, metal: 'Ni' as const },
     { name: '황산코발트' as const, metal: 'Co' as const },
@@ -171,55 +177,52 @@ export default function ProductionStatus() {
     { name: '구리' as const, metal: 'Cu' as const },
   ];
 
-  const productAggregatesMap = new Map<string, {
+  const productAggMap = new Map<string, {
     productName: '황산니켈' | '황산코발트' | '탄산리튬' | '황산망간' | '구리';
     metal: 'Ni' | 'Co' | 'Li' | 'Mn' | 'Cu';
-    productionQty: number;      // normalReceipt on '수량'
-    convertedQty: number;       // convertedProductionQuantity on '수량'
-    productionAmt: number;      // normalReceipt on '금액'
+    productionQty: number; // normalReceipt qty
+    convertedQty: number; // convertedProductionQuantity qty
+    productionAmt: number; // normalReceipt amt
   }>();
 
   CANONICAL_PRODUCTS.forEach(p => {
-    productAggregatesMap.set(p.name, {
+    productAggMap.set(p.name, {
       productName: p.name,
       metal: p.metal,
       productionQty: 0,
       convertedQty: 0,
-      productionAmt: 0,
+      productionAmt: 0
     });
   });
 
-  // Calculate aggregates for filtered period
   filteredQtyRecords.forEach(qRec => {
-    const existing = productAggregatesMap.get(qRec.productName);
+    const existing = productAggMap.get(qRec.productName);
     if (existing) {
       existing.productionQty += qRec.normalReceipt || 0;
       existing.convertedQty += qRec.convertedProductionQuantity || qRec.normalReceipt || 0;
-      
-      // Look up corresponding amount row to sum production amount
-      const matchingAmt = amtRecords.find(a => a.productName === qRec.productName && Number(a.month) === Number(qRec.month));
-      if (matchingAmt) {
-        existing.productionAmt += matchingAmt.normalReceipt || 0;
+
+      const amtRow = amtRecords.find(a => a.productName === qRec.productName && Number(a.month) === Number(qRec.month));
+      if (amtRow) {
+        existing.productionAmt += amtRow.normalReceipt || 0;
       }
     }
   });
 
-  const aggregateList = Array.from(productAggregatesMap.values()).filter(item => {
+  const finalTableData = Array.from(productAggMap.values()).filter(item => {
     if (filterProduct !== 'all' && item.productName !== filterProduct) return false;
     return true;
   });
 
-  // KPI Calculations
-  const totalProduction = aggregateList.reduce((acc, item) => acc + item.productionQty, 0);
-  const totalConvertedProduction = aggregateList.reduce((acc, item) => acc + item.convertedQty, 0);
-  const totalProductionAmtSum = aggregateList.reduce((acc, item) => acc + item.productionAmt, 0);
+  // KPIs
+  const totalProductionTons = finalTableData.reduce((acc, item) => acc + item.productionQty, 0);
+  const totalConvertedProductionTons = finalTableData.reduce((acc, item) => acc + item.convertedQty, 0);
+  const totalProductionAmtValue = finalTableData.reduce((acc, item) => acc + item.productionAmt, 0);
 
-  // Carbonate Lithium Converted KPI
-  const lithiumAgg = productAggregatesMap.get('탄산리튬');
-  const lithiumConvertedProd = lithiumAgg ? lithiumAgg.convertedQty : 0;
+  const lithiumObj = productAggMap.get('탄산리튬');
+  const lithiumConvertedProd = lithiumObj ? lithiumObj.convertedQty : 0;
 
-  // Month-on-month (MoM) calculation
-  let MoMText = '이동 평균 유지';
+  // MoM
+  let MoMText = '안정적 생산중';
   let MoMValue = 0;
   let isMoMUp = true;
 
@@ -231,23 +234,23 @@ export default function ProductionStatus() {
     if (prevMonth >= 1) {
       const prevMonthQty = qtyRecords.filter(r => Number(r.month) === prevMonth);
       const prevSum = prevMonthQty.reduce((acc, r) => acc + (r.normalReceipt || 0), 0);
-      
+
       if (prevSum > 0) {
         MoMValue = ((currentSum - prevSum) / prevSum) * 100;
         isMoMUp = MoMValue >= 0;
-        MoMText = `${MoMValue >= 0 ? '전월 대비 증가' : '전월 대비 감소'} (${Math.abs(MoMValue).toFixed(1)}%)`;
+        MoMText = `${MoMValue >= 0 ? '전월대비 증가' : '전월대비 감소'} (${Math.abs(MoMValue).toFixed(1)}%)`;
       } else {
-        MoMText = '직전월 데이터 없음';
+        MoMText = '직전 월 데이터 누락';
       }
     } else {
-      MoMText = '연초 기준점 (1월)';
+      MoMText = '연초 첫 정산 (1월)';
     }
   } else {
-    MoMText = '연간 안정 운영상태';
+    MoMText = '연간 누적 생산 지표';
   }
 
-  // Monthly trend for Recharts Area
-  const monthlyTrendData = Array.from({ length: 12 }, (_, i) => {
+  // Monthly Chart Feed
+  const monthlyAreaTrend = Array.from({ length: 12 }, (_, i) => {
     const mNum = i + 1;
     const monthQtyRows = qtyRecords.filter(r => Number(r.month) === mNum);
     const normalProd = monthQtyRows.reduce((acc, r) => acc + (r.normalReceipt || 0), 0);
@@ -255,145 +258,146 @@ export default function ProductionStatus() {
 
     return {
       month: `${mNum}월`,
-      '일반 생산량': normalProd,
-      'Li 보정 환산량': convertedProd
+      '생산실물량': normalProd,
+      '환산량': convertedProd
     };
   });
 
   return (
     <div className="space-y-6">
-      {/* Banner / Warning indicator if viewing sample data */}
+      {/* Simulation Banner */}
       {isSampleData && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xs animate-fade">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <p className="font-bold">⚠️ SAMPLE DATA (샘플 시뮬레이션 활용중)</p>
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex items-start gap-2.5 text-xs">
+            <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">⚠️ RUNNING SAMPLE (생산 샘플 모드)</p>
               <p className="text-[#647067] mt-0.5">
-                현재 업로드된 제품수불부 원본 자료가 없으므로 화면 설명용 샘플 데이터가 가동 중입니다. 
-                실제 생산수불을 반영하려면 [운영 업로드]에서 엑셀 수불부를 업로드해 주십시오.
+                현재 업로드된 제품수불 정보가 모자라 정수 샘플 데이터가 표시됩니다. 실무 엑셀을 업로드하시려면 운영 업로드로 이동하십시오.
               </p>
             </div>
           </div>
-          <AppButton 
+          <AppButton
             onClick={() => navigate('/operation-upload')}
-            className="text-xs bg-amber-500 text-white hover:bg-amber-600 font-bold border-0 shrink-0"
+            className="text-xs bg-amber-500 text-white hover:bg-amber-600 font-bold border-none"
           >
-            운영 수불부 업로드로 이동
-            <ChevronRight className="w-3.5 h-3.5 ml-1 inline" />
+            운영 업로드 바로가기
           </AppButton>
         </div>
       )}
 
-      {/* Header Banner */}
+      {/* Header Panel */}
       <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs bg-zinc-100 text-[#4e5968] px-2.5 py-0.5 rounded font-bold font-mono">Factory Floor</span>
-            <span className="text-xs bg-teal-50 text-[#008f83] px-2 py-0.5 rounded font-bold">수불부 자동 생산량</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs bg-[#008f83]/10 text-[#008f83] px-2 py-0.5 rounded font-bold font-sans">실무 생산현황</span>
           </div>
-          <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
-            제품 수불 연동 생산 실적 판넬
-          </h2>
+          <h2 className="text-[20px] font-bold text-zinc-900 leading-tight mt-1">생산 현황</h2>
           <p className="text-xs text-zinc-500 mt-1">
-            제품수불부의 &apos;D열 정상입고&apos; 열을 기준으로 집계된 당기 정품 생산 실량 및 LCO/NCM 보정 단위의 환산 실적을 진단합니다.
+            제품수불부의 정상입고(D열) 컬럼 데이터를 연계 추출하여 실제 제조 공장의 정품 인출 생산량 및 탄산리튬 환산 실질 지표를 비교합니다.
           </p>
         </div>
 
-        {/* Global Year/Month Filters */}
-        <div className="flex items-center gap-2.5 bg-[#f8f9fa] p-2 rounded-xl border border-zinc-150">
-          <Calendar className="w-4 h-4 text-zinc-400 font-bold" />
-          <select
-            value={activeYear}
-            onChange={(e) => setActiveYear(e.target.value)}
-            className="text-xs font-semibold bg-transparent border-0 focus:ring-0 cursor-pointer"
-          >
-            {['2024', '2025', '2026', '2027', '2028'].map(yr => (
-              <option key={yr} value={yr}>{yr}년</option>
-            ))}
-          </select>
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Currency Switcher */}
+          <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
+            <button
+              onClick={() => setCurrencyMode('KRW')}
+              className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                currencyMode === 'KRW' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-500'
+              }`}
+            >
+              원화 보기
+            </button>
+            <button
+              onClick={() => setCurrencyMode('USD')}
+              className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
+                currencyMode === 'USD' ? 'bg-white text-indigo-700 shadow-xs' : 'text-zinc-500'
+              }`}
+            >
+              달러 보기
+            </button>
+          </div>
 
-          <span className="text-zinc-300">|</span>
-
-          <select
-            value={activeMonth}
-            onChange={(e) => setActiveMonth(e.target.value)}
-            className="text-xs font-semibold bg-transparent border-0 focus:ring-0 cursor-pointer"
-          >
-            <option value="all">연간 전체</option>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-              <option key={m} value={String(m)}>{m}월 합산</option>
-            ))}
-          </select>
+          {/* Time Picker */}
+          <div className="flex items-center bg-[#f8f9fa] border border-zinc-150 p-2 rounded-xl text-xs">
+            <Calendar className="w-4 h-4 text-zinc-400 mr-1.5" />
+            <select
+              value={activeYear}
+              onChange={(e) => setActiveYear(e.target.value)}
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700"
+            >
+              {['2024', '2025', '2026', '2027', '2028'].map(yr => (
+                <option key={yr} value={yr}>{yr}년</option>
+              ))}
+            </select>
+            <span className="text-zinc-300 mx-1">|</span>
+            <select
+              value={activeMonth}
+              onChange={(e) => setActiveMonth(e.target.value)}
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700"
+            >
+              <option value="all">연간 전체</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                <option key={m} value={String(m)}>{m}월</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* KPI stats */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-[#dde5de] p-5 rounded-xl shadow-xs">
-          <span className="text-xs text-[#647067] font-bold block">총 생산량 (D열 정상입고)</span>
-          <span className="text-xl font-bold text-zinc-900 font-mono mt-1 block">{totalProduction.toLocaleString()} Mt</span>
+        <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
+          <span className="text-[10.5px] text-[#647067] font-bold block">총 생산 실물량</span>
+          <span className="text-xl font-bold text-zinc-900 font-mono mt-1 block">{totalProductionTons.toLocaleString()} Mt</span>
         </div>
-        <div className="bg-white border border-[#dde5de] p-5 rounded-xl shadow-xs">
-          <span className="text-xs text-[#008f83] font-bold block font-sans">보정 환산 생산 총중량</span>
-          <span className="text-xl font-bold text-[#008f83] font-mono mt-1 block">{totalConvertedProduction.toLocaleString()} Mt</span>
+        <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
+          <span className="text-[10.5px] text-teal-800 font-bold block">총 환산 생산량</span>
+          <span className="text-xl font-bold text-teal-700 font-mono mt-1 block">{totalConvertedProductionTons.toLocaleString()} Mt</span>
         </div>
-        <div className="bg-white border border-[#dde5de] p-5 rounded-xl shadow-xs">
-          <span className="text-xs text-zinc-500 font-bold block">탄산리튬 환산 생산실적</span>
-          <span className="text-xl font-bold text-purple-700 font-mono mt-1 block">{lithiumConvertedProd.toLocaleString(undefined, { maximumFractionDigits: 1 })} Mt</span>
+        <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
+          <span className="text-[10.5px] text-indigo-700 font-bold block">탄산리튬 환산 생산량</span>
+          <span className="text-xl font-bold text-indigo-805 font-mono mt-1 block">{lithiumConvertedProd.toLocaleString(undefined, { maximumFractionDigits: 1 })} Mt</span>
         </div>
-        <div className={`p-5 rounded-xl shadow-xs border ${
-          activeMonth !== 'all' && MoMValue < 0 
-            ? 'bg-rose-50/50 border-rose-150' 
-            : 'bg-emerald-50/50 border-emerald-150'
-        }`}>
-          <span className="text-xs text-[#008f83] font-bold block">전월 대비 생산 증감 (MoM)</span>
-          <div className="flex items-center gap-1.5 mt-1">
-            {activeMonth !== 'all' && MoMValue !== 0 ? (
-              isMoMUp ? (
-                <ArrowUpRight className="w-4 h-4 text-emerald-600 shrink-0 font-bold" />
-              ) : (
-                <ArrowDownRight className="w-4 h-4 text-rose-600 shrink-0 font-bold" />
-              )
-            ) : null}
-            <span className={`text-md font-bold font-mono ${
-              activeMonth !== 'all' && MoMValue < 0 ? 'text-rose-700' : 'text-emerald-800'
-            }`}>
-              {MoMText}
-            </span>
-          </div>
+        <div className="bg-[#f0fcf9] border border-teal-150 p-5 rounded-2xl shadow-xs">
+          <span className="text-[10.5px] text-teal-800 font-bold block">총 생산가치 (정상입고 금액)</span>
+          <span className="text-xl font-bold text-emerald-800 font-mono mt-1 block">
+            {formatCurrency(convertAmount(totalProductionAmtValue))}
+          </span>
         </div>
       </div>
 
       {/* Area chart */}
       <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
         <h3 className="text-xs font-bold text-[#111111] mb-4 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-[#008f83]" /> {activeYear}년 제품 수불 월별 원 생산량 vs Li 보정 환산 생산량 추이
+          <Activity className="w-4 h-4 text-[#008f83]" /> {activeYear}년 월별 완제품 생산 실물량 vs 보충 환산량 추세
         </h3>
         <div className="h-[210px] w-full font-mono text-xs">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={monthlyTrendData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+            <AreaChart data={monthlyAreaTrend} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2ec" />
               <XAxis dataKey="month" stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
               <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
               <Tooltip formatter={(v: any) => [`${Number(v).toLocaleString()} Mt`, '']} />
               <Legend iconType="circle" />
-              <Area type="monotone" name="일반 생산량 (수량)" dataKey="일반 생산량" stroke="#008f83" fill="#e2ede3" strokeWidth={2} />
-              <Area type="monotone" name="Li 보정 환산 생산량" dataKey="Li 보정 환산량" stroke="#3182ce" fill="#ebf8ff" strokeWidth={1.5} />
+              <Area type="monotone" name="생산 실물량 (정상입고)" dataKey="생산실물량" stroke="#008f83" fill="#e2ede3" strokeWidth={2} />
+              <Area type="monotone" name="보정 환산 생산량" dataKey="환산량" stroke="#3182ce" fill="#ebf8ff" strokeWidth={1.5} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Filter Selector */}
-      <div className="bg-white p-4.5 rounded-xl border border-[#dde5de] flex items-center gap-3">
-        <span className="text-xs font-bold text-[#333333] font-sans">조회 제품 필터:</span>
+      {/* Filtration Selector */}
+      <div className="bg-white p-4 rounded-xl border border-[#dde5de] flex items-center gap-3">
+        <span className="text-xs font-bold text-zinc-700">핵심제품 필터:</span>
         <select
           value={filterProduct}
           onChange={(e) => setFilterProduct(e.target.value)}
-          className="text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:border-teal-500 focus:outline-none w-full sm:w-60"
+          className="text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:outline-none focus:border-teal-500 w-full sm:w-60"
         >
-          <option value="all">전체 Canonical 제품군 [All]</option>
+          <option value="all">전체 Canonical 핵심제품군 [All]</option>
           <option value="황산니켈">황산니켈 (Ni)</option>
           <option value="황산코발트">황산코발트 (Co)</option>
           <option value="탄산리튬">탄산리튬 (Li)</option>
@@ -407,43 +411,40 @@ export default function ProductionStatus() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full text-xs p-2 bg-[#f7f9f7] border border-[#dde5de] rounded-xl focus:border-teal-500 focus:bg-white focus:outline-none"
-            placeholder="제품명 원본 텍스트 매치 검색..."
+            className="w-full text-xs p-2 bg-[#f7f9f7] border border-[#dde5de] rounded-xl focus:bg-white focus:outline-none"
+            placeholder="제품명 검색..."
           />
         </div>
       </div>
 
-      {/* Production DataTable Grid */}
+      {/* Production Details Table */}
       <div className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden">
         <table className="min-w-full divide-y divide-[#eef2ec] text-left">
           <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider">
             <tr>
-              <th className="px-5 py-3">정품 생산 품목명</th>
-              <th className="px-5 py-3 text-center">연동 메탈</th>
-              <th className="px-5 py-3 text-right font-bold">생산 실물량 (Mt)</th>
-              <th className="px-5 py-3 text-right">보정 환산 생산량 (Mt)</th>
-              <th className="px-5 py-3 text-right">생산금액 (D열 금액)</th>
-              <th className="px-5 py-3 text-right">평균 생산 기회단가 / Mt</th>
+              <th className="px-5 py-3.5">제품명구분</th>
+              <th className="px-5 py-3.5 text-center">연동메탈</th>
+              <th className="px-5 py-3.5 text-right font-extrabold text-zinc-800">생산 실물량 (정상입고)</th>
+              <th className="px-5 py-3.5 text-right font-bold text-indigo-700">보정 환산 생산량</th>
+              <th className="px-5 py-3.5 text-right font-semibold">정가 금액 가치</th>
+              <th className="px-5 py-3.5 text-right">평균 환산 추이가격 / Mt</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
-            {aggregateList.map((row) => {
-              const avgPrice = row.productionQty > 0 ? Math.round(row.productionAmt / row.productionQty) : 0;
+            {finalTableData.map(row => {
+              const displayAmt = convertAmount(row.productionAmt);
+              const avgPrc = row.productionQty > 0 ? (displayAmt / row.productionQty) : 0;
+
               return (
-                <tr key={row.productName} className="hover:bg-[#f7f9f7]/55">
-                  <td className="px-5 py-3.5 font-bold text-zinc-900">
-                    {row.productName}
-                    {row.productName === '탄산리튬' && (
-                      <span className="ml-1 px-1.5 py-0.5 bg-indigo-55 text-indigo-700 rounded text-[9px] font-bold">Li 보정형</span>
-                    )}
+                <tr key={row.productName} className="hover:bg-[#f7f9f7]/55 font-mono">
+                  <td className="px-5 py-3.5 font-bold font-sans text-zinc-900">{row.productName}</td>
+                  <td className="px-5 py-3.5 text-center font-bold text-zinc-405">
+                    <span className="bg-slate-100 text-zinc-650 text-[10px] px-2.5 py-0.5 rounded font-mono">{row.metal}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-center font-bold text-zinc-500 font-mono">
-                    <span className="bg-zinc-100 px-2 py-0.5 rounded text-[10px]">{row.metal}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono font-bold text-teal-800">{row.productionQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} Mt</td>
-                  <td className="px-5 py-3.5 text-right font-mono text-zinc-700 font-bold bg-indigo-50/5">{row.convertedQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} Mt</td>
-                  <td className="px-5 py-3.5 text-right font-mono text-zinc-550">₩{row.productionAmt.toLocaleString()}</td>
-                  <td className="px-5 py-3.5 text-right font-mono text-zinc-400">₩{avgPrice.toLocaleString()}/Mt</td>
+                  <td className="px-5 py-3.5 text-right text-zinc-950 font-bold">{row.productionQty.toLocaleString()} Mt</td>
+                  <td className="px-5 py-3.5 text-right text-indigo-850 font-extrabold bg-indigo-50/5">{row.convertedQty.toLocaleString()} Mt</td>
+                  <td className="px-5 py-3.5 text-right text-zinc-700">{formatCurrency(displayAmt)}</td>
+                  <td className="px-5 py-3.5 text-right text-zinc-450">{formatCurrency(avgPrc)}/Mt</td>
                 </tr>
               );
             })}

@@ -202,11 +202,12 @@ const NAV_GROUPS_DEF: NavGroup[] = [
   {
     group: "6단계. 운영 모듈",
     items: [
-      { id: 'operation-upload', label: '운영 업로드', icon: 'upload', href: '/operation-upload' },
-      { id: 'purchase-status', label: '원료 구매', icon: 'cube', href: '/purchase-status' },
+      { id: 'operation-dashboard', label: '운영 대시보드', icon: 'grid', href: '/operation-dashboard' },
       { id: 'sales-status', label: '판매 현황', icon: 'bar', href: '/sales-status' },
-      { id: 'production-status', label: '생산 실적', icon: 'trend', href: '/production-status' },
-      { id: 'raw-material-status', label: '원자재 현황', icon: 'cube', href: '/raw-material-status' }
+      { id: 'production-status', label: '생산 현황', icon: 'trend', href: '/production-status' },
+      { id: 'product-status', label: '제품 수불 현황', icon: 'list', href: '/product-status' },
+      { id: 'raw-material-status', label: '원자재 수불 현황', icon: 'cube', href: '/raw-material-status' },
+      { id: 'operation-upload', label: '운영 업로드', icon: 'upload', href: '/operation-upload' }
     ]
   },
   {

@@ -24,6 +24,8 @@ import ProductionStatus from './pages/ProductionStatus';
 import RawMaterialStatus from './pages/RawMaterialStatus';
 import DepartmentAssignment from './pages/DepartmentAssignment';
 import OperationUpload from './pages/OperationUpload';
+import OperationDashboard from './pages/OperationDashboard';
+import ProductStatus from './pages/ProductStatus';
 
 export default function App() {
   return (
@@ -57,9 +59,11 @@ export default function App() {
         <Route path="/budget-lock-management" element={<Layout><BudgetLockManagement /></Layout>} />
 
         {/* 5. 비즈니스 운영 모듈 */}
+        <Route path="/operation-dashboard" element={<Layout><OperationDashboard /></Layout>} />
         <Route path="/operation-upload" element={<Layout><OperationUpload /></Layout>} />
         <Route path="/sales-status" element={<Layout><SalesStatus /></Layout>} />
         <Route path="/purchase-status" element={<Layout><PurchaseStatus /></Layout>} />
+        <Route path="/product-status" element={<Layout><ProductStatus /></Layout>} />
         <Route path="/production-status" element={<Layout><ProductionStatus /></Layout>} />
         <Route path="/raw-material-status" element={<Layout><RawMaterialStatus /></Layout>} />
 
