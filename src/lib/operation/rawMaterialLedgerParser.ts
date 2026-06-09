@@ -36,44 +36,67 @@ export function isRawItemCode(text: string): boolean {
   return true;
 }
 
-export function resolveRawMaterialGroup(rawCode: string, amountRowName: string, priceRowName: string): 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타' {
+export function resolveRawMaterialGroup(
+  rawCode: string,
+  amountRowName: string,
+  priceRowName: string
+): 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타' {
   const code = String(rawCode || '').trim().toUpperCase();
-  const text = `${rawCode} ${amountRowName} ${priceRowName}`.toUpperCase();
+  const amount = String(amountRowName || '').trim().toUpperCase();
+  const price = String(priceRowName || '').trim().toUpperCase();
 
-  // 1. LCO 우선
-  if (code.startsWith('BLCO') || text.includes('LCO')) {
+  const context = `${code} ${amount} ${price}`
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // 1. LCO: 코드 또는 하위 라벨에 LCO가 있으면 LCO
+  if (
+    code.startsWith('BLCO') ||
+    /\bLCO\b/.test(context) ||
+    context.includes('LITHIUM COBALT')
+  ) {
     return 'LCO';
   }
 
-  // 2. WET 우선
-  // B622WE-USA-ABT, B622WT-..., B622WET-... 같은 코드가 여기에 들어와야 한다.
-  if (
-    /^B\d*(WE|WT|WET)/.test(code) ||
-    code.includes('-WE') ||
-    code.includes('-WT') ||
-    code.includes('-WET') ||
-    text.includes('WET BM') ||
-    text.includes('WET')
-  ) {
+  // 2. WET: 반드시 BM보다 먼저 판단
+  // B622WE-USA-ABT, B622WT-..., B622WET-...,
+  // 622 Wet(ABTC), Wet BM 모두 WET
+  const wetSignals = [
+    /^B\d*WE[A-Z0-9-]*/.test(code),
+    /^B\d*WT[A-Z0-9-]*/.test(code),
+    /^B\d*WET[A-Z0-9-]*/.test(code),
+    code.includes('-WE'),
+    code.includes('-WT'),
+    code.includes('-WET'),
+    /\bWET\b/.test(context),
+    context.includes('WET BM'),
+    context.includes('WETBM'),
+  ];
+
+  if (wetSignals.some(Boolean)) {
     return 'WET';
   }
 
-  // 3. BP = 811 계열
+  // 3. BP: 811 계열만 BP
   if (code.includes('811')) {
     return 'BP';
   }
 
-  // 4. BM = 622 계열 중 WET 제외
+  // 4. BM: 622 계열 중 WET 제외
   if (code.includes('622')) {
     return 'BM';
   }
 
-  // 5. 망간은 상세에는 남기되 4대 원료 요약에서는 제외 가능
-  if (code.startsWith('MN') || text.includes('망간') || text.includes('MN')) {
+  // 5. 망간류
+  if (
+    code.startsWith('MN') ||
+    /\bMN\b/.test(context) ||
+    context.includes('망간')
+  ) {
     return 'MN';
   }
 
-  // 6. 111, 523 등은 BP로 넣지 않는다.
+  // 6. 111, 523 등은 BP로 넣지 않음
   return '기타';
 }
 
@@ -91,6 +114,46 @@ export function getRawMaterialGroup(rawCode: string, amountRowName: string, pric
     }
   }
   return resolveRawMaterialGroup(code, amountRowName, priceRowName);
+}
+
+const RAW_GROUP_MAPPING_VERSION_KEY = 'hycm_raw_material_group_mapping_version';
+const RAW_GROUP_MAPPING_VERSION = '2026_raw_group_v3_contextual';
+
+export function migrateRawMaterialGroupMapping() {
+  if (typeof window === 'undefined') return;
+  const current = localStorage.getItem(RAW_GROUP_MAPPING_VERSION_KEY);
+
+  if (current === RAW_GROUP_MAPPING_VERSION) return;
+
+  const stored = localStorage.getItem('hycm_raw_material_group_mapping');
+
+  if (stored) {
+    try {
+      const mapping = JSON.parse(stored);
+
+      // 기존 잘못된 기본 매핑 제거
+      delete mapping['B622WE-USA-ABT'];
+      delete mapping['B622WT-USA-ABT'];
+      delete mapping['B622WET-USA-ABT'];
+
+      // 111/523을 BP로 박아둔 과거 매핑도 제거
+      Object.keys(mapping).forEach((key) => {
+        const code = key.toUpperCase();
+        if (
+          (code.includes('111') || code.includes('523')) &&
+          mapping[key] === 'BP'
+        ) {
+          delete mapping[key];
+        }
+      });
+
+      localStorage.setItem('hycm_raw_material_group_mapping', JSON.stringify(mapping));
+    } catch {
+      localStorage.removeItem('hycm_raw_material_group_mapping');
+    }
+  }
+
+  localStorage.setItem(RAW_GROUP_MAPPING_VERSION_KEY, RAW_GROUP_MAPPING_VERSION);
 }
 
 const COL = {

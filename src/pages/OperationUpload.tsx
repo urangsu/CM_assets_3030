@@ -19,7 +19,7 @@ import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { PRODUCT_NAME_MAP, getLithiumConversionRates, saveLithiumConversionRates } from '../lib/operation/productMaster';
 import { parseProductLedgerRows, ProductLedgerRecord } from '../lib/operation/productLedgerParser';
-import { parseRawMaterialLedgerRows, resolveRawMaterialGroup } from '../lib/operation/rawMaterialLedgerParser';
+import { parseRawMaterialLedgerRows, resolveRawMaterialGroup, migrateRawMaterialGroupMapping } from '../lib/operation/rawMaterialLedgerParser';
 import { OperationStorage, OperationUploadHistory, RawMaterialLedgerRecord } from '../lib/operation/operationStorage';
 import * as XLSX from 'xlsx';
 
@@ -97,15 +97,8 @@ export default function OperationUpload() {
     setHistoryList(OperationStorage.getUploadHistory());
     setLithiumRates(getLithiumConversionRates());
 
-    const RAW_GROUP_MAPPING_VERSION_KEY = 'hycm_raw_material_group_mapping_version';
-    const RAW_GROUP_MAPPING_VERSION = '2026_raw_group_v2';
-
-    // Migrate old incorrect default mapping
-    const currentVer = localStorage.getItem(RAW_GROUP_MAPPING_VERSION_KEY);
-    if (currentVer !== RAW_GROUP_MAPPING_VERSION) {
-      localStorage.removeItem('hycm_raw_material_group_mapping');
-      localStorage.setItem(RAW_GROUP_MAPPING_VERSION_KEY, RAW_GROUP_MAPPING_VERSION);
-    }
+    // Execute version migration for raw material group mapping
+    migrateRawMaterialGroupMapping();
 
     const storedMapping = localStorage.getItem('hycm_raw_material_group_mapping');
     if (storedMapping) {
