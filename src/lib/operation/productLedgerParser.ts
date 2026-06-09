@@ -102,15 +102,29 @@ export function parseProductLedgerRows(
         const nextUnit = String(nextRow[1] || '').trim();
         const nextProdName = String(nextRow[0] || '').trim();
 
-        // If we hit another product name or "수량", stop searching
-        if (nextUnit === '수량' || (nextProdName && nextProdName !== prodName && resolveProductByRawName(nextProdName))) {
+        // 다음 수량 행이 나오면 다음 제품 시작
+        if (nextUnit === '수량') {
           break;
         }
 
+        // 금액/단가 행은 A열 이름이 달라도 현재 제품 묶음으로 본다
         if (nextUnit === '금액' && !amountRow) {
           amountRow = nextRow;
-        } else if (nextUnit === '단가' && !priceRow) {
+          continue;
+        }
+
+        if (nextUnit === '단가' && !priceRow) {
           priceRow = nextRow;
+          continue;
+        }
+
+        // 금액/단가도 아닌데 다른 제품으로 인식되면 중단
+        const nextResolved = resolveProductByRawName(nextProdName);
+        if (
+          nextResolved &&
+          nextResolved.canonicalProductName !== resolved.canonicalProductName
+        ) {
+          break;
         }
       }
 

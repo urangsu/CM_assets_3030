@@ -12,7 +12,8 @@ import {
   Clipboard, 
   Info, 
   FileText, 
-  Calendar 
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
@@ -29,6 +30,13 @@ function parseNumber(val: any): number {
   if (str === '-' || str === '') return 0;
   const num = Number(str);
   return Number.isNaN(num) ? 0 : num;
+}
+
+function formatPageKRWMillion(val: number): string {
+  if (!Number.isFinite(val) || val === 0) return '-';
+  const millionVal = Math.round(val / 1_000_000);
+  if (millionVal < 0) return `-₩${Math.abs(millionVal).toLocaleString()}백만원`;
+  return `₩${millionVal.toLocaleString()}백만원`;
 }
 
 export default function OperationUpload() {
@@ -48,6 +56,10 @@ export default function OperationUpload() {
       sales: number;
       endingInventory: number;
       revenue: number;
+      costOfSales: number;
+      grossProfit: number;
+      missingCostProductsCount: number;
+      missingCostProducts: string[];
     };
     records: any[];
     error?: string;
@@ -74,6 +86,8 @@ export default function OperationUpload() {
   const [lithiumRates, setLithiumRates] = useState<Record<string, number>>({});
   const [editingYear, setEditingYear] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState<string>('');
+  const [purgeYear, setPurgeYear] = useState<string>('2026');
+  const [purgeMonth, setPurgeMonth] = useState<number>(5);
 
   const [rawGroupMapping, setRawGroupMapping] = useState<Record<string, 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타'>>({});
   const [newMappingCode, setNewMappingCode] = useState('');
@@ -159,7 +173,7 @@ export default function OperationUpload() {
               success: false,
               rowLength: 0,
               parsedProducts: [],
-              summary: { production: 0, sales: 0, endingInventory: 0, revenue: 0 },
+              summary: { production: 0, sales: 0, endingInventory: 0, revenue: 0, costOfSales: 0, grossProfit: 0, missingCostProductsCount: 0, missingCostProducts: [] },
               records: [],
               error: '엑셀 파일에 활성화된 시트가 없습니다.'
             });
@@ -175,7 +189,7 @@ export default function OperationUpload() {
             success: false,
             rowLength: 0,
             parsedProducts: [],
-            summary: { production: 0, sales: 0, endingInventory: 0, revenue: 0 },
+            summary: { production: 0, sales: 0, endingInventory: 0, revenue: 0, costOfSales: 0, grossProfit: 0, missingCostProductsCount: 0, missingCostProducts: [] },
             records: [],
             error: `파일 파싱 중 에러 발생: ${err.message || err}`
           });
@@ -191,7 +205,7 @@ export default function OperationUpload() {
           success: false,
           rowLength: 0,
           parsedProducts: [],
-          summary: { production: 0, sales: 0, endingInventory: 0, revenue: 0 },
+          summary: { production: 0, sales: 0, endingInventory: 0, revenue: 0, costOfSales: 0, grossProfit: 0, missingCostProductsCount: 0, missingCostProducts: [] },
           records: [],
           error: `붙여넣기 데이터 형식 및 탭 분할 오류: ${err.message || err}`
         });
@@ -209,7 +223,16 @@ export default function OperationUpload() {
         success: false,
         rowLength: 0,
         parsedProducts: [],
-        summary: { production: 0, sales: 0, endingInventory: 0, revenue: 0 },
+        summary: {
+          production: 0,
+          sales: 0,
+          endingInventory: 0,
+          revenue: 0,
+          costOfSales: 0,
+          grossProfit: 0,
+          missingCostProductsCount: 0,
+          missingCostProducts: []
+        },
         records: [],
         error: '황산니켈, 황산코발트, 탄산리튬, 황산망간, 구리 등 인식 가능한 제품 수불 묶음(B열단위=수량/금액/단가)을 찾을 수 없거나 데이터 서식이 맞지 않습니다.'
       });
@@ -225,9 +248,14 @@ export default function OperationUpload() {
     const salesSum = qtyRecords.reduce((acc, r) => acc + (r.salesQuantity || 0), 0);
     const endInvSum = qtyRecords.reduce((acc, r) => acc + (r.endingInventory || 0), 0);
     
-    // Revenue from '수량' unit row T-column (represented inside each record instance already)
-    // T열은 수량 Row에 매출액이 저장됨
+    // Revenue, cost, and profit aggregates
     const revenueSum = qtyRecords.reduce((acc, r) => acc + (r.revenue || 0), 0);
+    const costSum = qtyRecords.reduce((acc, r) => acc + (r.costOfSales || 0), 0);
+    const profitSum = qtyRecords.reduce((acc, r) => acc + (r.grossProfit || 0), 0);
+
+    const missingCostProducts = qtyRecords
+      .filter(r => (r.revenue || 0) > 0 && (r.costOfSales || 0) === 0)
+      .map(r => r.productName);
 
     setValidationResult({
       success: true,
@@ -237,7 +265,11 @@ export default function OperationUpload() {
         production: productionSum,
         sales: salesSum,
         endingInventory: endInvSum,
-        revenue: revenueSum
+        revenue: revenueSum,
+        costOfSales: costSum,
+        grossProfit: profitSum,
+        missingCostProductsCount: missingCostProducts.length,
+        missingCostProducts
       },
       records: parsed
     });
@@ -498,6 +530,19 @@ export default function OperationUpload() {
     }
   };
 
+  const handleManualPurgeProduct = () => {
+    if (window.confirm(`[경고] 정말로 ${purgeYear}년 ${purgeMonth}월의 모든 제품수불부 저장 데이터를 삭제하시겠습니까? 관련 이력과 실적 등이 모두 제거되며 되돌릴 수 없습니다.`)) {
+      OperationStorage.deleteProductRecordsForMonth(purgeYear, purgeMonth);
+      const currentHistoryList = OperationStorage.getUploadHistory();
+      const match = currentHistoryList.find(h => h.year === purgeYear && Number(h.month) === Number(purgeMonth) && h.type === 'product');
+      if (match) {
+        OperationStorage.deleteUploadHistory(match.id);
+      }
+      handleUpdateHistoryAndList();
+      alert(`[완료] ${purgeYear}년 ${purgeMonth}월 제품수불부 원본 데이터가 강제 삭제 및 초기화되었습니다.`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm">
@@ -643,7 +688,11 @@ export default function OperationUpload() {
               <AppButton 
                 onClick={activeTab === 'product' ? handleSaveProductLedger : handleSaveRawMaterial} 
                 className="bg-brand-500 text-white hover:bg-brand-600"
-                disabled={activeTab === 'product' ? !validationResult?.success : (!rawValidationResult || rawValidationResult.errorCount > 0)}
+                disabled={
+                  activeTab === 'product' 
+                    ? (!validationResult?.success || (validationResult?.summary?.missingCostProductsCount ?? 0) > 0)
+                    : (!rawValidationResult || rawValidationResult.errorCount > 0)
+                }
               >
                 <Save className="w-4 h-4 mr-1.5 inline-block" />
                 수불부 최종 반영 및 저장
@@ -680,7 +729,7 @@ export default function OperationUpload() {
                           <span className="text-zinc-500 font-semibold">인식된 제품군 ({validationResult.parsedProducts.length}개):</span>
                           <span className="font-bold text-slate-850 text-right">{validationResult.parsedProducts.join(', ')}</span>
                         </div>
-                        <div className="border-t border-[#e5e8eb] my-2 pt-2 text-[11px] font-bold text-[#4e5968] uppercase font-mono">수량 & 손익 누적 지표</div>
+                        <div className="border-t border-[#e5e8eb] my-2 pt-2 text-[11px] font-bold text-[#4e5968] uppercase font-mono">수량 지표</div>
                         <div className="flex justify-between text-[11px]">
                           <span className="text-zinc-500">당기 생산 (D열 합계):</span>
                           <span className="font-bold font-mono text-emerald-700">{validationResult.summary.production.toLocaleString()} Pt/Mt</span>
@@ -693,11 +742,36 @@ export default function OperationUpload() {
                           <span className="text-zinc-500">기말재고 (Q열 합계):</span>
                           <span className="font-bold font-mono text-amber-700">{validationResult.summary.endingInventory.toLocaleString()} Pt/Mt</span>
                         </div>
+
+                        <div className="border-t border-[#e5e8eb] my-2 pt-2 text-[11px] font-bold text-[#4e5968] uppercase font-mono">손익 인식 지표 (백만원 단위)</div>
                         <div className="flex justify-between text-[11px]">
-                          <span className="text-zinc-500">매출액 (T열 합계):</span>
-                          <span className="font-bold font-mono text-purple-700">₩{validationResult.summary.revenue.toLocaleString()}</span>
+                          <span className="text-zinc-500">매출액 합계:</span>
+                          <span className="font-bold font-mono text-[#008f83]">{formatPageKRWMillion(validationResult.summary.revenue)}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-zinc-500">매출원가 합계:</span>
+                          <span className="font-bold font-mono text-indigo-700">{formatPageKRWMillion(validationResult.summary.costOfSales)}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-zinc-500">매출이익 합계:</span>
+                          <span className="font-bold font-mono text-purple-700">{formatPageKRWMillion(validationResult.summary.grossProfit)}</span>
                         </div>
                       </div>
+
+                      {validationResult.summary.missingCostProductsCount > 0 && (
+                        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl space-y-1.5 animate-pulse">
+                          <p className="font-bold text-[11px] flex items-center gap-1 text-rose-700">
+                            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                            매출원가 인식 누락 발생 ({validationResult.summary.missingCostProductsCount}개 품목)
+                          </p>
+                          <p className="text-[10.5px] leading-relaxed animate-pulse">
+                            매출액은 존재하나 매출원가가 ₩0으로 감지된 제품이 있습니다: <strong className="font-semibold">{validationResult.summary.missingCostProducts.join(', ')}</strong>
+                          </p>
+                          <p className="text-[10px] text-zinc-500 font-medium">
+                            *금액 행을 인식하지 못했을 가능성이 큽니다. 데이터 파싱 안전장치를 위해 저장이 차단됩니다. 엑셀 수불부를 확인하여 주십시오.
+                          </p>
+                        </div>
+                      )}
 
                       <p className="text-[10px] text-zinc-400 italic">
                         *참고: 탄산리튬은 Li 함량({getLithiumConversionRates()[year] || 18.75}%)에 따라 자동 환산 계수가 적용되었습니다.
@@ -934,6 +1008,43 @@ export default function OperationUpload() {
             <AppButton onClick={handleUpdateHistoryAndList} variant="secondary" className="text-xs">
               <RefreshCw className="w-3.5 h-3.5 mr-1 inline-block" /> 이력 새로고침
             </AppButton>
+          </div>
+
+          {/* 선택 연월 제품수불부 삭제 기능 */}
+          <div className="mb-6 p-4 bg-rose-50/50 border border-rose-100 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="space-y-1">
+              <span className="font-bold text-[#191f28] block">특정 연월 데이터 강제 제거 (수동 초기화)</span>
+              <p className="text-[11px] text-zinc-500">
+                선택하신 귀속 연월의 제품수불부 원본 데이터를 수동으로 즉시 삭제하여 초기화합니다. (파싱 오류 발생 시 사전 정리용)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={purgeYear}
+                onChange={(e) => setPurgeYear(e.target.value)}
+                className="bg-white border border-zinc-250 rounded-lg p-1.5 px-2 text-xs font-semibold"
+              >
+                {['2024', '2025', '2026', '2027', '2028'].map(y => (
+                  <option key={y} value={y}>{y}년</option>
+                ))}
+              </select>
+              <select
+                value={purgeMonth}
+                onChange={(e) => setPurgeMonth(Number(e.target.value))}
+                className="bg-white border border-zinc-250 rounded-lg p-1.5 px-2 text-xs font-semibold"
+              >
+                {Array.from({ length: 12 }, (_, idx) => idx + 1).map(m => (
+                  <option key={m} value={m}>{m}월</option>
+                ))}
+              </select>
+              <button
+                onClick={handleManualPurgeProduct}
+                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold p-1.5 px-3 rounded-lg text-[11px] transition-colors cursor-pointer border-none"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                선택 연월 제품수불부 삭제
+              </button>
+            </div>
           </div>
 
           {historyList.length === 0 ? (

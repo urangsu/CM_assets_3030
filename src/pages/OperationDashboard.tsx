@@ -162,7 +162,7 @@ export default function OperationDashboard() {
       return `$${Math.round(usdVal / 1_000).toLocaleString()}K`;
     }
     // KRW
-    return isKPI ? formatKRWBillion(valueKRW) : formatKRWMillion(valueKRW);
+    return formatKRWMillion(valueKRW);
   };
 
   const handleExchangeAutoSync = async () => {

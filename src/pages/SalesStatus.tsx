@@ -7,7 +7,8 @@ import {
   DollarSign,
   Briefcase,
   Layers,
-  ArrowUpRight 
+  ArrowUpRight,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -141,15 +142,15 @@ export default function SalesStatus() {
     return krwVal;
   };
 
-  // Currency utility specifically adjusted for KPIs and Tables
+  // Currency utility specifically adjusted for KPIs and Tables (strictly formatting in Millions KRW, no Billions)
   const formatCurrencyValue = (val: number, isKPI: boolean = false) => {
     if (val === 0) return '-';
     if (currencyMode === 'USD') {
       const usdVal = val / (isKPI ? 1_000_000 : 1_000);
       return isKPI ? `$${usdVal.toFixed(1)}M` : `$${Math.round(usdVal).toLocaleString()}K`;
     }
-    // For KRW
-    return isKPI ? formatKRWBillion(val) : formatKRWMillion(val);
+    // For KRW - strictly format in millions
+    return formatKRWMillion(val);
   };
 
   // Filter records to target month & unit of type '수량'
@@ -168,8 +169,14 @@ export default function SalesStatus() {
   // KPI calculations based on filtered records
   const totalRevenueKRW = filteredRecords.reduce((acc, r) => acc + (r.revenue || 0), 0);
   const totalCostKRW = filteredRecords.reduce((acc, r) => acc + (r.costOfSales || 0), 0);
-  const totalProfitKRW = totalRevenueKRW - totalCostKRW;
+  const totalProfitKRWFromLedger = filteredRecords.reduce((acc, r) => acc + (r.grossProfit || 0), 0);
+  const totalProfitKRW = totalProfitKRWFromLedger !== 0
+    ? totalProfitKRWFromLedger
+    : totalRevenueKRW - totalCostKRW;
   const marginPercent = totalRevenueKRW > 0 ? (totalProfitKRW / totalRevenueKRW) * 100 : 0;
+
+  // Detect products with revenue but zero cost of sales (indicates 3-row parser mismatch/broken data)
+  const zeroCostProducts = filteredRecords.filter(r => (r.revenue || 0) > 0 && (r.costOfSales || 0) === 0);
 
   // N/C/LC ONLY volume calculation (황산니켈, 황산코발트, 탄산리튬)
   const SALES_VOLUME_PRODUCTS = new Set(['황산니켈', '황산코발트', '탄산리튬']);
@@ -186,7 +193,8 @@ export default function SalesStatus() {
     const rev = matched.reduce((acc, r) => acc + (r.revenue || 0), 0);
     const cos = matched.reduce((acc, r) => acc + (r.costOfSales || 0), 0);
     const endingQty = matched.reduce((acc, r) => acc + (r.endingInventory || 0), 0);
-    const profit = rev - cos;
+    const grossProfitFromLedger = matched.reduce((acc, r) => acc + (r.grossProfit || 0), 0);
+    const profit = grossProfitFromLedger !== 0 ? grossProfitFromLedger : rev - cos;
     const profitMargin = rev > 0 ? (profit / rev) * 100 : 0;
     const avgPrice = salesQty > 0 ? (rev / salesQty) : 0;
 
@@ -217,7 +225,8 @@ export default function SalesStatus() {
     const mNum = i + 1;
     const mRows = filterByUnit.filter(r => Number(r.month) === mNum);
     const revenue = mRows.reduce((acc, r) => acc + (r.revenue || 0), 0);
-    const profit = revenue - mRows.reduce((acc, r) => acc + (r.costOfSales || 0), 0);
+    const profitFromLedger = mRows.reduce((acc, r) => acc + (r.grossProfit || 0), 0);
+    const profit = profitFromLedger !== 0 ? profitFromLedger : revenue - mRows.reduce((acc, r) => acc + (r.costOfSales || 0), 0);
 
     return {
       month: `${mNum}월`,
@@ -245,6 +254,28 @@ export default function SalesStatus() {
             className="text-xs bg-amber-500 text-white hover:bg-amber-600 font-bold border-none cursor-pointer"
           >
             운영 업로드 바로가기
+          </AppButton>
+        </div>
+      )}
+
+      {/* Zero Cost Mismatch Warning Panel */}
+      {zeroCostProducts.length > 0 && !isSampleData && (
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-pulse">
+          <div className="flex items-start gap-2.5 text-xs">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-rose-700">⚠️ 매출원가 누락 데이터 감지 (수불부 3행 매핑 경고)</p>
+              <p className="text-[#841c1c] mt-0.5 leading-relaxed">
+                현재 {activeYear}년 {activeMonth === 'all' ? '전체 기간' : `${activeMonth}월`} 데이터 중 매출액은 발생했으나 매출원가가 ₩0으로 기록된 품목({Array.from(new Set(zeroCostProducts.map(p => `${p.productName} (${p.month}월)`))).join(', ')})이 감지되었습니다. 
+                금액/단가행 인식 누락 가능성이 큽니다. [운영 업로드] 탭에서 수불부 파싱 양식을 재점검하거나 삭제 후 재반영하십시오.
+              </p>
+            </div>
+          </div>
+          <AppButton
+            onClick={() => navigate('/operation-upload')}
+            className="text-xs bg-rose-600 text-white hover:bg-rose-700 font-bold border-none cursor-pointer"
+          >
+            데이터 정비하기
           </AppButton>
         </div>
       )}
