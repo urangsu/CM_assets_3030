@@ -241,102 +241,292 @@ async function startServer() {
     }
   });
 
+  // Year-range normalizing functions for exim proxy
+  function normalize_year(year: any): number {
+    const y = parseInt(String(year || "").trim(), 10);
+    if (isNaN(y)) return 2026;
+    if (y < 100) {
+      return 2000 + y;
+    }
+    return y;
+  }
+
+  function make_searchdate(year: any, month: any, day: any): string {
+    const y = normalize_year(year);
+    const m = parseInt(String(month || "").trim(), 10);
+    const d = parseInt(String(day || "").trim(), 10);
+    return `${y.toString().padStart(4, "0")}${m.toString().padStart(2, "0")}${d.toString().padStart(2, "0")}`;
+  }
+
+  function maskApiKey(key: string): string {
+    const cleanKey = String(key || "").trim();
+    if (!cleanKey) return "none";
+    if (cleanKey.length <= 8) return "****";
+    return `${cleanKey.substring(0, 4)}****${cleanKey.substring(cleanKey.length - 4)}`;
+  }
+
   // check if EXIM_API_KEY is configured
   app.get("/api/exim-key-status", (req, res) => {
     const apiKey = process.env.EXIM_API_KEY;
     const hasKey = !!(apiKey && apiKey !== "MY_EXIM_API_KEY" && apiKey.trim() !== "");
-    res.json({ hasKey });
+    const masked = apiKey ? maskApiKey(apiKey) : "none";
+    res.json({ hasKey, masked });
   });
 
   // Korea Exim Bank Exchange Rate API (Monthly Average calculation)
   app.get("/api/exim-monthly-average-rate", async (req, res) => {
+    interface FetchDetail {
+      date: string;
+      status: "success" | "empty" | "http_error" | "parse_error" | "no_usd" | "invalid_key" | "network_error";
+      rate: number;
+      message: string;
+    }
+
     try {
       const year = String(req.query.year || "2026");
       const month = Number(req.query.month || 5);
       
-      const apiKey = process.env.EXIM_API_KEY;
-      if (!apiKey || apiKey === "MY_EXIM_API_KEY" || apiKey.trim() === "") {
-        console.warn("[EXIM API] EXIM_API_KEY is not configured in .env");
+      const apiKeyRaw = process.env.EXIM_API_KEY;
+      const apiKey = String(apiKeyRaw || "").trim();
+
+      // Check key validation before calling API
+      if (!apiKey || apiKey === "MY_EXIM_API_KEY" || apiKey === "") {
+        console.warn("[EXIM API] EXIM_API_KEY is missing or invalid in server environment.");
         return res.json({
           success: false,
+          status: "invalid_key",
           reason: "API_KEY_MISSING",
-          message: "EXIM_API_KEY가 서버 환경변수에 설정되지 않았습니다."
+          message: "한국수출입은행 API 인증키가 설정되지 않았거나 올바르지 않습니다.",
+          requestedDays: 0,
+          successCount: 0,
+          emptyCount: 0,
+          apiErrorCount: 0,
+          networkErrorCount: 0,
+          averageRate: 0,
+          policy: "key_missing",
+          majorFailureReason: "한국수출입은행 API 키가 비어 있습니다.",
+          details: []
         });
       }
 
-      const y = Number(year);
+      const y = normalize_year(year);
       const m = Number(month);
       const lastDay = new Date(y, m, 0).getDate(); // Get last day of that month
 
+      console.log(`[EXIM API Proxy Monthly] API key loaded: ${maskApiKey(apiKey)}`);
       console.log(`[EXIM API Proxy Monthly] Querying average rate for ${y}-${m} (Days: 1 to ${lastDay})`);
 
       // Prepare promise array for parallel resolution to prevent slow waterfall queries
       const fetchPromises = Array.from({ length: lastDay }, (_, index) => {
         const day = index + 1;
-        const paramDate = `${y}${String(m).padStart(2, "0")}${String(day).padStart(2, "0")}`;
+        const paramDate = make_searchdate(y, m, day);
         const requestUrl = `https://www.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${encodeURIComponent(apiKey)}&searchdate=${paramDate}&data=AP01`;
 
-        return (async () => {
+        // Log the first request URL with authkey masked
+        if (day === 1) {
+          const maskedUrl = `https://www.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${maskApiKey(apiKey)}&searchdate=${paramDate}&data=AP01`;
+          console.log(`[EXIM API Request Example URL]: ${maskedUrl}`);
+        }
+
+        return (async (): Promise<FetchDetail> => {
           try {
             const response = await fetch(requestUrl, {
               headers: {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
                 "Accept": "application/json"
               },
-              signal: AbortSignal.timeout(2000)
+              signal: AbortSignal.timeout(3000)
             });
 
-            if (!response.ok) return null;
-            const rawData: any = await response.json();
-            if (Array.isArray(rawData) && rawData.length > 0) {
+            if (!response.ok) {
+              return {
+                date: paramDate,
+                status: "http_error",
+                rate: 0,
+                message: `HTTP 에러 발생 (Status: ${response.status})`
+              };
+            }
+
+            let rawData: any;
+            try {
+              rawData = await response.json();
+            } catch (jsonErr) {
+              return {
+                date: paramDate,
+                status: "parse_error",
+                rate: 0,
+                message: "JSON 응답 파싱 실패"
+              };
+            }
+
+            // Exim API check for explicit invalid key report
+            if (rawData && rawData.result !== undefined && rawData.result !== 1) {
+              return {
+                date: paramDate,
+                status: "invalid_key",
+                rate: 0,
+                message: `API 인증 실패 (인증오류코드: ${rawData.result}, 메세지: ${rawData.message || "인증 실패"})`
+              };
+            }
+
+            if (Array.isArray(rawData)) {
+              if (rawData.length === 0) {
+                return {
+                  date: paramDate,
+                  status: "empty",
+                  rate: 0,
+                  message: "데이터 미공시 영업일 외 (주말/공휴일 등)"
+                };
+              }
+
               const usdRecord = rawData.find((item: any) => item.cur_unit === "USD" || item.cur_unit === "usd");
               if (usdRecord && usdRecord.deal_bas_r) {
                 const rateStr = String(usdRecord.deal_bas_r).replace(/,/g, "");
                 const rateVal = parseFloat(rateStr);
                 if (!isNaN(rateVal) && rateVal > 0) {
-                  return rateVal;
+                  return {
+                    date: paramDate,
+                    status: "success",
+                    rate: rateVal,
+                    message: "조회 성공"
+                  };
                 }
               }
+
+              return {
+                date: paramDate,
+                status: "no_usd",
+                rate: 0,
+                message: "공시 목록 내 USD 통화 정보 없음"
+              };
             }
-          } catch (e) {
-            // Soft ignore single external transient failures/weekend errors to proceed
+
+            return {
+              date: paramDate,
+              status: "parse_error",
+              rate: 0,
+              message: "알 수 없는 응답 형식"
+            };
+
+          } catch (e: any) {
+            return {
+              date: paramDate,
+              status: "network_error",
+              rate: 0,
+              message: `네트워크/연결 시간 초과 발생: ${e.message || "Unknown"}`
+            };
           }
-          return null;
         })();
       });
 
       const results = await Promise.all(fetchPromises);
-      const validRates = results.filter((rate): rate is number => rate !== null);
-      const businessDayCount = validRates.length;
 
-      if (businessDayCount < 10) {
-        console.warn(`[EXIM API Proxy Monthly] Insufficient business days fetched: ${businessDayCount}/10 required.`);
-        return res.json({
-          success: false,
-          reason: "INSUFFICIENT_DATA",
-          message: `공시된 영업일 데이터가 부족하여 신뢰할 수 있는 월평균 환율을 구하지 못했습니다. (조회 성공: ${businessDayCount}일, 최소 필요: 10일)`
-        });
+      let successCount = 0;
+      let emptyCount = 0;
+      let apiErrorCount = 0;
+      let networkErrorCount = 0;
+      const validRates: number[] = [];
+
+      results.forEach(res => {
+        if (res.status === "success") {
+          successCount++;
+          validRates.push(res.rate);
+        } else if (res.status === "empty" || res.status === "no_usd") {
+          emptyCount++;
+        } else if (res.status === "invalid_key" || res.status === "http_error" || res.status === "parse_error") {
+          apiErrorCount++;
+        } else if (res.status === "network_error") {
+          networkErrorCount++;
+        }
+      });
+
+      // Flexible rate threshold policies based on historical vs current month targets
+      const now = new Date();
+      const currentY = now.getFullYear();
+      const currentM = now.getMonth() + 1;
+
+      const isCurrentOrFutureMonth = (y > currentY) || (y === currentY && m >= currentM);
+
+      let averageRate = 0;
+      let policy = "";
+      let canCalculate = false;
+
+      if (!isCurrentOrFutureMonth) {
+        // Historical Month: requires at least 10 business days
+        if (successCount >= 10) {
+          canCalculate = true;
+          policy = "past_month_confirmed";
+        } else {
+          policy = "past_month_insufficient";
+        }
+      } else {
+        // Current/Future Month
+        if (successCount >= 10) {
+          canCalculate = true;
+          policy = "current_month_confirmed";
+        } else if (successCount >= 3) {
+          canCalculate = true;
+          policy = "current_month_temp_average";
+        } else {
+          policy = "current_month_insufficient";
+        }
       }
 
-      const sum = validRates.reduce((acc, val) => acc + val, 0);
-      const averageRate = Math.round((sum / businessDayCount) * 10) / 10; // Round to 1 decimal place
+      if (canCalculate && validRates.length > 0) {
+        const sum = validRates.reduce((acc, val) => acc + val, 0);
+        averageRate = Math.round((sum / validRates.length) * 10) / 10;
+      }
 
-      console.log(`[EXIM API Proxy Monthly] Success. Average: ${averageRate} over ${businessDayCount} business days.`);
+      // Diagnose top failure reason when successCount is 0
+      let majorFailureReason = "";
+      if (successCount === 0) {
+        const keyErr = results.find(r => r.status === "invalid_key");
+        if (keyErr) {
+          majorFailureReason = `${keyErr.message} (인증키 형식을 점검해 주십시오.)`;
+        } else if (apiErrorCount > 0) {
+          const firstErr = results.find(r => r.status === "http_error" || r.status === "parse_error");
+          majorFailureReason = firstErr ? `${firstErr.message} (상태: ${firstErr.status})` : "API 호출 서버 에러";
+        } else if (networkErrorCount > 0) {
+          majorFailureReason = "네트워크 연결 시간 초과 또는 국책은행 API 서버 무응답";
+        } else {
+          majorFailureReason = "조회 대상 기간의 일자가 모두 공휴일/미공시 상태입니다.";
+        }
+      }
+
       return res.json({
-        success: true,
-        year,
+        success: canCalculate && successCount > 0,
+        status: canCalculate && successCount > 0 ? "success" : (apiErrorCount > 0 ? "http_error" : "empty"),
+        year: y,
         month: m,
         currency: "USD",
+        requestedDays: lastDay,
+        successCount,
+        emptyCount,
+        apiErrorCount,
+        networkErrorCount,
         averageRate,
-        businessDayCount,
-        source: "koreaexim_monthly_average"
+        policy,
+        majorFailureReason,
+        exampleRequestDate: make_searchdate(y, m, 1),
+        expectedFormat: "YYYYMMDD",
+        details: results
       });
     } catch (outerError: any) {
       console.error("[EXIM API Proxy Monthly Outer Error]:", outerError);
       return res.status(500).json({
         success: false,
+        status: "parse_error",
         reason: "SERVER_ERROR",
-        message: outerError.message || "서버 내부 처리 중 월평균 환율 계산 장애가 발생했습니다."
+        message: outerError.message || "서버 내부 처리 중 월평균 환율 계산 장애가 발생했습니다.",
+        requestedDays: 0,
+        successCount: 0,
+        emptyCount: 0,
+        apiErrorCount: 1,
+        networkErrorCount: 0,
+        averageRate: 0,
+        policy: "error",
+        majorFailureReason: outerError.message || "서버 예외 오류",
+        details: []
       });
     }
   });

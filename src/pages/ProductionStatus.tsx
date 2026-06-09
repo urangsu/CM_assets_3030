@@ -22,6 +22,16 @@ import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, ProductLedgerRecord } from '../lib/operation/operationStorage';
 import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
 
+// Conversion utility for production quantities
+// display_qty = raw_qty / 1000 (지정: "raw가 kg일 때만")
+// tick_format = "#,##0.0" (keeps one trailing decimal digit)
+function formatQty(rawQty: number): string {
+  if (!Number.isFinite(rawQty) || rawQty === 0) return '-';
+  const isRawKg = rawQty > 1000;
+  const display_qty = isRawKg ? rawQty / 1000 : rawQty;
+  return display_qty.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 export default function ProductionStatus() {
   const navigate = useNavigate();
   const [activeYear, setActiveYear] = useState<string>('2026');
@@ -257,10 +267,15 @@ export default function ProductionStatus() {
     const normalProd = monthQtyRows.reduce((acc, r) => acc + (r.normalReceipt || 0), 0);
     const convertedProd = monthQtyRows.reduce((acc, r) => acc + (r.convertedProductionQuantity || r.normalReceipt || 0), 0);
 
+    const getDisplayQty = (raw: number) => {
+      const isRawKg = raw > 1000;
+      return isRawKg ? raw / 1000 : raw;
+    };
+
     return {
       month: `${mNum}월`,
-      '생산실물량': normalProd,
-      '환산량': convertedProd
+      '생산실물량': parseFloat(getDisplayQty(normalProd).toFixed(1)),
+      '환산량': parseFloat(getDisplayQty(convertedProd).toFixed(1))
     };
   });
 
@@ -322,12 +337,12 @@ export default function ProductionStatus() {
           </div>
 
           {/* Time Picker */}
-          <div className="flex items-center bg-[#f8f9fa] border border-zinc-150 p-2 rounded-xl text-xs">
+          <div className="flex items-center bg-[#f8f9fa] border border-zinc-150 p-2 rounded-xl text-xs font-sans">
             <Calendar className="w-4 h-4 text-zinc-400 mr-1.5" />
             <select
               value={activeYear}
               onChange={(e) => setActiveYear(e.target.value)}
-              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700"
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700 text-xs"
             >
               {['2024', '2025', '2026', '2027', '2028'].map(yr => (
                 <option key={yr} value={yr}>{yr}년</option>
@@ -337,7 +352,7 @@ export default function ProductionStatus() {
             <select
               value={activeMonth}
               onChange={(e) => setActiveMonth(e.target.value)}
-              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700"
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700 text-xs"
             >
               <option value="all">연간 전체</option>
               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
@@ -351,8 +366,8 @@ export default function ProductionStatus() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10.5px] text-[#647067] font-bold block">총 생산량</span>
-          <span className="text-xl font-bold text-zinc-900 font-mono mt-1 block">{totalProductionTons.toLocaleString()} Mt</span>
+          <span className="text-[10.5px] text-[#647067] font-bold block font-sans">총 생산량 (톤)</span>
+          <span className="text-xl font-bold text-zinc-900 font-mono mt-1 block">{formatQty(totalProductionTons)} 톤</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
           <span className="text-[10.5px] text-teal-800 font-bold block">생산금액</span>
@@ -361,12 +376,12 @@ export default function ProductionStatus() {
           </span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10.5px] text-indigo-700 font-bold block">제품 수</span>
+          <span className="text-[10.5px] text-indigo-700 font-bold block font-sans">제품 수</span>
           <span className="text-xl font-bold text-indigo-805 font-mono mt-1 block">{productCount}개 구분</span>
         </div>
         <div className="bg-[#f0fcf9] border border-teal-150 p-5 rounded-2xl shadow-xs">
           <span className="text-[10.5px] text-teal-800 font-bold block">전월 대비 (vs Previous Month)</span>
-          <span className="text-sm font-bold text-emerald-800 mt-1.5 block">
+          <span className="text-sm font-bold text-emerald-800 mt-1.5 block font-sans">
             {MoMText}
           </span>
         </div>
@@ -374,19 +389,26 @@ export default function ProductionStatus() {
 
       {/* Area chart */}
       <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
-        <h3 className="text-xs font-bold text-[#111111] mb-4 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-[#008f83]" /> {activeYear}년 월별 완제품 생산 실물량 vs 보충 환산량 추세
+        <h3 className="text-xs font-bold text-[#111111] mb-4 flex items-center gap-2 font-sans">
+          <Activity className="w-4 h-4 text-[#008f83]" /> {activeYear}년 월별 완제품 생산 실물량 vs 보충 환산량 추세 (단위: 톤)
         </h3>
         <div className="h-[210px] w-full font-mono text-xs">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={monthlyAreaTrend} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2ec" />
               <XAxis dataKey="month" stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
-              <YAxis stroke="#8b95a1" fontSize={10} axisLine={false} tickLine={false} />
-              <Tooltip formatter={(v: any) => [`${Number(v).toLocaleString()} Mt`, '']} />
+              <YAxis 
+                stroke="#8b95a1" 
+                fontSize={10} 
+                axisLine={false} 
+                tickLine={false} 
+                label={{ value: '생산량(톤)', angle: -90, position: 'insideLeft', offset: -5 }}
+                tickFormatter={(v: any) => v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              />
+              <Tooltip formatter={(v: any) => [`${parseFloat(v).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} 톤`, '']} />
               <Legend iconType="circle" />
-              <Area type="monotone" name="생산 실물량 (정상입고)" dataKey="생산실물량" stroke="#008f83" fill="#e2ede3" strokeWidth={2} />
-              <Area type="monotone" name="보정 환산 생산량" dataKey="환산량" stroke="#3182ce" fill="#ebf8ff" strokeWidth={1.5} />
+              <Area type="monotone" name="생산 실물량 (톤)" dataKey="생산실물량" stroke="#008f83" fill="#e2ede3" strokeWidth={2} />
+              <Area type="monotone" name="보정 환산 생산량 (톤)" dataKey="환산량" stroke="#3182ce" fill="#ebf8ff" strokeWidth={1.5} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -423,20 +445,26 @@ export default function ProductionStatus() {
       {/* Production Details Table */}
       <div className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden">
         <table className="min-w-full divide-y divide-[#eef2ec] text-left">
-          <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider">
+          <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider font-sans">
             <tr>
               <th className="px-5 py-3.5">제품명구분</th>
               <th className="px-5 py-3.5 text-center">연동메탈</th>
-              <th className="px-5 py-3.5 text-right font-extrabold text-zinc-800">생산 실물량 (정상입고)</th>
-              <th className="px-5 py-3.5 text-right font-bold text-indigo-700">보정 환산 생산량</th>
+              <th className="px-5 py-3.5 text-right font-extrabold text-zinc-800">생산 실물량 (톤)</th>
+              <th className="px-5 py-3.5 text-right font-bold text-indigo-700">보정 환산 생산량 (톤)</th>
               <th className="px-5 py-3.5 text-right font-semibold">정가 금액 가치</th>
-              <th className="px-5 py-3.5 text-right">평균 환산 추이가격 / Mt</th>
+              <th className="px-5 py-3.5 text-right">평균 환산 추이가격 / 톤</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
             {finalTableData.map(row => {
               const displayAmt = convertAmount(row.productionAmt);
-              const avgPrc = row.productionQty > 0 ? (displayAmt / row.productionQty) : 0;
+              
+              // display_qty = raw_qty / 1000 (지정: "raw가 kg일 때만")
+              const isRawKgVal = row.productionQty > 1000;
+              const displayProdQty = isRawKgVal ? row.productionQty / 1000 : row.productionQty;
+              const displayConvertedQty = isRawKgVal ? row.convertedQty / 1000 : row.convertedQty;
+
+              const avgPrc = displayProdQty > 0 ? (displayAmt / displayProdQty) : 0;
 
               return (
                 <tr key={row.productName} className="hover:bg-[#f7f9f7]/55 font-mono">
@@ -444,10 +472,14 @@ export default function ProductionStatus() {
                   <td className="px-5 py-3.5 text-center font-bold text-zinc-405">
                     <span className="bg-slate-100 text-zinc-650 text-[10px] px-2.5 py-0.5 rounded font-mono">{row.metal}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-right text-zinc-950 font-bold">{row.productionQty.toLocaleString()} Mt</td>
-                  <td className="px-5 py-3.5 text-right text-indigo-850 font-extrabold bg-indigo-50/5">{row.convertedQty.toLocaleString()} Mt</td>
+                  <td className="px-5 py-3.5 text-right text-zinc-950 font-bold">
+                    {formatQty(row.productionQty)} 톤
+                  </td>
+                  <td className="px-5 py-3.5 text-right text-indigo-850 font-extrabold bg-indigo-50/5">
+                    {formatQty(row.convertedQty)} 톤
+                  </td>
                   <td className="px-5 py-3.5 text-right text-zinc-700">{formatCurrency(displayAmt)}</td>
-                  <td className="px-5 py-3.5 text-right text-zinc-450">{formatCurrency(avgPrc)}/Mt</td>
+                  <td className="px-5 py-3.5 text-right text-zinc-450">{formatCurrency(avgPrc)}/톤</td>
                 </tr>
               );
             })}

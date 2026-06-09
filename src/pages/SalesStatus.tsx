@@ -150,7 +150,10 @@ export default function SalesStatus() {
       return isKPI ? `$${usdVal.toFixed(1)}M` : `$${Math.round(usdVal).toLocaleString()}K`;
     }
     // For KRW - strictly format in millions
-    return formatKRWMillion(val);
+    // display_amount = raw_amount / 1,000,000
+    // tick_format = "#,##0" (Math.round and toLocaleString)
+    const display_amount = val / 1_000_000;
+    return `${Math.round(display_amount).toLocaleString()}`;
   };
 
   // Filter records to target month & unit of type '수량'
@@ -220,7 +223,7 @@ export default function SalesStatus() {
     return true;
   });
 
-  // Monthly trend chart dataset
+  // Monthly trend chart dataset with display_amount calculation
   const monthlyChartTrend = Array.from({ length: 12 }, (_, i) => {
     const mNum = i + 1;
     const mRows = filterByUnit.filter(r => Number(r.month) === mNum);
@@ -228,15 +231,18 @@ export default function SalesStatus() {
     const profitFromLedger = mRows.reduce((acc, r) => acc + (r.grossProfit || 0), 0);
     const profit = profitFromLedger !== 0 ? profitFromLedger : revenue - mRows.reduce((acc, r) => acc + (r.costOfSales || 0), 0);
 
+    const display_revenue = revenue / 1_000_000;
+    const display_profit = profit / 1_000_000;
+
     return {
       month: `${mNum}월`,
-      '매출액': convertAmount(revenue, mNum),
-      '매출이익': convertAmount(profit, mNum),
+      '매출액': currencyMode === 'USD' ? convertAmount(revenue, mNum) : display_revenue,
+      '매출이익': currencyMode === 'USD' ? convertAmount(profit, mNum) : display_profit,
     };
   });
 
   return (
-    <div className="space-y-6 animate-fade">
+    <div className="space-y-6 animate-fade font-sans">
       {/* Sample Alert */}
       {isSampleData && (
         <div id="sales-simulated-warning-box" className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -315,12 +321,12 @@ export default function SalesStatus() {
           </div>
 
           {/* Time Picker */}
-          <div className="flex items-center bg-[#f8f9fa] border border-zinc-150 p-2 rounded-xl text-xs">
+          <div className="flex items-center bg-[#f8f9fa] border border-zinc-150 p-2 rounded-xl text-xs font-sans">
             <Calendar className="w-4 h-4 text-zinc-400 mr-1.5" />
             <select
               value={activeYear}
               onChange={(e) => setActiveYear(e.target.value)}
-              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer"
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-xs"
             >
               {['2024', '2025', '2026', '2027', '2028'].map(yr => (
                 <option key={yr} value={yr}>{yr}년</option>
@@ -330,7 +336,7 @@ export default function SalesStatus() {
             <select
               value={activeMonth}
               onChange={(e) => setActiveMonth(e.target.value)}
-              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer"
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-xs"
             >
               <option value="all">연간 합계</option>
               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
@@ -344,19 +350,19 @@ export default function SalesStatus() {
       {/* KPI Cards Grid */}
       <div id="sales-kpi-summary-grid" className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div className="bg-white border border-[#dde5de] p-4 rounded-xl text-center shadow-xs">
-          <span className="text-[10px] text-[#647067] font-bold block">총 매출액</span>
+          <span className="text-[10px] text-[#647067] font-bold block">총 매출액 {currencyMode === 'KRW' ? '(백만원)' : ''}</span>
           <span className="text-sm font-extrabold font-mono text-zinc-900 block mt-1">
             {formatCurrencyValue(totalRevenueKRW, true)}
           </span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4 rounded-xl text-center shadow-xs">
-          <span className="text-[10px] text-zinc-500 font-bold block">총 매출원가</span>
+          <span className="text-[10px] text-zinc-500 font-bold block">총 매출원가 {currencyMode === 'KRW' ? '(백만원)' : ''}</span>
           <span className="text-sm font-extrabold font-mono text-zinc-700 block mt-1">
             {formatCurrencyValue(totalCostKRW, true)}
-          </span>
+              </span>
         </div>
         <div className="bg-[#fcfdfc] border border-[#dde5de] p-4 rounded-xl text-center shadow-sm">
-          <span className="text-[10px] text-[#008f83] font-bold block">매출이익</span>
+          <span className="text-[10px] text-[#008f83] font-bold block">매출이익 {currencyMode === 'KRW' ? '(백만원)' : ''}</span>
           <span className="text-sm font-extrabold font-mono text-[#008f83] block mt-1">
             {formatCurrencyValue(totalProfitKRW, true)}
           </span>
@@ -368,7 +374,7 @@ export default function SalesStatus() {
           </span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4 rounded-xl text-center shadow-xs">
-          <span className="text-[10px] text-zinc-500 font-bold block">총 판매물량 (3대핵심)</span>
+          <span className="text-[10px] text-zinc-500 font-bold block font-sans">총 판매물량 (3대핵심)</span>
           <span className="text-sm font-extrabold font-mono text-[#008f83] block mt-1">
             {totalQuantityTons.toLocaleString()} Ton
           </span>
@@ -383,20 +389,27 @@ export default function SalesStatus() {
 
       {/* Chart Row */}
       <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
-        <h3 className="text-xs font-bold text-zinc-800 mb-4 flex items-center gap-1.5">
+        <h3 className="text-xs font-bold text-zinc-800 mb-4 flex items-center gap-1.5 font-sans">
           <TrendingUp className="w-4 h-4 text-emerald-600" />
-          {activeYear}년 월별 매출액 및 매출이익 추세 ({currencyMode === 'USD' ? 'USD 기준' : '백만원 기준'})
+          {activeYear}년 월별 매출액 및 매출이익 추세 ({currencyMode === 'USD' ? 'USD 기준' : '판매액(백만원) 기준'})
         </h3>
         <div className="h-[210px] w-full font-mono text-[9px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthlyChartTrend} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+            <BarChart data={monthlyChartTrend} margin={{ top: 5, right: 5, left: 15, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f2" vertical={false} />
               <XAxis dataKey="month" fontSize={9} stroke="#a0aab2" axisLine={false} tickLine={false} />
-              <YAxis fontSize={9} stroke="#a0aab2" axisLine={false} tickLine={false} />
+              <YAxis 
+                fontSize={9} 
+                stroke="#a0aab2" 
+                axisLine={false} 
+                tickLine={false} 
+                label={{ value: currencyMode === 'USD' ? 'USD' : '판매액(백만원)', angle: -90, position: 'insideLeft', offset: -10 }} 
+                tickFormatter={(value) => Math.round(value).toLocaleString()} 
+              />
               <Tooltip formatter={(value) => [`${Math.round(Number(value)).toLocaleString()}`, '']} />
               <Legend iconType="circle" />
-              <Bar name="매출액" dataKey="매출액" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={24} />
-              <Bar name="매출이익" dataKey="매출이익" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={16} />
+              <Bar name={currencyMode === 'USD' ? "매출액" : "매출액 (백만원)"} dataKey="매출액" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={24} />
+              <Bar name={currencyMode === 'USD' ? "매출이익" : "매출이익 (백만원)"} dataKey="매출이익" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={16} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -434,16 +447,16 @@ export default function SalesStatus() {
         {/* Detailed Sales table */}
         <div className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden">
           <table id="sales-detail-status-table" className="min-w-full divide-y divide-[#eef2ec] text-left">
-            <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider">
+            <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider font-sans">
               <tr>
                 <th className="px-5 py-3.5">제품명</th>
                 <th className="px-5 py-3.5 text-center">금속</th>
                 <th className="px-5 py-3.5 text-right">판매수량</th>
-                <th className="px-5 py-3.5 text-right font-extrabold text-zinc-800">매출액</th>
-                <th className="px-5 py-3.5 text-right">매출원가</th>
-                <th className="px-5 py-3.5 text-right font-extrabold text-teal-800 bg-emerald-50/10">매출이익</th>
+                <th className="px-5 py-3.5 text-right font-extrabold text-zinc-800">매출액 {currencyMode === 'KRW' ? '(백만원)' : ''}</th>
+                <th className="px-5 py-3.5 text-right">매출원가 {currencyMode === 'KRW' ? '(백만원)' : ''}</th>
+                <th className="px-5 py-3.5 text-right font-extrabold text-teal-800 bg-emerald-50/10">매출이익 {currencyMode === 'KRW' ? '(백만원)' : ''}</th>
                 <th className="px-5 py-3.5 text-center font-bold text-indigo-700">매출이익률</th>
-                <th className="px-5 py-3.5 text-right">평균 단가</th>
+                <th className="px-5 py-3.5 text-right">평균 단가 {currencyMode === 'KRW' ? '(백만원/Ton)' : ''}</th>
                 <th className="px-5 py-3.5 text-right font-bold text-slate-800">기말재고</th>
               </tr>
             </thead>
@@ -469,7 +482,7 @@ export default function SalesStatus() {
                     <td className="px-5 py-3.5 text-right font-extrabold text-teal-800 bg-teal-50/5">{formatCurrencyValue(item.grossProfit)}</td>
                     <td className="px-5 py-3.5 text-center font-bold text-indigo-700">{item.profitMargin.toFixed(1)}%</td>
                     <td className="px-5 py-3.5 text-right text-zinc-500">
-                      {formatCurrencyValue(item.avgPrice, false)}/Ton
+                      {formatCurrencyValue(item.avgPrice, false)} {currencyMode === 'KRW' ? '' : '/Ton'}
                     </td>
                     <td className="px-5 py-3.5 text-right font-semibold text-indigo-900">{item.endingQty.toLocaleString()} Ton</td>
                   </tr>

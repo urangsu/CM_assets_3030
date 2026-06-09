@@ -49,7 +49,21 @@ export const ExchangeRateStorage = {
     window.dispatchEvent(new Event('hycm-exchange-rates-changed'));
   },
 
-  async fetchMonthlyAverageRate(year: string, month: number): Promise<{ success: boolean; rate?: number; source?: 'api'; reason?: string; message: string }> {
+  async fetchMonthlyAverageRate(year: string, month: number): Promise<{ 
+    success: boolean; 
+    rate?: number; 
+    source?: 'api'; 
+    reason?: string; 
+    message: string;
+    requestedDays?: number;
+    successCount?: number;
+    emptyCount?: number;
+    apiErrorCount?: number;
+    networkErrorCount?: number;
+    policy?: string;
+    majorFailureReason?: string;
+    details?: any[];
+  }> {
     try {
       const response = await fetch(`/api/exim-monthly-average-rate?year=${year}&month=${month}`);
       const data = await response.json();
@@ -60,13 +74,29 @@ export const ExchangeRateStorage = {
           success: true,
           rate: data.averageRate,
           source: 'api',
-          message: `${year}년 ${month}월 한국수출입은행 월평균 환율 연계에 성공하였습니다! (영업일 수: ${data.businessDayCount}일, 적용 환율: ₩${data.averageRate.toLocaleString()})`
+          message: `${year}년 ${month}월 한국수출입은행 월평균 환율 연계에 성공하였습니다!`,
+          requestedDays: data.requestedDays,
+          successCount: data.successCount,
+          emptyCount: data.emptyCount,
+          apiErrorCount: data.apiErrorCount,
+          networkErrorCount: data.networkErrorCount,
+          policy: data.policy,
+          majorFailureReason: data.majorFailureReason,
+          details: data.details
         };
       } else {
         return {
           success: false,
-          reason: data.reason,
-          message: data.message || `${year}년 ${month}월 기준 고시환율을 가져오지 못했습니다.`
+          reason: data.reason || data.status,
+          message: data.message || `${year}년 ${month}월 기준 고시환율을 계산하지 못했습니다.`,
+          requestedDays: data.requestedDays || 0,
+          successCount: data.successCount || 0,
+          emptyCount: data.emptyCount || 0,
+          apiErrorCount: data.apiErrorCount || 0,
+          networkErrorCount: data.networkErrorCount || 0,
+          policy: data.policy || 'error',
+          majorFailureReason: data.majorFailureReason || (data.message || '영업일 데이터 미진으로 환율 산출 실패'),
+          details: data.details || []
         };
       }
     } catch (e: any) {
@@ -74,7 +104,15 @@ export const ExchangeRateStorage = {
       return {
         success: false,
         reason: "NETWORK_ERROR",
-        message: '네트워크 연결 오류 또는 정적 배포 상태로 프록시가 작동하지 않습니다. 수동으로 환율을 기입하여 적용하십시오.'
+        message: '네트워크 연결 오류 또는 정적 배포 상태로 프록시가 작동하지 않습니다. 수동으로 환율을 기입하여 적용하십시오.',
+        requestedDays: 0,
+        successCount: 0,
+        emptyCount: 0,
+        apiErrorCount: 1,
+        networkErrorCount: 1,
+        policy: 'network_fail',
+        majorFailureReason: e.message || '네트워크 장애',
+        details: []
       };
     }
   }

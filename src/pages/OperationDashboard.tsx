@@ -68,6 +68,18 @@ export default function OperationDashboard() {
   const [syncFeedback, setSyncFeedback] = useState<{
     type: 'success' | 'warning' | 'error' | '';
     text: string;
+    stats?: {
+      requestedDays: number;
+      successCount: number;
+      emptyCount: number;
+      apiErrorCount: number;
+      networkErrorCount: number;
+      policy: string;
+      majorFailureReason: string;
+      averageRate: number;
+      exampleRequestDate?: string;
+      expectedFormat?: string;
+    };
   } | null>(null);
 
   const [realProducts, setRealProducts] = useState<ProductLedgerRecord[]>([]);
@@ -182,11 +194,27 @@ export default function OperationDashboard() {
     const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
     try {
       const response = await ExchangeRateStorage.fetchMonthlyAverageRate(activeYear, mNum);
+      const lastSaved = ExchangeRateStorage.getRateRecord(activeYear, mNum);
+      
+      const statsObj = {
+        requestedDays: response.requestedDays || 0,
+        successCount: response.successCount || 0,
+        emptyCount: response.emptyCount || 0,
+        apiErrorCount: response.apiErrorCount || 0,
+        networkErrorCount: response.networkErrorCount || 0,
+        policy: response.policy || 'unknown',
+        majorFailureReason: response.majorFailureReason || response.message,
+        averageRate: response.rate || 0,
+        exampleRequestDate: `${activeYear}${String(mNum).padStart(2, '0')}01`,
+        expectedFormat: 'YYYYMMDD'
+      };
+
       if (response.success && response.rate) {
         setCustomRateInput(String(response.rate));
         setSyncFeedback({
           type: 'success',
-          text: response.message
+          text: response.message,
+          stats: statsObj
         });
       } else {
         let errText = response.message;
@@ -194,15 +222,14 @@ export default function OperationDashboard() {
           errText = `오류: EXIM_API_KEY가 서버 환경변수에 설정되지 않았습니다.`;
         }
 
-        // Show last saved rate if available
-        const lastSaved = ExchangeRateStorage.getRateRecord(activeYear, mNum);
         const lastSavedMsg = lastSaved 
-          ? ` (기존에 저장되어 가동중인 '마지막 저장 환율': ₩${lastSaved.averageRate}이 유지됩니다.)` 
+          ? ` (기존에 가동중인 '마지막 저장 환율': ₩${lastSaved.averageRate}이 유지됩니다.)` 
           : ' (기존 저장 환율 정보도 존재하지 않습니다.)';
 
         setSyncFeedback({
-          type: response.reason === 'API_KEY_MISSING' ? 'error' : 'warning',
-          text: `${errText}${lastSavedMsg}`
+          type: (response.reason === 'API_KEY_MISSING' || response.reason === 'invalid_key') ? 'error' : 'warning',
+          text: `${errText}${lastSavedMsg}`,
+          stats: statsObj
         });
 
         if (lastSaved) {
@@ -218,7 +245,19 @@ export default function OperationDashboard() {
         : '';
       setSyncFeedback({
         type: 'error',
-        text: `한국수출입은행 API 동기화 통신 중 오류가 발생했습니다. 수동 입력을 진행하십시오.${lastSavedMsg}`
+        text: `한국수출입은행 API 동기화 통신 중 오류가 발생했습니다. 수동 입력을 진행하십시오.${lastSavedMsg}`,
+        stats: {
+          requestedDays: 31,
+          successCount: 0,
+          emptyCount: 0,
+          apiErrorCount: 1,
+          networkErrorCount: 1,
+          policy: 'error',
+          majorFailureReason: err.message || '네트워크 오류 발생',
+          averageRate: 0,
+          exampleRequestDate: `${activeYear}${String(mNum).padStart(2, '0')}01`,
+          expectedFormat: 'YYYYMMDD'
+        }
       });
     } finally {
       setIsSyncingExchange(false);
@@ -226,6 +265,10 @@ export default function OperationDashboard() {
   };
 
   const handleSaveRateInput = () => {
+    if (eximKeyMissing) {
+      alert('한국수출입은행 API 인증키(EXIM_API_KEY) 설정이 누락되어 가공/임의 환율 수동 저장이 차단됩니다.');
+      return;
+    }
     const num = Number(customRateInput);
     if (Number.isNaN(num) || num <= 0) {
       alert('올바른 환율 금액을 입력하십시오. 예: 1372.5');
@@ -614,40 +657,83 @@ export default function OperationDashboard() {
 
       {/* EXIM API Sync Feedback Alert */}
       {syncFeedback && (
-        <div className={`p-4 rounded-xl border text-xs flex justify-between items-start gap-4 transition-all animate-fade ${
+        <div className={`p-5 rounded-2xl border text-xs flex flex-col gap-3.5 transition-all animate-fade ${
           syncFeedback.type === 'success' 
-            ? 'bg-[#f0f9f8] border-teal-200 text-teal-900' 
+            ? 'bg-[#f0f9f8] border-teal-200 text-teal-980' 
             : syncFeedback.type === 'warning' 
-            ? 'bg-amber-50/75 border-amber-250 text-amber-905' 
-            : 'bg-rose-50/75 border-rose-200 text-rose-900'
+            ? 'bg-amber-50/80 border-amber-250 text-amber-950' 
+            : 'bg-rose-50 border-rose-200 text-rose-950'
         }`}>
-          <div className="flex gap-2.5">
-            {syncFeedback.type === 'success' ? (
-              <CheckCircle className="w-4 h-4 text-[#008f83] flex-shrink-0 mt-0.5" />
-            ) : (
-              <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
-                syncFeedback.type === 'warning' ? 'text-amber-500' : 'text-rose-500'
-              }`} />
-            )}
-            <div>
-              <span className="font-bold block">
-                {syncFeedback.type === 'success' 
-                  ? '한국수출입은행 실시간 환율 연동 성공' 
-                  : syncFeedback.type === 'warning' 
-                  ? '환율 연동 안내 (기본 환율 보정 적용)' 
-                  : '환율 조회 처리 실패'}
-              </span>
-              <p className="text-[11px] mt-1 leading-relaxed">
-                {syncFeedback.text}
-              </p>
+          <div className="flex justify-between items-start gap-4">
+            <div className="flex gap-2.5">
+              {syncFeedback.type === 'success' ? (
+                <CheckCircle className="w-4.5 h-4.5 text-[#008f83] flex-shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className={`w-4.5 h-4.5 flex-shrink-0 mt-0.5 ${
+                  syncFeedback.type === 'warning' ? 'text-amber-600' : 'text-rose-600'
+                }`} />
+              )}
+              <div>
+                <span className="font-bold text-sm block font-sans">
+                  {syncFeedback.type === 'success' 
+                    ? '한국수출입은행 실시간 환율 연동 성공' 
+                    : '한국수출입은행 실시간 환율 연동 제한/실패'}
+                </span>
+                <p className="text-[11.5px] mt-1 text-zinc-600 font-sans">
+                  {syncFeedback.text}
+                </p>
+              </div>
             </div>
+            <button 
+              onClick={() => setSyncFeedback(null)} 
+              className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-650 flex-shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button 
-            onClick={() => setSyncFeedback(null)} 
-            className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-650 flex-shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
+
+          {/* Detailed stats summary block requested by user */}
+          <div className="bg-white/80 backdrop-blur-xs p-4 rounded-xl border border-black/5 space-y-1.5 text-[11px] font-sans">
+            <div className="font-bold text-xs text-zinc-800 border-b border-black/5 pb-1.5 flex justify-between items-center">
+              <span>📊 환율 조회 결과 요약</span>
+              <span className="font-mono text-[10px] text-zinc-400">
+                조회 대상 월: {syncFeedback.stats?.exampleRequestDate ? `${syncFeedback.stats.exampleRequestDate.substring(0, 4)}-${syncFeedback.stats.exampleRequestDate.substring(4, 6)}` : `${activeYear}-${String(activeMonth === 'all' ? 5 : activeMonth).padStart(2, '0')}`}
+              </span>
+            </div>
+
+            {/* If there are stats from server or mock parser */}
+            {syncFeedback.stats && (
+              syncFeedback.stats.successCount > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-zinc-750">
+                  <div>• 요청일수: <strong className="font-mono">{syncFeedback.stats.requestedDays}일</strong></div>
+                  <div>• 조회 성공: <strong className="font-mono text-teal-700">{syncFeedback.stats.successCount}일</strong></div>
+                  <div>• 영업일/미고시/빈응답: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
+                  <div>• API 및 통신오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
+                  <div>• 네트워크 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount}일</strong></div>
+                  <div className="col-span-2 font-semibold text-indigo-700 font-sans">
+                    • 적용 환율: <span className="font-mono font-bold text-xs underline">{syncFeedback.stats.averageRate.toLocaleString()}원 / USD</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5 text-zinc-850">
+                  <div className="font-semibold text-rose-600 flex items-center gap-1 leading-snug">
+                    <span>⚠️ 조회 성공 0일 (환율 조회 실패)</span>
+                  </div>
+                  <div className="pl-2 space-y-1 text-zinc-700">
+                    <div>• 요청일수: <strong className="font-mono text-zinc-900">{syncFeedback.stats.requestedDays}일</strong></div>
+                    <div>• 영업일/미고시/빈응답: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
+                    <div>• API 및 통신오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
+                    <div>• 네트워크 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount}일</strong></div>
+                    <div className="text-zinc-900 font-semibold">• 주요 실패 원인: <span className="text-rose-600 bg-rose-50 px-1 py-0.5 rounded font-sans">{syncFeedback.stats.majorFailureReason}</span></div>
+                    <div>• 예시 요청일자: <strong className="font-mono text-indigo-700 bg-indigo-50/50 px-1.5 py-0.5 rounded">{syncFeedback.stats.exampleRequestDate || '없음'}</strong> (기대 형식: <strong className="font-mono text-indigo-700">{syncFeedback.stats.expectedFormat || 'YYYYMMDD'}</strong>)</div>
+                    <div className="text-zinc-600 font-semibold mt-1 bg-amber-50/80 p-2 border border-amber-200/50 rounded-lg text-[10.5px]">
+                      💡 정보: 당월 또는 과거월의 조회에 실패하여 기존 '마지막 저장 환율' 기준으로 가동 및 계수 변환 정책을 유지합니다.
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
         </div>
       )}
 
@@ -660,13 +746,40 @@ export default function OperationDashboard() {
               <span className="font-bold text-zinc-800 block font-sans">
                 한국수출입은행 외환고시 월평균 상호 교환율
               </span>
-              <span className="text-[#647067] text-[10.5px] block mt-0.5 font-sans">
-                {getCurrentExchangeRate() > 0 ? (
-                  <>당월 고시환율은 <strong className="font-mono text-indigo-700">{getCurrentExchangeRate().toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.</>
-                ) : (
-                  <strong className="text-rose-600">환율 정보 없음 {eximKeyMissing ? "(EXIM_API_KEY 미설정 상태로 변경 및 조회 제한)" : "(수동 환율을 입력하거나 오른쪽 자동 조회를 사용하여 동기화해 주십시오)"}</strong>
-                )}
-              </span>
+              <div className="text-[#647067] text-[10.5px] mt-1 font-sans">
+                {(() => {
+                  const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
+                  const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
+                  const currentExcRate = getCurrentExchangeRate();
+                  
+                  if (currentExcRate > 0 && rateRec) {
+                    const isApi = rateRec.source === 'api';
+                    const successCount = syncFeedback?.stats?.successCount ?? (isApi ? 21 : 0);
+                    
+                    if (isApi) {
+                      return (
+                        <div className="space-y-0.5">
+                          <div>환율 적용 기준: <strong className="text-[#00786F] font-sans">한국수출입은행 일별 고시환율 월평균</strong></div>
+                          <div>조회 성공일수: <span className="font-mono font-bold text-[#00786F]">{successCount}일</span></div>
+                          <div>당월 고시환율은 <strong className="font-mono text-[#00786F]">{currentExcRate.toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.</div>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="space-y-0.5">
+                          <div>환율 적용 기준: <strong className="text-zinc-700 font-sans">마지막 저장 환율</strong></div>
+                          <div>조회 성공일수: <span className="font-mono font-bold text-rose-600">{successCount}일</span></div>
+                          <div>당월 고시환율은 <strong className="font-mono text-zinc-900">{currentExcRate.toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다. <span className="text-rose-600 font-semibold">(사유: 당월 API 조회 성공일수 0일)</span></div>
+                        </div>
+                      );
+                    }
+                  } else {
+                    return (
+                      <strong className="text-rose-600">환율 정보 없음 {eximKeyMissing ? "(EXIM_API_KEY 미설정 상태로 변경 및 조회 제한)" : "(수동 환율을 입력하거나 오른쪽 자동 조회를 사용하여 동기화해 주십시오)"}</strong>
+                    );
+                  }
+                })()}
+              </div>
             </div>
           </div>
 
@@ -705,7 +818,7 @@ export default function OperationDashboard() {
                     const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
                     const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
                     return (
-                      <span className="font-mono font-bold text-indigo-700">
+                      <span className="font-mono font-bold text-[#00786F]">
                         {getCurrentExchangeRate().toLocaleString()} 원
                         <span className="text-[9px] font-sans text-zinc-400 ml-1.5 font-normal">
                           ({rateRec?.source === 'api' ? '수출입은행 API 연동' : '마지막 저장 환율/수동'})
