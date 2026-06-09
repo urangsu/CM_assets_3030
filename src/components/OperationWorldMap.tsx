@@ -32,6 +32,7 @@ export function OperationWorldMap({
 }: OperationWorldMapProps) {
   // Safe extraction of HQ for curved connector arcs
   const hqPoint = mapPoints.find((p) => p.type === 'hq' || p.countryCode === 'KR');
+  const hasNoExternalData = mapPoints.filter(p => p.id !== 'KR' && p.type !== 'hq').length === 0;
 
   return (
     <div className="relative w-full bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm flex flex-col justify-between p-4 group select-none">
@@ -62,59 +63,32 @@ export function OperationWorldMap({
         {/* Underlay Grid Gridline Pattern */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.035)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(59,130,246,0.035)_1px,_transparent_1px)] bg-[size:18px_18px] opacity-80 pointer-events-none" />
 
+        {/* Real World Map SVG Asset as Background */}
+        <img 
+          src="/maps/world.svg" 
+          className="absolute inset-0 w-full h-full object-cover opacity-90 pointer-events-none" 
+          alt="World Map Background"
+        />
+
+        {/* Empty data overlay */}
+        {hasNoExternalData && (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-950/10 backdrop-blur-[0.5px] z-20 pointer-events-none animate-fade">
+            <div className="bg-white/95 border border-zinc-200 px-4 py-2.5 rounded-xl shadow-lg text-xs font-bold text-zinc-700 flex items-center gap-2">
+              <span className="inline-block px-1.5 py-0.5 bg-zinc-100 rounded text-[10px] text-zinc-500 font-extrabold uppercase shrink-0">NOTICE</span>
+              국가별 데이터 없음
+            </div>
+          </div>
+        )}
+
         <svg
           viewBox="0 0 1000 420"
-          className="absolute inset-0 w-full h-full select-none"
+          className="absolute inset-0 w-full h-full select-none z-10"
           preserveAspectRatio="xMidYMid meet"
         >
           {/* Subtle Equatorial dashed divider for geography HUD */}
           <line x1="0" y1="210" x2="1000" y2="210" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="5 5" opacity="0.4" />
-          
-          {/* World map Landmass collection styled with high-profile clean light theme */}
-          <g className="fill-white stroke-slate-200 stroke-[0.8] hover:fill-slate-50 transition-colors duration-300">
-            {/* North America */}
-            <path d="M 80,40 L 95,35 L 120,40 L 140,25 L 160,28 L 195,35 L 210,50 L 220,45 L 250,55 L 275,30 L 290,45 L 270,70 L 260,95 L 290,115 L 285,130 L 250,155 L 225,175 L 212,185 L 200,165 L 175,155 L 150,150 L 145,130 L 130,110 L 105,95 L 85,90 Z" />
-            
-            {/* Greenland */}
-            <path d="M 270,18 L 320,12 L 310,40 L 285,55 L 255,38 Z" />
 
-            {/* Central America & Caribbean */}
-            <path d="M 210,186 L 215,200 L 235,212 L 245,215 L 250,210 L 245,202 L 230,195 L 220,184 Z" />
 
-            {/* South America */}
-            <path d="M 235,220 L 270,225 L 295,245 L 315,275 L 325,300 L 305,335 L 280,365 L 260,385 L 248,395 L 245,395 L 246,380 L 252,350 L 250,330 L 242,305 L 235,280 L 230,245 Z" />
-
-            {/* Africa */}
-            <path d="M 445,170 L 485,155 L 520,165 L 538,185 L 565,192 L 575,210 L 582,235 L 578,255 L 560,278 L 545,315 L 530,345 L 518,345 L 512,310 L 498,280 L 478,250 L 460,240 L 440,230 L 418,212 L 410,195 Z" />
-            <path d="M 586,280 L 595,285 L 592,305 L 585,310 L 580,295 Z" /> {/* Madagascar */}
-
-            {/* Western Europe & Northern Europe */}
-            <path d="M 405,115 L 420,105 L 435,78 L 450,75 L 460,65 L 452,50 L 475,48 L 490,68 L 485,90 L 470,105 L 462,125 L 450,140 L 435,165 L 410,165 L 398,150 Z" />
-            <path d="M 410,60 L 425,55 L 430,70 L 415,75 Z" /> {/* UK & Ireland */}
-            <path d="M 470,35 L 485,30 L 490,45 L 475,55 Z" /> {/* Scandinavia Peninsula */}
-
-            {/* Russia / Eastern Asia / China / Middle East */}
-            <path d="M 495,68 L 530,62 L 565,58 L 610,48 L 665,45 L 720,40 L 760,35 L 810,42 L 850,55 L 895,70 L 910,95 L 890,115 L 865,130 L 872,165 L 850,185 L 835,215 L 815,225 L 810,210 L 785,215 L 778,198 L 745,215 L 730,195 L 715,190 L 675,195 L 635,210 L 592,208 L 572,205 L 560,190 L 525,188 L 495,145 L 488,115 L 492,95 Z" />
-            
-            {/* Japan */}
-            <path d="M 838,135 L 848,138 L 845,155 L 835,160 Q 830,140 838,135 Z" />
-
-            {/* Indian Subcontinent */}
-            <path d="M 678,196 L 702,194 L 708,215 L 696,225 L 685,210 Z" />
-
-            {/* Southeast Asia & Indonesia Archipelago */}
-            <path d="M 748,216 L 762,216 L 766,230 L 755,242 L 748,230 Z" /> {/* Indochina */}
-            <path d="M 740,250 L 752,248 L 770,255 L 765,260 L 745,256 Z" /> {/* Sumatra */}
-            <path d="M 770,260 L 795,258 L 790,268 L 765,268 Z" /> {/* Java */}
-            <path d="M 780,242 L 795,240 L 798,252 L 785,255 Z" /> {/* Kalimantan/Borneo */}
-            <path d="M 802,242 L 812,245 L 808,258 L 798,250 Z" /> {/* Sulawesi */}
-            <path d="M 810,230 L 820,232 L 818,245 L 812,240 Z" /> {/* Philippines */}
-            <path d="M 822,250 L 845,248 L 840,258 L 820,258 Z" /> {/* New Guinea */}
-
-            {/* Australia & New Zealand */}
-            <path d="M 785,285 L 830,285 L 860,305 L 855,335 L 830,350 L 795,335 L 780,312 Z" />
-            <path d="M 870,345 L 880,355 L 872,370 L 865,360 Z" /> {/* NZ */}
-          </g>
 
           {/* Sourcing Arcs toward HQ with precise light-theme gradients */}
           {hqPoint && (

@@ -11,7 +11,8 @@ import {
   Edit2,
   ChevronRight,
   RefreshCw,
-  X
+  X,
+  Database
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppCard } from '../components/ui/AppCard';
@@ -74,21 +75,23 @@ export default function OperationDashboard() {
   const [countryRecords, setCountryRecords] = useState<OperationCountryRecord[]>([]);
 
   const [selectedLocation, setSelectedLocation] = useState<OperationMapPoint | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
 
   // 1. Data Loader
   const loadData = () => {
-    const listProducts = OperationStorage.getProductRecords(activeYear);
-    const listMaterials = OperationStorage.getRawMaterialRecords(activeYear);
+    const listProducts = OperationStorage.getProductRecords(activeYear) || [];
+    const listMaterials = OperationStorage.getRawMaterialRecords(activeYear) || [];
 
-    if ((listProducts && listProducts.length > 0) || (listMaterials && listMaterials.length > 0)) {
-      setRealProducts(listProducts);
-      setRealMaterials(listMaterials);
-      setIsSampleData(false);
-    } else {
-      setRealProducts(getSeedProducts(activeYear));
-      setRealMaterials(getSeedRawMaterials(activeYear));
-      setIsSampleData(true);
-    }
+    setRealProducts(listProducts);
+    setRealMaterials(listMaterials);
+    setIsSampleData(false);
 
     // Load country records
     const rawCountry = localStorage.getItem(`hycm_operation_country_records_${activeYear}`);
@@ -121,207 +124,6 @@ export default function OperationDashboard() {
     const currentRate = ExchangeRateStorage.getRate(activeYear, mNum);
     setCustomRateInput(String(currentRate));
   }, [activeYear, activeMonth]);
-
-  // Seed Product Ledgers (5 Canonical Products only)
-  const getSeedProducts = (yearStr: string): ProductLedgerRecord[] => {
-    const months = Array.from({ length: 12 }, (_, i) => i + 1);
-    const sampleRecords: ProductLedgerRecord[] = [];
-
-    const products = [
-      { name: '황산니켈' as const, metal: 'Ni' as const, baseQty: 120, unitPrice: 24_000_000 },
-      { name: '황산코발트' as const, metal: 'Co' as const, baseQty: 45, unitPrice: 58_000_000 },
-      { name: '탄산리튬' as const, metal: 'Li' as const, baseQty: 85, unitPrice: 38_000_000 },
-      { name: '황산망간' as const, metal: 'Mn' as const, baseQty: 150, unitPrice: 12_000_000 },
-      { name: '구리' as const, metal: 'Cu' as const, baseQty: 300, unitPrice: 9_500_000 },
-    ];
-
-    months.forEach((m) => {
-      const factor = 0.85 + Math.sin((m / 12) * Math.PI) * 0.3 + (m % 3) * 0.05;
-
-      products.forEach((p) => {
-        const rawQty = Math.round(p.baseQty * factor);
-        const normalReceiptQty = Math.round(rawQty * 1.08); // production
-        const begQty = Math.round(rawQty * 1.15);
-        const revenue = Math.round(rawQty * p.unitPrice);
-        const costOfSales = Math.round(revenue * (0.81 + (m % 5) * 0.02));
-        const grossProfit = revenue - costOfSales;
-
-        const recQty: ProductLedgerRecord = {
-          id: `seed_prod_${yearStr}_${m}_${p.name}_수량`,
-          year: yearStr,
-          month: m,
-          sourceType: '제품수불부',
-          sourceRowStartIndex: 0,
-          rawProductName: `${p.metal} ${p.name}`,
-          productName: p.name,
-          metal: p.metal,
-          unit: '수량',
-          beginningInventory: begQty,
-          normalReceipt: normalReceiptQty,
-          transferReceipt: 0,
-          returnReceipt: 0,
-          otherReceipt: 0,
-          receiptTotal: normalReceiptQty,
-          salesQuantity: rawQty,
-          reInput: 0,
-          compensation: 0,
-          sample: 0,
-          transferIssue: 0,
-          disposal: 0,
-          otherIssue: 0,
-          issueTotal: rawQty,
-          endingInventory: begQty + normalReceiptQty - rawQty,
-          inventoryValuationLoss: 25_000_000,
-          valuationApplied: 25_000_000,
-          revenue: revenue,
-          costOfSales: costOfSales,
-          grossProfit: grossProfit,
-          uploadedAt: new Date().toISOString()
-        };
-
-        const recAmt: ProductLedgerRecord = {
-          ...recQty,
-          id: `seed_prod_${yearStr}_${m}_${p.name}_금액`,
-          unit: '금액',
-          beginningInventory: begQty * p.unitPrice,
-          normalReceipt: normalReceiptQty * p.unitPrice,
-          receiptTotal: normalReceiptQty * p.unitPrice,
-          salesQuantity: rawQty * p.unitPrice,
-          issueTotal: rawQty * p.unitPrice,
-          endingInventory: (begQty + normalReceiptQty - rawQty) * p.unitPrice
-        };
-
-        const recPrc: ProductLedgerRecord = {
-          ...recQty,
-          id: `seed_prod_${yearStr}_${m}_${p.name}_단가`,
-          unit: '단가',
-          beginningInventory: p.unitPrice,
-          normalReceipt: p.unitPrice,
-          receiptTotal: p.unitPrice,
-          salesQuantity: p.unitPrice,
-          issueTotal: p.unitPrice,
-          endingInventory: p.unitPrice
-        };
-
-        sampleRecords.push(recQty, recAmt, recPrc);
-      });
-    });
-
-    return sampleRecords;
-  };
-
-  // Seed Raw Material Ledgers (4 Canonical Materials only)
-  const getSeedRawMaterials = (yearStr: string): RawMaterialLedgerRecord[] => {
-    const months = Array.from({ length: 12 }, (_, i) => i + 1);
-    const materials: RawMaterialLedgerRecord[] = [];
-
-    const rawKinds = [
-      { key: 'BP', rawName: 'BP (Black Powder 원료)', baseQty: 180, prc: 28_000_000 },
-      { key: 'BM', rawName: 'BM (Black Mass)', baseQty: 320, prc: 6_550_000 },
-      { key: 'WET', rawName: 'WET (Wet BM)', baseQty: 240, prc: 12_000_000 },
-      { key: 'LCO', rawName: 'LCO (리튬코발트산화물)', baseQty: 80, prc: 45_000_000 },
-    ];
-
-    months.forEach((m) => {
-      const factor = 0.85 + Math.sin((m / 12) * Math.PI) * 0.25;
-
-      rawKinds.forEach((k) => {
-        const qty = Math.round(k.baseQty * factor);
-        const scaleReceipt = Math.round(qty * 1.12);
-        const scaleIssue = qty;
-        const begQty = Math.round(qty * 0.95);
-
-        const endingQty = begQty + scaleReceipt - scaleIssue;
-        const seedPrice = k.prc;
-
-        materials.push({
-          id: `seed_raw_${yearStr}_${m}_${k.key}`,
-          year: yearStr,
-          month: m,
-          sourceType: '원자재수불부',
-          rawItemCode: k.key,
-          rawItemName: k.rawName,
-          materialGroup: k.key as any,
-          quantityRowLabel: k.key,
-          amountRowLabel: k.rawName,
-          unitPriceRowLabel: k.key,
-
-          beginningQty: begQty,
-          beginningAmount: begQty * seedPrice,
-          beginningUnitPrice: seedPrice,
-
-          purchaseQty: scaleReceipt,
-          purchaseAmount: scaleReceipt * seedPrice,
-          purchaseUnitPrice: seedPrice,
-
-          transferInQty: 0,
-          transferInAmount: 0,
-          transferInUnitPrice: 0,
-
-          receiptTotalQty: scaleReceipt,
-          receiptTotalAmount: scaleReceipt * seedPrice,
-          receiptTotalUnitPrice: seedPrice,
-
-          processIssueQty: scaleIssue,
-          processIssueAmount: scaleIssue * seedPrice,
-          processIssueUnitPrice: seedPrice,
-
-          salesIssueQty: 0,
-          salesIssueAmount: 0,
-          salesIssueUnitPrice: 0,
-
-          sampleIssueQty: 0,
-          sampleIssueAmount: 0,
-          sampleIssueUnitPrice: 0,
-
-          transferIssueQty: 0,
-          transferIssueAmount: 0,
-          transferIssueUnitPrice: 0,
-
-          disposalIssueQty: 0,
-          disposalIssueAmount: 0,
-          disposalIssueUnitPrice: 0,
-
-          devExpenseIssueQty: 0,
-          devExpenseIssueAmount: 0,
-          devExpenseIssueUnitPrice: 0,
-
-          devAssetIssueQty: 0,
-          devAssetIssueAmount: 0,
-          devAssetIssueUnitPrice: 0,
-
-          pilotIssueQty: 0,
-          pilotIssueAmount: 0,
-          pilotIssueUnitPrice: 0,
-
-          otherIssueQty: 0,
-          otherIssueAmount: 0,
-          otherIssueUnitPrice: 0,
-
-          issueTotalQty: scaleIssue,
-          issueTotalAmount: scaleIssue * seedPrice,
-          issueTotalUnitPrice: seedPrice,
-
-          endingQty: endingQty,
-          endingAmount: endingQty * seedPrice,
-          endingUnitPrice: seedPrice,
-
-          // Backward-compatibility attributes
-          rawMaterialName: k.rawName,
-          materialCode: k.key,
-          canonicalMaterialName: k.rawName,
-          unit: '수량',
-          beginningInventory: begQty,
-          receiptTotal: scaleReceipt,
-          issueTotal: scaleIssue,
-          endingInventory: endingQty,
-          uploadedAt: new Date().toISOString()
-        });
-      });
-    });
-
-    return materials;
-  };
 
   // --- Currency Conversion Utility ---
   const getCurrentExchangeRate = (monthNumber?: number): number => {
@@ -394,59 +196,6 @@ export default function OperationDashboard() {
     const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
     ExchangeRateStorage.saveRate(activeYear, mNum, num, 'manual');
     setIsEditingExchange(false);
-  };
-
-  const seedDemoCountryRecords = () => {
-    const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
-    const demo: OperationCountryRecord[] = [
-      {
-        year: activeYear,
-        month: mNum,
-        countryCode: 'ID',
-        countryName: '인도네시아',
-        type: 'purchase',
-        materialName: 'WET (Wet BM)',
-        quantityTon: Math.round(rawSourcingTons * 0.42) || 420,
-        amountKRW: Math.round(totalRevenueKRW * 0.35) || 35000000000
-      },
-      {
-        year: activeYear,
-        month: mNum,
-        countryCode: 'US',
-        countryName: '미국',
-        type: 'purchase',
-        materialName: 'BM (Black Mass)',
-        quantityTon: Math.round(rawSourcingTons * 0.3) || 300,
-        amountKRW: Math.round(totalRevenueKRW * 0.18) || 18000000000
-      },
-      {
-        year: activeYear,
-        month: mNum,
-        countryCode: 'CL',
-        countryName: '칠레',
-        type: 'purchase',
-        materialName: 'BP (Black Powder 원료)',
-        quantityTon: Math.round(rawSourcingTons * 0.18) || 180,
-        amountKRW: Math.round(totalRevenueKRW * 0.28) || 28000000000
-      },
-      {
-        year: activeYear,
-        month: mNum,
-        countryCode: 'CD',
-        countryName: '콩고민주공화국',
-        type: 'purchase',
-        materialName: 'LCO (리튬코발트산화물)',
-        quantityTon: Math.round(rawSourcingTons * 0.1) || 100,
-        amountKRW: Math.round(totalRevenueKRW * 0.19) || 19000000000
-      }
-    ];
-    localStorage.setItem(`hycm_operation_country_records_${activeYear}`, JSON.stringify(demo));
-    loadData();
-  };
-
-  const clearCountryRecords = () => {
-    localStorage.removeItem(`hycm_operation_country_records_${activeYear}`);
-    loadData();
   };
 
   // Filters
@@ -548,30 +297,32 @@ export default function OperationDashboard() {
   ];
 
   const summaryRawTableData = RAW_MATERIAL_KIND_MAP.map(def => {
-    const matchedRows = targetRawRows.filter(r => getNormalizedMaterialName(r.rawMaterialName) === def.name);
+    const matchedRows = targetRawRows.filter(r => 
+      r.materialGroup === def.key || 
+      getNormalizedMaterialName(r.rawMaterialName || r.canonicalMaterialName || '') === def.name
+    );
 
-    const begQty = matchedRows.reduce((a, b) => a + (b.beginningInventory || 0), 0);
-    const recQty = matchedRows.reduce((a, b) => a + (b.receiptTotal || 0), 0);
-    const issQty = matchedRows.reduce((a, b) => a + (b.issueTotal || 0), 0);
-    const endQty = matchedRows.reduce((a, b) => a + (b.endingInventory || 0), 0);
+    const begQty = matchedRows.reduce((sum, r) => sum + (r.beginningQty || 0), 0);
+    const begAmt = matchedRows.reduce((sum, r) => sum + (r.beginningAmount || 0), 0);
 
-    let basePricePerTon = 12; // default Millions
-    if (def.key === 'LCO') basePricePerTon = 45;
-    if (def.key === 'BM') basePricePerTon = 6.5;
-    if (def.key === 'BP') basePricePerTon = 28;
-    if (def.key === 'WET') basePricePerTon = 12;
+    const purQty = matchedRows.reduce((sum, r) => sum + (r.purchaseQty || 0), 0);
+    const purAmt = matchedRows.reduce((sum, r) => sum + (r.purchaseAmount || 0), 0);
 
-    const priceConverted = convertVal(basePricePerTon * 1_000_000) / 1_000_000;
+    const prcQty = matchedRows.reduce((sum, r) => sum + (r.processIssueQty || 0), 0);
+    const prcAmt = matchedRows.reduce((sum, r) => sum + (r.processIssueAmount || 0), 0);
+
+    const endQty = matchedRows.reduce((sum, r) => sum + (r.endingQty || 0), 0);
+    const endAmt = matchedRows.reduce((sum, r) => sum + (r.endingAmount || 0), 0);
+
+    const endPriceKRW = endQty > 0 ? (endAmt / endQty) : 0;
+    const priceConverted = convertVal(endPriceKRW) / 1_000_000;
 
     return {
       key: def.key,
       name: def.name,
       begQty,
-      begPrice: priceConverted,
-      recQty,
-      recPrice: priceConverted,
-      issQty,
-      issPrice: priceConverted,
+      purQty,
+      prcQty,
       endQty,
       endPrice: priceConverted,
     };
@@ -618,6 +369,8 @@ export default function OperationDashboard() {
       endPrice: convertVal(endPrice) / 1_000_000,
     };
   });
+
+  const hasNoData = realProducts.length === 0 && realMaterials.length === 0;
 
   return (
     <div className="space-y-6">
@@ -683,6 +436,23 @@ export default function OperationDashboard() {
         </div>
       </div>
 
+      {hasNoData ? (
+        <div id="operation-dashboard-empty-card" className="bg-white p-12 rounded-2xl border border-zinc-200 shadow-sm flex flex-col items-center justify-center text-center">
+          <Database className="w-12 h-12 text-zinc-300 stroke-1.5 mb-4 animate-bounce" />
+          <h3 className="text-sm font-bold text-zinc-800">업로드된 운영 수불 데이터가 없습니다.</h3>
+          <p className="text-xs text-zinc-500 max-w-sm mt-2 font-medium leading-relaxed">
+            운영 업로드에서 제품수불부 또는 원자재수불부를 등록하세요.
+          </p>
+          <AppButton
+            onClick={() => navigate('/operation-upload')}
+            className="mt-6 bg-[#111111] text-white hover:bg-zinc-800 font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs border-none"
+          >
+            운영 데이터 업로드로 이동 <ChevronRight className="w-4 h-4" />
+          </AppButton>
+        </div>
+      ) : (
+        <>
+
       {/* Section 1: Full-width Interactive Sourcing Map */}
       <div id="sourcing-global-matrix-map" className="col-span-full w-full">
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs relative">
@@ -693,27 +463,8 @@ export default function OperationDashboard() {
                 원료 조달 및 완제품 판매 글로벌 네트워크 현황 지도
               </h3>
               <p className="text-[10.5px] text-zinc-500 mt-1 font-sans">
-                {currentMonthRecords.length > 0 
-                  ? '업로드된 국가별 실적에 따라 공급망 거점이 동적으로 정밀 표시됩니다.' 
-                  : '제품수불부만 업로드된 기본 상태에서는 대한민국 HQ 본사 핀만 활성화됩니다. 아래 지원 버튼으로 시뮬레이션 지도를 켜 볼 수 있습니다.'}
+                업로드된 원자재 및 제품 수불 데이터의 해상 입고/출고 정보에 기반하여 글로벌 공급망 현황이 표시됩니다.
               </p>
-            </div>
-            <div className="flex gap-1.5">
-              {currentMonthRecords.length === 0 ? (
-                <button
-                  onClick={seedDemoCountryRecords}
-                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold transition-all shrink-0 cursor-pointer"
-                >
-                  📡 지도 데모 수하 실적 로드
-                </button>
-              ) : (
-                <button
-                  onClick={clearCountryRecords}
-                  className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-650 rounded-lg text-[10px] font-bold transition-all shrink-0 cursor-pointer"
-                >
-                  🗑️ 지도 실적 클리어 (본사만 표시)
-                </button>
-              )}
             </div>
           </div>
 
@@ -1072,12 +823,12 @@ export default function OperationDashboard() {
 
       {/* Section 2: Summary Tables Grid */}
       <div id="dashboard-summary-tables-block" className="space-y-6">
-        {/* Table 1: 원료 수불 요약부 */}
+        {/* Table 1: 원자재 수불 요약부 */}
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-3.5 bg-amber-500 rounded-sm"></span>
-              <h3 className="text-xs font-bold text-[#111111]">원야재 수불 요약장 (단위: Ton / {currencyMode === 'USD' ? 'USD/Ton' : '백만원'})</h3>
+              <h3 className="text-xs font-bold text-[#111111]">원자재 수불 요약장 (단위: Ton / {currencyMode === 'USD' ? 'USD/Ton' : '백만원/Ton'})</h3>
             </div>
           </div>
 
@@ -1086,35 +837,94 @@ export default function OperationDashboard() {
               <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider">
                 <tr className="divide-x divide-[#eef2ec]">
                   <th className="px-4 py-3 text-left">원료구분</th>
-                  <th className="px-4 py-3 text-right">기초 수량</th>
-                  <th className="px-4 py-3 text-right">기초 단가</th>
-                  <th className="px-4 py-3 text-right text-teal-850">인도구매 수량</th>
-                  <th className="px-4 py-3 text-right">구매 단가</th>
-                  <th className="px-4 py-3 text-right text-amber-850">공정불출 수량</th>
-                  <th className="px-4 py-3 text-right">불출 단가</th>
-                  <th className="px-4 py-3 text-right text-indigo-900 font-bold">기말재고 수량</th>
-                  <th className="px-4 py-3 text-right text-indigo-950 font-bold">기말 단가</th>
+                  <th className="px-4 py-3 text-right">기초재고 (수량)</th>
+                  <th className="px-4 py-3 text-right text-teal-850">구매입고 (수량)</th>
+                  <th className="px-4 py-3 text-right text-amber-850">공정출고 (수량)</th>
+                  <th className="px-4 py-3 text-right text-indigo-900 font-bold">기말재고 (수량)</th>
+                  <th className="px-4 py-3 text-right text-indigo-950 font-bold">기말재고 단가</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eef2ec] bg-white text-xs font-mono">
-                {summaryRawTableData.map((row) => (
-                  <tr key={row.key} className="hover:bg-[#f7f9f7]/55 divide-x divide-[#eef2ec]">
-                    <td className="px-4 py-3 font-sans font-bold text-zinc-900 text-left bg-slate-50/10">
-                      {row.name}
-                    </td>
-                    <td className="px-4 py-3 text-right text-zinc-650">{row.begQty.toLocaleString()} Ton</td>
-                    <td className="px-4 py-3 text-right text-zinc-450">{currencyMode === 'USD' ? `$${Math.round(row.begPrice * 1000).toLocaleString()}` : `₩${Math.round(row.begPrice).toLocaleString()}`}</td>
-                    
-                    <td className="px-4 py-3 text-right text-teal-800 font-bold bg-[#f0f9f8]">{row.recQty.toLocaleString()} Ton</td>
-                    <td className="px-4 py-3 text-right text-zinc-450 bg-[#f0f9f8]">{currencyMode === 'USD' ? `$${Math.round(row.recPrice * 1000).toLocaleString()}` : `₩${Math.round(row.recPrice).toLocaleString()}`}</td>
-                    
-                    <td className="px-4 py-3 text-right text-amber-850 font-semibold bg-amber-50/10">{row.issQty.toLocaleString()} Ton</td>
-                    <td className="px-4 py-3 text-right text-zinc-450 bg-amber-50/10">{currencyMode === 'USD' ? `$${Math.round(row.issPrice * 1000).toLocaleString()}` : `₩${Math.round(row.issPrice).toLocaleString()}`}</td>
-                    
-                    <td className="px-4 py-3 text-right text-indigo-950 font-extrabold bg-indigo-50/5">{row.endQty.toLocaleString()} Ton</td>
-                    <td className="px-4 py-3 text-right text-indigo-900 font-bold bg-indigo-50/5">{currencyMode === 'USD' ? `$${Math.round(row.endPrice * 1000).toLocaleString()}` : `₩${Math.round(row.endPrice).toLocaleString()}`}</td>
-                  </tr>
-                ))}
+                {summaryRawTableData.map((row) => {
+                  const isExpanded = !!expandedGroups[row.key];
+                  const groupItems = targetRawRows.filter(r => 
+                    r.materialGroup === row.key || 
+                    getNormalizedMaterialName(r.rawMaterialName || r.canonicalMaterialName || '') === row.name
+                  );
+
+                  return (
+                    <React.Fragment key={row.key}>
+                      <tr 
+                        onClick={() => toggleGroup(row.key)} 
+                        className="hover:bg-zinc-50 divide-x divide-[#eef2ec] cursor-pointer transition-colors"
+                        title="클릭하여 하위 품목 원장 상세 조회"
+                      >
+                        <td className="px-4 py-3 font-sans font-bold text-zinc-900 text-left bg-slate-50/10 flex items-center gap-1.5 selection:bg-transparent">
+                          <span className="text-[9px] text-zinc-400 w-3 inline-block font-mono">
+                            {isExpanded ? '▼' : '▶'}
+                          </span>
+                          <span>{row.name}</span>
+                          <span className="text-[9px] font-sans font-medium text-zinc-450 bg-zinc-100 px-1.5 py-0.5 rounded ml-1 select-none">
+                            {groupItems.length}개 품목
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-zinc-650">{row.begQty.toLocaleString()} Ton</td>
+                        <td className="px-4 py-3 text-right text-teal-800 font-bold bg-[#f0f9f8]">{row.purQty.toLocaleString()} Ton</td>
+                        <td className="px-4 py-3 text-right text-amber-850 font-semibold bg-amber-50/10">{row.prcQty.toLocaleString()} Ton</td>
+                        <td className="px-4 py-3 text-right text-indigo-950 font-extrabold bg-indigo-50/5">{row.endQty.toLocaleString()} Ton</td>
+                        <td className="px-4 py-3 text-right text-indigo-900 font-bold bg-indigo-50/5">
+                          {currencyMode === 'USD' 
+                            ? `$${Math.round(row.endPrice * 1000).toLocaleString()}` 
+                            : `₩${Math.round(row.endPrice).toLocaleString()}`}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-zinc-50/40">
+                          <td colSpan={6} className="px-5 py-3.5 bg-zinc-50/30">
+                            <div className="border border-zinc-200 rounded-xl bg-white shadow-xs overflow-hidden">
+                              <table className="min-w-full divide-y divide-zinc-150 text-left text-[11px] font-sans">
+                                <thead className="bg-[#fcfdfc] text-[9px] text-[#5e6b60] font-bold uppercase tracking-wider">
+                                  <tr className="divide-x divide-zinc-100">
+                                    <th className="px-3.5 py-2.5 text-left w-1/4">품목코드 (Row ID)</th>
+                                    <th className="px-3.5 py-2.5 text-left w-1/3">원자재 품목명 및 수불 상세</th>
+                                    <th className="px-3.5 py-2.5 text-right">기초 재고</th>
+                                    <th className="px-3.5 py-2.5 text-right text-teal-800">구매 입고</th>
+                                    <th className="px-3.5 py-2.5 text-right text-amber-850">공정 출고</th>
+                                    <th className="px-3.5 py-2.5 text-right font-black text-indigo-950">기말 재고</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-100 font-mono text-zinc-650 bg-white">
+                                  {groupItems.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={6} className="px-4 py-6 text-center text-zinc-400 font-sans italic">
+                                        이 그룹에 매칭된 세부 원수불 품목 내역이 없습니다. (업로드 원장을 확인하세요)
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    groupItems.map((item) => (
+                                      <tr key={item.id} className="hover:bg-zinc-50/30 divide-x divide-zinc-100">
+                                        <td className="px-3.5 py-2 font-mono font-semibold text-zinc-900 text-left">
+                                          {item.rawItemCode || item.materialCode || '-'}
+                                        </td>
+                                        <td className="px-3.5 py-2 text-left text-zinc-650 font-sans font-medium">
+                                          {item.rawItemName || item.rawMaterialName || '-'}
+                                        </td>
+                                        <td className="px-3.5 py-2 text-right text-zinc-500">{(item.beginningQty || 0).toLocaleString()} Ton</td>
+                                        <td className="px-3.5 py-2 text-right text-teal-800">{(item.purchaseQty || 0).toLocaleString()} Ton</td>
+                                        <td className="px-3.5 py-2 text-right text-amber-850">{(item.processIssueQty || 0).toLocaleString()} Ton</td>
+                                        <td className="px-3.5 py-2 text-right text-indigo-950 font-bold bg-indigo-50/5">{(item.endingQty || 0).toLocaleString()} Ton</td>
+                                      </tr>
+                                    ))
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1176,6 +986,9 @@ export default function OperationDashboard() {
           </div>
         </div>
       </div>
+
+        </>
+      )}
 
       {/* Relocated Upload Workspace Bar at the bottom for polished corporate hierarchy */}
       <div id="operation-upload-trigger-footer" className="bg-[#fcfdfd] border-2 border-dashed border-zinc-250 p-6 rounded-2xl text-center space-y-3 shadow-xs">

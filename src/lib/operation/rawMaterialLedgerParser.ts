@@ -16,19 +16,20 @@ export function isRawItemCode(text: string): boolean {
 
   const blocked = [
     '합계', '소계', '총계', '구분', '단위', '품목', '원료', '금액', '수량', '단가',
-    '이동', '출고', '입고', '기말', '기초', '평균', '누계', '원자재', '수불', '매매'
+    '이동', '출고', '입고', '기말', '기초', '평균', '누계', '원자재', '수불', '매매', '연도', '년도', '월', '비고', '계정'
   ];
   for (const b of blocked) {
     if (clean.includes(b)) return false;
   }
 
-  // Raw codes examples: B111OT-ETC-ETC, B622WE-USA-ABT, BLCOCE-IND-ANS, MN-MN3O4
-  // They are typically alphanumeric starting with letters and having format like AA11 or AA-BB or AA_BB or AA
+  // Ensure no Korean characters are in the code itself
+  const hasKorean = /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(clean);
+  if (hasKorean) return false;
+
   const hasLetter = /[A-Za-z]/.test(clean);
-  const hasDigit = /[0-9]/.test(clean);
   if (!hasLetter) return false;
 
-  // Let's exclude long description text. Code is typically shorter than 30 chars and does not have spaces
+  // Code is typically shorter than 30 chars and does not have spaces
   if (clean.length > 30) return false;
   if (clean.includes(' ')) return false;
 
@@ -42,14 +43,11 @@ export function resolveRawMaterialGroup(rawCode: string, amountRowName: string, 
   if (text.includes('LCO') || rawCode.startsWith('BLCO')) return 'LCO';
   if (text.includes('MN') || text.includes('망간')) return 'MN';
 
-  // 622 셀/팩/기타 계열은 기본 BM
-  if (rawCode.includes('622')) return 'BM';
+  // Black Mass (BM)
+  if (rawCode.includes('622') || text.includes('MASS') || text.includes('BM')) return 'BM';
 
-  // 811 양극활/NCA 계열은 일단 BP로 분류하되, 마스터에서 수정 가능하게 둔다.
-  if (rawCode.includes('811')) return 'BP';
-
-  // 111, 523 기타 계열은 기본 BP로 두되, 마스터에서 수정 가능하게 둔다.
-  if (rawCode.includes('111') || rawCode.includes('523')) return 'BP';
+  // Black Powder (BP)
+  if (rawCode.includes('111') || rawCode.includes('523') || rawCode.includes('811') || text.includes('POWDER') || text.includes('BP')) return 'BP';
 
   return '기타';
 }

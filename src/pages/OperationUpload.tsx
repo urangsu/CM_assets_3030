@@ -354,32 +354,32 @@ export default function OperationUpload() {
       }
 
       // 2. Missing row checking inside the 3-row cluster
-      if (!r.amountRowLabel) {
-        errors.push(`품목 [${r.rawItemCode}]: 금액 행(2번째 행)의 라벨이 누락되었습니다.`);
+      if (!r.amountRowLabel || r.amountRowLabel.trim() === '') {
+        errors.push(`품목 [${r.rawItemCode}]: 금액 행(2번째 행)의 정보가 누락되었습니다.`);
       }
-      if (!r.unitPriceRowLabel) {
-        errors.push(`품목 [${r.rawItemCode}]: 단가 행(3번째 행)의 라벨이 누락되었습니다.`);
+      if (!r.unitPriceRowLabel || r.unitPriceRowLabel.trim() === '') {
+        errors.push(`품목 [${r.rawItemCode}]: 단가 행(3번째 행)의 정보가 누락되었습니다.`);
       }
 
-      // 3. 입고합계 검증: 기초가 아니라 구매+이동 = 입고합계
+      // 3. 입고합계 검증: 구매 + 이동 = 입고합계
       const sumReceiptQty = r.purchaseQty + r.transferInQty;
       const receiptDiff = Math.abs(sumReceiptQty - r.receiptTotalQty);
       if (receiptDiff > 0.1) {
-        warnings.push(`[${r.rawItemCode}] 입고합계 불일치: 구매(${r.purchaseQty.toFixed(1)}) + 이동입고(${r.transferInQty.toFixed(1)}) = ${sumReceiptQty.toFixed(1)} Ton, 표기된 입고합계(${r.receiptTotalQty.toFixed(1)})와 ${receiptDiff.toFixed(1)} Ton 차이`);
+        warnings.push(`[${r.rawItemCode}] 입고합계 불일치: 구매(${r.purchaseQty.toFixed(1)}) + 이동(${r.transferInQty.toFixed(1)}) = ${sumReceiptQty.toFixed(1)} Ton, 표기된 입고합계(${r.receiptTotalQty.toFixed(1)})와 ${receiptDiff.toFixed(1)} Ton 차이`);
       }
 
-      // 4. 출고합계 검증: 공정+판매+견본+이동+폐기+개발비용+개발자산+시운전+기타 = 출고합계
+      // 4. 출고합계 검증: 공정 + 판매 + 견본 + 이동 + 폐기 + 개발(비용) + 개발(자산) + 시운전 + 기타 = 출고합계
       const sumIssueQty = r.processIssueQty + r.salesIssueQty + r.sampleIssueQty + r.transferIssueQty + r.disposalIssueQty + r.devExpenseIssueQty + r.devAssetIssueQty + r.pilotIssueQty + r.otherIssueQty;
       const issueDiff = Math.abs(sumIssueQty - r.issueTotalQty);
       if (issueDiff > 0.1) {
-        warnings.push(`[${r.rawItemCode}] 출고합계 불일치: 세부 소계 합산(${sumIssueQty.toFixed(1)})과 표기된 출고합계(${r.issueTotalQty.toFixed(1)}) 사이에 ${issueDiff.toFixed(1)} Ton 차이`);
+        warnings.push(`[${r.rawItemCode}] 출고합계 불일치: 구성요소 합계(${sumIssueQty.toFixed(1)} Ton)와 표기된 출고합계(${r.issueTotalQty.toFixed(1)} Ton) 사이에 ${issueDiff.toFixed(1)} Ton 차이`);
       }
 
-      // 5. 기말 검증: 기초재고 + 입고합계 - 출고합계 = 기말재고
-      const expectedEnd = r.beginningQty + r.receiptTotalQty - r.issueTotalQty;
+      // 5. 기말 검증: 입고합계 - 출고합계 = 기말재고
+      const expectedEnd = r.receiptTotalQty - r.issueTotalQty;
       const endingDiff = Math.abs(expectedEnd - r.endingQty);
       if (endingDiff > 0.1) {
-        warnings.push(`${r.rawItemCode}: 기말재고 산식 차이 ${endingDiff.toFixed(1)} Ton (산식값: 기초[${r.beginningQty.toFixed(1)}] + 입고[${r.receiptTotalQty.toFixed(1)}] - 출고[${r.issueTotalQty.toFixed(1)}] = ${expectedEnd.toFixed(1)}, 표기기말: ${r.endingQty.toFixed(1)})`);
+        warnings.push(`[${r.rawItemCode}] 기말재고 검증 불일치: 입고합계(${r.receiptTotalQty.toFixed(1)}) - 출고합계(${r.issueTotalQty.toFixed(1)}) = ${expectedEnd.toFixed(1)} Ton, 표기된 기말재고(${r.endingQty.toFixed(1)})와 ${endingDiff.toFixed(1)} Ton 차이`);
       }
 
       // 6. 금액/수량/단가 검증: 금액 ÷ 수량 ≈ 단가
@@ -405,12 +405,8 @@ export default function OperationUpload() {
         }
       }
 
-      // 7. 원료군 분류 결과 경고
-      if (r.materialGroup === 'MN') {
-        warnings.push(`${r.rawItemCode}: 원료군 MN으로 분류됨, 대시보드 요약 제외`);
-      } else if (r.materialGroup === '기타') {
-        warnings.push(`${r.rawItemCode}: 원료군 '기타'로 분류됨`);
-      }
+      // 7. 원료군 분류 결과
+      warnings.push(`[${r.rawItemCode}] 원료군 분류 완료: ${r.materialGroup}`);
     });
 
     const receiptsSum = records.reduce((acc, r) => acc + r.receiptTotalQty, 0);
