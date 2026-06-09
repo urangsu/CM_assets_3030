@@ -25,6 +25,18 @@ import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, ProductLedgerRecord } from '../lib/operation/operationStorage';
 import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
 
+function formatKRWMillion(valueKRW: number): string {
+  if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
+  const val = Math.round(valueKRW / 1_000_000);
+  if (val < 0) return `-₩${Math.abs(val).toLocaleString()}백만원`;
+  return `₩${val.toLocaleString()}백만원`;
+}
+
+function formatKRWBillion(valueKRW: number): string {
+  if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
+  return `₩${(valueKRW / 1_000_000_000).toFixed(1)}십억원`;
+}
+
 export default function SalesStatus() {
   const navigate = useNavigate();
   const [activeYear, setActiveYear] = useState<string>('2026');
@@ -56,7 +68,7 @@ export default function SalesStatus() {
     };
   }, [activeYear]);
 
-  // Seed Data Generator centered on Products
+  // Seed Data Generator centered on Products (without LCE scale, showing real quantities)
   const getSeedRecords2026 = (yearStr: string): ProductLedgerRecord[] => {
     const months = Array.from({ length: 12 }, (_, i) => i + 1);
     const result: ProductLedgerRecord[] = [];
@@ -129,12 +141,15 @@ export default function SalesStatus() {
     return krwVal;
   };
 
-  const formatCurrency = (val: number) => {
+  // Currency utility specifically adjusted for KPIs and Tables
+  const formatCurrencyValue = (val: number, isKPI: boolean = false) => {
+    if (val === 0) return '-';
     if (currencyMode === 'USD') {
-      return `$${Math.round(val).toLocaleString()}`;
+      const usdVal = val / (isKPI ? 1_000_000 : 1_000);
+      return isKPI ? `$${usdVal.toFixed(1)}M` : `$${Math.round(usdVal).toLocaleString()}K`;
     }
-    // Show in million KRW
-    return `₩${Math.round(val / 1_000_000).toLocaleString()}백만원`;
+    // For KRW
+    return isKPI ? formatKRWBillion(val) : formatKRWMillion(val);
   };
 
   // Filter records to target month & unit of type '수량'
@@ -215,13 +230,13 @@ export default function SalesStatus() {
     <div className="space-y-6 animate-fade">
       {/* Sample Alert */}
       {isSampleData && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div id="sales-simulated-warning-box" className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-start gap-2.5 text-xs">
             <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold">⚠️ RUNNING SAMPLE (샘플 데이터 모드)</p>
               <p className="text-[#647067] mt-0.5">
-                현재 업로드된 제품수불 정보가 없습니다. 상세 데이터 파싱 및 수불 현황을 확인하려면 [운영 업로드] 페이지에서 엑셀 수불부를 올려주십시오.
+                현재 업로드된 정식 제품수불 정보가 확인되지 않아 정성 수밀 세팅 샘플이 출력 중입니다. 실제 실적으로 변환하려면 [운영 업로드] 페이지에서 엑셀 수불부를 업로드해 주십시오.
               </p>
             </div>
           </div>
@@ -235,19 +250,19 @@ export default function SalesStatus() {
       )}
 
       {/* Header Panel */}
-      <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div id="sales-status-header" className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs bg-slate-100 text-zinc-550 px-2 py-0.5 rounded font-bold">운영 대시보드 연계</span>
           </div>
-          <h2 className="text-[20px] font-bold text-zinc-900 leading-tight mt-1">판매 현황</h2>
+          <h2 className="text-[20px] font-bold text-zinc-900 leading-tight mt-1">판매 실적 분석</h2>
           <p className="text-xs text-zinc-500 mt-1">
-            제품수불부의 판매수량, 매출액, 매출원가, 매출이익을 확인합니다.
+            제품수불부상의 정산 판매수량(F열), 매출액, 매출원가, 매출이익을 실무 기준에 맞추어 추산합니다.
           </p>
         </div>
 
         {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2.5 animate-fade">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Currency Switcher */}
           <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
             <button
@@ -296,23 +311,23 @@ export default function SalesStatus() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div id="sales-kpi-summary-grid" className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <div className="bg-white border border-[#dde5de] p-4 rounded-xl text-center shadow-xs">
           <span className="text-[10px] text-[#647067] font-bold block">총 매출액</span>
           <span className="text-sm font-extrabold font-mono text-zinc-900 block mt-1">
-            {formatCurrency(convertAmount(totalRevenueKRW))}
+            {formatCurrencyValue(totalRevenueKRW, true)}
           </span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4 rounded-xl text-center shadow-xs">
           <span className="text-[10px] text-zinc-500 font-bold block">총 매출원가</span>
           <span className="text-sm font-extrabold font-mono text-zinc-700 block mt-1">
-            {formatCurrency(convertAmount(totalCostKRW))}
+            {formatCurrencyValue(totalCostKRW, true)}
           </span>
         </div>
         <div className="bg-[#fcfdfc] border border-[#dde5de] p-4 rounded-xl text-center shadow-sm">
           <span className="text-[10px] text-[#008f83] font-bold block">매출이익</span>
           <span className="text-sm font-extrabold font-mono text-[#008f83] block mt-1">
-            {formatCurrency(convertAmount(totalProfitKRW))}
+            {formatCurrencyValue(totalProfitKRW, true)}
           </span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4 rounded-xl text-center shadow-xs">
@@ -322,15 +337,15 @@ export default function SalesStatus() {
           </span>
         </div>
         <div className="bg-white border border-[#dde5de] p-4 rounded-xl text-center shadow-xs">
-          <span className="text-[10px] text-zinc-500 font-bold block">총 판매물량 (N/C/LC)</span>
+          <span className="text-[10px] text-zinc-500 font-bold block">총 판매물량 (3대핵심)</span>
           <span className="text-sm font-extrabold font-mono text-[#008f83] block mt-1">
-            {totalQuantityTons.toLocaleString()} Mt
+            {totalQuantityTons.toLocaleString()} Ton
           </span>
         </div>
         <div className="bg-[#f0f9f8] border border-teal-150 p-4 rounded-xl text-center shadow-xs">
-          <span className="text-[10px] text-[#008f83] font-bold block">제품 수</span>
+          <span className="text-[10px] text-[#008f83] font-bold block">제품 품종군</span>
           <span className="text-sm font-extrabold font-mono text-teal-800 block mt-1">
-            {productCount}개 구분
+            {productCount}종 완제품
           </span>
         </div>
       </div>
@@ -339,7 +354,7 @@ export default function SalesStatus() {
       <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
         <h3 className="text-xs font-bold text-zinc-800 mb-4 flex items-center gap-1.5">
           <TrendingUp className="w-4 h-4 text-emerald-600" />
-          {activeYear}년 월별 매출액 및 매출이익 트렌드 ({currencyMode === 'USD' ? 'USD' : '백만원'})
+          {activeYear}년 월별 매출액 및 매출이익 추세 ({currencyMode === 'USD' ? 'USD 기준' : '백만원 기준'})
         </h3>
         <div className="h-[210px] w-full font-mono text-[9px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -349,7 +364,7 @@ export default function SalesStatus() {
               <YAxis fontSize={9} stroke="#a0aab2" axisLine={false} tickLine={false} />
               <Tooltip formatter={(value) => [`${Math.round(Number(value)).toLocaleString()}`, '']} />
               <Legend iconType="circle" />
-              <Bar name="매출 매출액" dataKey="매출액" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={24} />
+              <Bar name="매출액" dataKey="매출액" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={24} />
               <Bar name="매출이익" dataKey="매출이익" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={16} />
             </BarChart>
           </ResponsiveContainer>
@@ -380,47 +395,52 @@ export default function SalesStatus() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full text-xs p-2.5 pl-9 bg-[#f7f9f7] border border-[#dde5de] rounded-xl focus:outline-none focus:bg-white"
-              placeholder="제품명 필터..."
+              placeholder="제품명 검색..."
             />
           </div>
         </div>
 
         {/* Detailed Sales table */}
         <div className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden">
-          <table className="min-w-full divide-y divide-[#eef2ec] text-left">
+          <table id="sales-detail-status-table" className="min-w-full divide-y divide-[#eef2ec] text-left">
             <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider">
               <tr>
                 <th className="px-5 py-3.5">제품명</th>
                 <th className="px-5 py-3.5 text-center">금속</th>
-                <th className="px-5 py-3.5 text-right">판매수량 (Mt)</th>
+                <th className="px-5 py-3.5 text-right">판매수량</th>
                 <th className="px-5 py-3.5 text-right font-extrabold text-zinc-800">매출액</th>
                 <th className="px-5 py-3.5 text-right">매출원가</th>
                 <th className="px-5 py-3.5 text-right font-extrabold text-teal-800 bg-emerald-50/10">매출이익</th>
                 <th className="px-5 py-3.5 text-center font-bold text-indigo-700">매출이익률</th>
-                <th className="px-5 py-3.5 text-right">판매단가 (Mt당)</th>
+                <th className="px-5 py-3.5 text-right">평균 단가</th>
                 <th className="px-5 py-3.5 text-right font-bold text-slate-800">기말재고</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eef2ec] bg-white text-xs">
               {finalTableData.map(item => {
-                const displayRev = convertAmount(item.revenue);
-                const displayCos = convertAmount(item.costOfSales);
-                const displayProfit = displayRev - displayCos;
-                const displayAvgPrice = convertAmount(item.avgPrice);
-
+                const isLithium = item.productName === '탄산리튬';
                 return (
                   <tr key={item.productName} className="hover:bg-[#f7f9f7]/55 font-mono">
-                    <td className="px-5 py-3.5 font-bold font-sans text-zinc-900">{item.productName}</td>
-                    <td className="px-5 py-3.5 text-center font-bold text-zinc-400">
-                      <span className="bg-slate-100 text-zinc-705 text-[10px] px-2 py-0.5 rounded font-mono">{item.metal}</span>
+                    <td className="px-5 py-3.5 font-bold font-sans text-zinc-900">
+                      {item.productName}
+                      {isLithium && (
+                        <span className="block text-[8px] bg-emerald-50 text-emerald-700 px-1 py-0.5 rounded font-normal font-sans mt-0.5 w-max">
+                          * 판매 원수량 (환산 없음)
+                        </span>
+                      )}
                     </td>
-                    <td className="px-5 py-3.5 text-right text-zinc-900 font-bold">{item.salesQty.toLocaleString()} Mt</td>
-                    <td className="px-5 py-3.5 text-right font-bold text-zinc-950">{formatCurrency(displayRev)}</td>
-                    <td className="px-5 py-3.5 text-right text-zinc-550">{formatCurrency(displayCos)}</td>
-                    <td className="px-5 py-3.5 text-right font-extrabold text-teal-800 bg-teal-50/5">{formatCurrency(displayProfit)}</td>
+                    <td className="px-5 py-3.5 text-center font-bold text-zinc-400">
+                      <span className="bg-slate-100 text-zinc-70d text-[10px] px-2 py-0.5 rounded font-mono">{item.metal}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right text-zinc-900 font-bold">{item.salesQty.toLocaleString()} Ton</td>
+                    <td className="px-5 py-3.5 text-right font-bold text-zinc-950">{formatCurrencyValue(item.revenue)}</td>
+                    <td className="px-5 py-3.5 text-right text-zinc-550">{formatCurrencyValue(item.costOfSales)}</td>
+                    <td className="px-5 py-3.5 text-right font-extrabold text-teal-800 bg-teal-50/5">{formatCurrencyValue(item.grossProfit)}</td>
                     <td className="px-5 py-3.5 text-center font-bold text-indigo-700">{item.profitMargin.toFixed(1)}%</td>
-                    <td className="px-5 py-3.5 text-right text-zinc-500">{formatCurrency(displayAvgPrice)}/Mt</td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-indigo-900">{item.endingQty.toLocaleString()} Mt</td>
+                    <td className="px-5 py-3.5 text-right text-zinc-500">
+                      {formatCurrencyValue(item.avgPrice, false)}/Ton
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-indigo-900">{item.endingQty.toLocaleString()} Ton</td>
                   </tr>
                 );
               })}

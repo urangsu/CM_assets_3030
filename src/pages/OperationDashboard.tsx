@@ -18,6 +18,7 @@ import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, ProductLedgerRecord, RawMaterialLedgerRecord } from '../lib/operation/operationStorage';
 import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
+import { OperationWorldMap } from '../components/OperationWorldMap';
 
 interface OperationMapPoint {
   id: string;
@@ -32,6 +33,27 @@ interface OperationMapPoint {
   products: string[];
   coords: { x: number; y: number }; // Percentage on SVG
 }
+
+interface OperationCountryRecord {
+  year: string;
+  month: number;
+  countryCode: string;
+  countryName: string;
+  type: 'sales' | 'purchase';
+  productName?: string;
+  materialName?: string;
+  quantityTon: number;
+  amountKRW: number;
+}
+
+const COUNTRY_COORDS: Record<string, { x: number, y: number }> = {
+  HQ: { x: 80, y: 39 },
+  KR: { x: 80, y: 39 },
+  ID: { x: 78, y: 55 },
+  US: { x: 23, y: 36 },
+  CL: { x: 30, y: 78 },
+  CD: { x: 53, y: 58 }
+};
 
 export default function OperationDashboard() {
   const navigate = useNavigate();
@@ -49,6 +71,7 @@ export default function OperationDashboard() {
   const [realProducts, setRealProducts] = useState<ProductLedgerRecord[]>([]);
   const [realMaterials, setRealMaterials] = useState<RawMaterialLedgerRecord[]>([]);
   const [isSampleData, setIsSampleData] = useState<boolean>(false);
+  const [countryRecords, setCountryRecords] = useState<OperationCountryRecord[]>([]);
 
   const [selectedLocation, setSelectedLocation] = useState<OperationMapPoint | null>(null);
 
@@ -66,6 +89,18 @@ export default function OperationDashboard() {
       setRealMaterials(getSeedRawMaterials(activeYear));
       setIsSampleData(true);
     }
+
+    // Load country records
+    const rawCountry = localStorage.getItem(`hycm_operation_country_records_${activeYear}`);
+    if (rawCountry) {
+      try {
+        setCountryRecords(JSON.parse(rawCountry));
+      } catch (e) {
+        setCountryRecords([]);
+      }
+    } else {
+      setCountryRecords([]);
+    }
   };
 
   useEffect(() => {
@@ -78,7 +113,7 @@ export default function OperationDashboard() {
     return () => {
       window.removeEventListener('operation-ledger-changed', handler);
     };
-  }, [activeYear]);
+  }, [activeYear, activeMonth]);
 
   // Set initial rate input value
   useEffect(() => {
@@ -111,7 +146,6 @@ export default function OperationDashboard() {
         const costOfSales = Math.round(revenue * (0.81 + (m % 5) * 0.02));
         const grossProfit = revenue - costOfSales;
 
-        // Create 수량 record
         const recQty: ProductLedgerRecord = {
           id: `seed_prod_${yearStr}_${m}_${p.name}_수량`,
           year: yearStr,
@@ -137,66 +171,77 @@ export default function OperationDashboard() {
           otherIssue: 0,
           issueTotal: rawQty,
           endingInventory: begQty + normalReceiptQty - rawQty,
-          inventoryValuationLoss: 0,
-          valuationApplied: 0,
+          inventoryValuationLoss: 25_000_000,
+          valuationApplied: 25_000_000,
           revenue: revenue,
           costOfSales: costOfSales,
           grossProfit: grossProfit,
           uploadedAt: new Date().toISOString()
         };
 
-        // Create 금액 record
         const recAmt: ProductLedgerRecord = {
           ...recQty,
           id: `seed_prod_${yearStr}_${m}_${p.name}_금액`,
           unit: '금액',
-          beginningInventory: begQty * p.unitPrice * 0.8,
-          normalReceipt: normalReceiptQty * p.unitPrice * 0.8,
-          receiptTotal: normalReceiptQty * p.unitPrice * 0.8,
-          endingInventory: (begQty + normalReceiptQty - rawQty) * p.unitPrice * 0.8,
-          inventoryValuationLoss: m % 4 === 0 ? 120_000_000 : 0,
-          valuationApplied: m % 4 === 0 ? 100_000_000 : 0
+          beginningInventory: begQty * p.unitPrice,
+          normalReceipt: normalReceiptQty * p.unitPrice,
+          receiptTotal: normalReceiptQty * p.unitPrice,
+          salesQuantity: rawQty * p.unitPrice,
+          issueTotal: rawQty * p.unitPrice,
+          endingInventory: (begQty + normalReceiptQty - rawQty) * p.unitPrice
         };
 
-        sampleRecords.push(recQty);
-        sampleRecords.push(recAmt);
+        const recPrc: ProductLedgerRecord = {
+          ...recQty,
+          id: `seed_prod_${yearStr}_${m}_${p.name}_단가`,
+          unit: '단가',
+          beginningInventory: p.unitPrice,
+          normalReceipt: p.unitPrice,
+          receiptTotal: p.unitPrice,
+          salesQuantity: p.unitPrice,
+          issueTotal: p.unitPrice,
+          endingInventory: p.unitPrice
+        };
+
+        sampleRecords.push(recQty, recAmt, recPrc);
       });
     });
 
     return sampleRecords;
   };
 
-  // Seed Raw Material Ledgers
+  // Seed Raw Material Ledgers (4 Canonical Materials only)
   const getSeedRawMaterials = (yearStr: string): RawMaterialLedgerRecord[] => {
     const months = Array.from({ length: 12 }, (_, i) => i + 1);
     const materials: RawMaterialLedgerRecord[] = [];
 
-    const matSeeds = [
-      { name: 'BP (Black Powder 원료)', unit: 'Mt', beginning: 65.3, receipt: 180.4, issue: 155.2 },
-      { name: 'BM (Black Mass)', unit: 'Mt', beginning: 210.4, receipt: 740.5, issue: 650.0 },
-      { name: 'WET (Wet BM)', unit: 'Mt', beginning: 120.0, receipt: 390.0, issue: 350.0 },
-      { name: 'LCO (리튬코발트산화물, Lithium Cobalt Oxide)', unit: 'Mt', beginning: 24.5, receipt: 78.4, issue: 72.1 }
+    const rawKinds = [
+      { key: 'BP', rawName: 'BP (Black Powder 원료)', baseQty: 180, prc: 28_000_000 },
+      { key: 'BM', rawName: 'BM (Black Mass)', baseQty: 320, prc: 6_550_000 },
+      { key: 'WET', rawName: 'WET (Wet BM)', baseQty: 240, prc: 12_000_000 },
+      { key: 'LCO', rawName: 'LCO (리튬코발트산화물)', baseQty: 80, prc: 45_000_000 },
     ];
 
     months.forEach((m) => {
-      const idxFactor = 0.95 + (m % 5) * 0.04;
-      matSeeds.forEach((seed, sIdx) => {
-        const start = Math.round(seed.beginning * idxFactor * 10) / 10;
-        const rec = Math.round(seed.receipt * idxFactor * 10) / 10;
-        const iss = Math.round(seed.issue * idxFactor * 10) / 10;
-        const end = Math.round((start + rec - iss) * 10) / 10;
+      const factor = 0.85 + Math.sin((m / 12) * Math.PI) * 0.25;
+
+      rawKinds.forEach((k) => {
+        const qty = Math.round(k.baseQty * factor);
+        const scaleReceipt = Math.round(qty * 1.12);
+        const scaleIssue = qty;
+        const begQty = Math.round(qty * 0.95);
 
         materials.push({
-          id: `seed_raw_${yearStr}_${m}_${sIdx}`,
+          id: `seed_raw_${yearStr}_${m}_${k.key}`,
           year: yearStr,
           month: m,
           sourceType: '원자재수불부',
-          rawMaterialName: seed.name,
-          unit: seed.unit,
-          beginningInventory: start,
-          receiptTotal: rec,
-          issueTotal: iss,
-          endingInventory: end,
+          rawMaterialName: k.rawName,
+          unit: '수량',
+          beginningInventory: begQty,
+          receiptTotal: scaleReceipt,
+          issueTotal: scaleIssue,
+          endingInventory: begQty + scaleReceipt - scaleIssue,
           uploadedAt: new Date().toISOString()
         });
       });
@@ -219,22 +264,29 @@ export default function OperationDashboard() {
     return krwVal;
   };
 
-  // Monetary formatting rules according to instructions (₩19,210백만원 or $14.0M)
-  const formatCurrencyAmount = (valueKRW: number) => {
-    const rate = getCurrentExchangeRate();
-    if (currencyMode === 'USD') {
-      return `$${(valueKRW / rate / 1_000_000).toFixed(1)}M`;
-    }
-    return `₩${Math.round(valueKRW / 1_000_000).toLocaleString()}백만원`;
-  };
-
   // Precise exact details
   const formatKRWMillion = (valueKRW: number) => {
+    if (valueKRW === 0) return '-';
     return `₩${Math.round(valueKRW / 1_000_000).toLocaleString()}백만원`;
   };
 
   const formatKRWBillion = (valueKRW: number) => {
+    if (valueKRW === 0) return '-';
     return `₩${(valueKRW / 1_000_000_000).toFixed(1)}십억원`;
+  };
+
+  // Differentiate KPIs (Billion KRW / Million USD) vs Tables (Million KRW)
+  const formatCurrencyAmount = (valueKRW: number, isKPI: boolean = false) => {
+    const rate = getCurrentExchangeRate();
+    if (currencyMode === 'USD') {
+      const usdVal = valueKRW / rate;
+      if (isKPI) {
+        return `$${(usdVal / 1_000_000).toFixed(1)}M`;
+      }
+      return `$${Math.round(usdVal / 1_000).toLocaleString()}K`;
+    }
+    // KRW
+    return isKPI ? formatKRWBillion(valueKRW) : formatKRWMillion(valueKRW);
   };
 
   const handleExchangeAutoSync = async () => {
@@ -271,6 +323,59 @@ export default function OperationDashboard() {
     setIsEditingExchange(false);
   };
 
+  const seedDemoCountryRecords = () => {
+    const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
+    const demo: OperationCountryRecord[] = [
+      {
+        year: activeYear,
+        month: mNum,
+        countryCode: 'ID',
+        countryName: '인도네시아',
+        type: 'purchase',
+        materialName: 'WET (Wet BM)',
+        quantityTon: Math.round(rawSourcingTons * 0.42) || 420,
+        amountKRW: Math.round(totalRevenueKRW * 0.35) || 35000000000
+      },
+      {
+        year: activeYear,
+        month: mNum,
+        countryCode: 'US',
+        countryName: '미국',
+        type: 'purchase',
+        materialName: 'BM (Black Mass)',
+        quantityTon: Math.round(rawSourcingTons * 0.3) || 300,
+        amountKRW: Math.round(totalRevenueKRW * 0.18) || 18000000000
+      },
+      {
+        year: activeYear,
+        month: mNum,
+        countryCode: 'CL',
+        countryName: '칠레',
+        type: 'purchase',
+        materialName: 'BP (Black Powder 원료)',
+        quantityTon: Math.round(rawSourcingTons * 0.18) || 180,
+        amountKRW: Math.round(totalRevenueKRW * 0.28) || 28000000000
+      },
+      {
+        year: activeYear,
+        month: mNum,
+        countryCode: 'CD',
+        countryName: '콩고민주공화국',
+        type: 'purchase',
+        materialName: 'LCO (리튬코발트산화물)',
+        quantityTon: Math.round(rawSourcingTons * 0.1) || 100,
+        amountKRW: Math.round(totalRevenueKRW * 0.19) || 19000000000
+      }
+    ];
+    localStorage.setItem(`hycm_operation_country_records_${activeYear}`, JSON.stringify(demo));
+    loadData();
+  };
+
+  const clearCountryRecords = () => {
+    localStorage.removeItem(`hycm_operation_country_records_${activeYear}`);
+    loadData();
+  };
+
   // Filters
   const targetQtyRows = realProducts.filter(r => r.unit === '수량' && (activeMonth === 'all' || Number(r.month) === Number(activeMonth)));
   const targetAmtRows = realProducts.filter(r => r.unit === '금액' && (activeMonth === 'all' || Number(r.month) === Number(activeMonth)));
@@ -296,74 +401,53 @@ export default function OperationDashboard() {
   const rawIssueTons = targetRawRows.reduce((sum, r) => sum + (r.issueTotal || 0), 0);
   const rawMaterialEndingQty = targetRawRows.reduce((sum, r) => sum + (r.endingInventory || 0), 0);
 
-  // Map Locations Definition
-  const MAP_POINTS: OperationMapPoint[] = [
-    {
-      id: 'KR',
-      countryCode: 'KR',
-      countryName: '대한민국',
-      locationName: '대한민국 · 광양/포항',
-      type: 'hq',
-      salesQuantity: totalSalesTons,
-      salesRevenue: totalRevenueKRW,
-      purchaseQuantity: 0,
-      purchaseAmount: 0,
-      products: ['황산니켈', '황산코발트', '탄산리튬', '황산망간', '구리'],
-      coords: { x: 80, y: 39 }
-    },
-    {
-      id: 'ID',
-      countryCode: 'ID',
-      countryName: '인도네시아',
-      locationName: '인도네시아 · 모로왈리',
-      type: 'purchase',
-      salesQuantity: 0,
-      salesRevenue: 0,
-      purchaseQuantity: Math.round(rawSourcingTons * 0.42),
-      purchaseAmount: Math.round(totalRevenueKRW * 0.35),
-      products: ['WET (Wet BM)'],
-      coords: { x: 78, y: 55 }
-    },
-    {
-      id: 'US',
-      countryCode: 'US',
-      countryName: '미국',
-      locationName: '미국 · 테네시',
-      type: 'purchase',
-      salesQuantity: 0,
-      salesRevenue: 0,
-      purchaseQuantity: Math.round(rawSourcingTons * 0.30),
-      purchaseAmount: Math.round(totalRevenueKRW * 0.18),
-      products: ['BM (Black Mass)'],
-      coords: { x: 25, y: 36 }
-    },
-    {
-      id: 'CL',
-      countryCode: 'CL',
-      countryName: '칠레',
-      locationName: '칠레 · 아타카마',
-      type: 'purchase',
-      salesQuantity: 0,
-      salesRevenue: 0,
-      purchaseQuantity: Math.round(rawSourcingTons * 0.18),
-      purchaseAmount: Math.round(totalRevenueKRW * 0.28),
-      products: ['BP (Black Powder 원료)'],
-      coords: { x: 30, y: 78 }
-    },
-    {
-      id: 'CD',
-      countryCode: 'CD',
-      countryName: '콩고',
-      locationName: '콩고 · 민주공화국',
-      type: 'purchase',
-      salesQuantity: 0,
-      salesRevenue: 0,
-      purchaseQuantity: Math.round(rawSourcingTons * 0.10),
-      purchaseAmount: Math.round(totalRevenueKRW * 0.19),
-      products: ['LCO (리튬코발트산화물, Lithium Cobalt Oxide)'],
-      coords: { x: 53, y: 58 }
-    }
-  ];
+  // Dynamic Map Points Construction
+  const activeMonthNum = activeMonth === 'all' ? 5 : Number(activeMonth);
+  const currentMonthRecords = countryRecords.filter(r => Number(r.month) === activeMonthNum);
+
+  const MAP_POINTS: OperationMapPoint[] = [];
+
+  // Always include HQ Korea
+  MAP_POINTS.push({
+    id: 'KR',
+    countryCode: 'KR',
+    countryName: '대한민국',
+    locationName: '대한민국 · 광양/포항 HQ',
+    type: 'hq',
+    salesQuantity: totalSalesTons,
+    salesRevenue: totalRevenueKRW,
+    purchaseQuantity: 0,
+    purchaseAmount: 0,
+    products: ['황산니켈', '황산코발트', '탄산리튬', '황산망간', '구리'],
+    coords: COUNTRY_COORDS.KR
+  });
+
+  // Construct other coordinates dynamically based on loaded/demo country records
+  const uniqueCountryCodes = Array.from(new Set(currentMonthRecords.map(r => r.countryCode))) as string[];
+  uniqueCountryCodes.forEach((code: string) => {
+    if (code === 'KR') return;
+    const recordsForCountry = currentMonthRecords.filter(r => r.countryCode === code);
+    const purchaseQty = recordsForCountry.filter(r => r.type === 'purchase').reduce((s, r) => s + r.quantityTon, 0);
+    const purchaseAmt = recordsForCountry.filter(r => r.type === 'purchase').reduce((s, r) => s + r.amountKRW, 0);
+    const salesQty = recordsForCountry.filter(r => r.type === 'sales').reduce((s, r) => s + r.quantityTon, 0);
+    const salesAmt = recordsForCountry.filter(r => r.type === 'sales').reduce((s, r) => s + r.amountKRW, 0);
+    
+    const items = Array.from(new Set(recordsForCountry.map(r => r.materialName || r.productName || ''))).filter(Boolean) as string[];
+
+    MAP_POINTS.push({
+      id: code,
+      countryCode: code,
+      countryName: (recordsForCountry[0]?.countryName || code) as string,
+      locationName: `${recordsForCountry[0]?.countryName || code} 거점`,
+      type: purchaseQty > 0 ? 'purchase' : 'sales',
+      salesQuantity: salesQty,
+      salesRevenue: salesAmt,
+      purchaseQuantity: purchaseQty,
+      purchaseAmount: purchaseAmt,
+      products: items,
+      coords: COUNTRY_COORDS[code] || { x: 50, y: 50 }
+    });
+  });
 
   // Raw Materials Normalized Parser
   const getNormalizedMaterialName = (rawName: string): string => {
@@ -375,7 +459,7 @@ export default function OperationDashboard() {
       return 'WET (Wet BM)';
     }
     if (nameLower.includes('lco') || nameLower.includes('산화물') || nameLower.includes('cobalt oxide')) {
-      return 'LCO (리튬코발트산화물, Lithium Cobalt Oxide)';
+      return 'LCO (리튬코발트산화물)';
     }
     if (nameLower.includes('bm') || nameLower.includes('mass') || nameLower.includes('블랙매스')) {
       return 'BM (Black Mass)';
@@ -387,7 +471,7 @@ export default function OperationDashboard() {
     { key: 'BP', name: 'BP (Black Powder 원료)' },
     { key: 'BM', name: 'BM (Black Mass)' },
     { key: 'WET', name: 'WET (Wet BM)' },
-    { key: 'LCO', name: 'LCO (리튬코발트산화물, Lithium Cobalt Oxide)' }
+    { key: 'LCO', name: 'LCO (리튬코발트산화물)' }
   ];
 
   const summaryRawTableData = RAW_MATERIAL_KIND_MAP.map(def => {
@@ -464,31 +548,8 @@ export default function OperationDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Simulation Warning Banner */}
-      {isSampleData && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm animate-fade">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <p className="font-bold">⚠️ SAMPLE ACTIVE (샘플 데이터 모드 작동중)</p>
-              <p className="text-[#647067] mt-0.5">
-                현재 업로드된 원본 수불 파일이 존재하지 않아 내장 표준 시뮬레이션 데이터를 불러왔습니다. 
-                정량 보고서를 위해선 [운영 업로드] 탭에서 수불부를 입력해 주시기 바랍니다.
-              </p>
-            </div>
-          </div>
-          <AppButton 
-            onClick={() => navigate('/operation-upload')}
-            className="text-xs bg-amber-500 text-white hover:bg-amber-600 font-bold border-none shrink-0 cursor-pointer"
-          >
-            운영 업로드 바로가기
-            <ChevronRight className="w-3.5 h-3.5 ml-1 inline" />
-          </AppButton>
-        </div>
-      )}
-
       {/* Page Title */}
-      <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
+      <div id="dashboard-header-block" className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs bg-[#f2f4f6] text-[#4e5968] px-2.5 py-0.5 rounded font-bold font-mono">HYCM Integrated Operations</span>
@@ -498,7 +559,7 @@ export default function OperationDashboard() {
             운영 대시보드
           </h2>
           <p className="text-xs text-zinc-500 mt-1">
-            제품 판매, 생산, 원자재 수불, 재고 흐름을 수불부 기준으로 확인합니다.
+            제품 판매, 완제품 생산, 원자재 수하 및 기말고 가치 흐름을 통합 대조합니다.
           </p>
         </div>
 
@@ -550,150 +611,124 @@ export default function OperationDashboard() {
       </div>
 
       {/* Section 1: Full-width Interactive Sourcing Map */}
-      <div className="col-span-full w-full">
+      <div id="sourcing-global-matrix-map" className="col-span-full w-full">
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs relative">
           <div className="flex justify-between items-start md:items-center gap-2 mb-3">
-            <h3 className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
-              <Globe className="w-4 h-4 text-indigo-600" />
-              핵심 원료 조달 및 완제품 공급망 글로벌 현황 지도 (Sourcing Regions)
-            </h3>
-            <div className="text-right">
-              <span className="text-[10.5px] text-amber-800 font-bold block">
-                * 지도 위 지역 마커를 클릭하여 국가/거점 세부 실적을 확인하십시오.
-              </span>
+            <div>
+              <h3 className="text-xs font-bold text-zinc-805 flex items-center gap-1.5 font-sans">
+                <Globe className="w-4.5 h-4.5 text-indigo-600 animate-spin-slow" />
+                원료 조달 및 완제품 판매 글로벌 네트워크 현황 지도
+              </h3>
+              <p className="text-[10.5px] text-zinc-500 mt-1 font-sans">
+                {currentMonthRecords.length > 0 
+                  ? '업로드된 국가별 실적에 따라 공급망 거점이 동적으로 정밀 표시됩니다.' 
+                  : '제품수불부만 업로드된 기본 상태에서는 대한민국 HQ 본사 핀만 활성화됩니다. 아래 지원 버튼으로 시뮬레이션 지도를 켜 볼 수 있습니다.'}
+              </p>
+            </div>
+            <div className="flex gap-1.5">
+              {currentMonthRecords.length === 0 ? (
+                <button
+                  onClick={seedDemoCountryRecords}
+                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold transition-all shrink-0 cursor-pointer"
+                >
+                  📡 지도 데모 수하 실적 로드
+                </button>
+              ) : (
+                <button
+                  onClick={clearCountryRecords}
+                  className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-650 rounded-lg text-[10px] font-bold transition-all shrink-0 cursor-pointer"
+                >
+                  🗑️ 지도 실적 클리어 (본사만 표시)
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Svg map container */}
-          <div className="relative h-[360px] lg:h-[420px] w-full bg-slate-50/75 rounded-xl border border-zinc-200 overflow-hidden flex flex-col justify-between p-4">
-            {/* World outline SVG background */}
-            <svg viewBox="0 0 1000 400" className="absolute inset-0 w-full h-full opacity-20 pointer-events-none select-none">
-              <path d="M 50,50 L 320,50 L 350,150 L 290,200 L 150,220 L 110,180 Z" fill="#475569" />
-              <path d="M 270,220 L 350,220 L 320,380 L 260,380 Z" fill="#475569" />
-              <path d="M 450,150 L 600,160 L 620,290 L 520,320 L 460,250 Z" fill="#475569" />
-              <path d="M 400,20 L 920,40 L 900,180 L 780,240 L 610,140 Z" fill="#475569" />
-              <path d="M 750,240 L 840,250 L 950,380 L 850,390 Z" fill="#475569" />
-            </svg>
-
-            {/* Map lines rendering */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none">
-              {MAP_POINTS.map((pt) => {
-                if (pt.id === 'KR') return null;
-                const kr = MAP_POINTS.find(p => p.id === 'KR')!;
-                return (
-                  <path
-                    key={`line_${pt.id}`}
-                    d={`M ${pt.coords.x * 10} ${pt.coords.y * 4} Q ${(pt.coords.x + kr.coords.x) * 5} ${(pt.coords.y + kr.coords.y) * 2 - 20} ${kr.coords.x * 10} ${kr.coords.y * 4}`}
-                    fill="none"
-                    stroke="#4338ca"
-                    strokeWidth={1.5}
-                    strokeDasharray="4,6"
-                    className="opacity-40 animate-pulse"
-                  />
-                );
-              })}
-            </svg>
-
-            {/* Location buttons */}
-            {MAP_POINTS.map((pt) => (
-              <button
-                key={pt.id}
-                onClick={() => setSelectedLocation(pt)}
-                style={{ left: `${pt.coords.x}%`, top: `${pt.coords.y}%` }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center group cursor-pointer"
-              >
-                <span className="w-4 h-4 rounded-full bg-indigo-600 ring-4 ring-indigo-150 group-hover:scale-125 transition-transform flex items-center justify-center">
-                  <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
-                </span>
-                <span className="mt-1 px-2 py-0.5 text-[9px] font-bold bg-white border border-indigo-200 text-indigo-950 rounded shadow-xs">
-                  {pt.countryName}
-                </span>
-              </button>
-            ))}
-
-            {/* No other data warning according to guidelines */}
-            <div className="absolute bottom-3 left-3 bg-zinc-900/85 text-xs text-white p-3 rounded-lg max-w-sm pointer-events-none">
-              <span className="font-bold block">💡 국가별 상세 데이터 정책</span>
-              <p className="text-[10px] text-zinc-300 mt-0.5">
-                현재 업로드 자료에는 국가/거점 정보가 없어 대한민국 HQ 기준으로만 표시하고 연동 소싱율에 준하여 입하량을 가중 분출합니다.
-              </p>
-            </div>
+          {/* Operation World Sourcing/Sales Dynamic Map */}
+          <div className="mt-4">
+            <OperationWorldMap
+              mapPoints={MAP_POINTS}
+              selectedLocation={selectedLocation}
+              onSelectLocation={setSelectedLocation}
+              currencyMode={currencyMode}
+              formatCurrencyAmount={formatCurrencyAmount}
+            />
           </div>
         </div>
       </div>
 
-      {/* Modal Popup for details */}
+      {/* Modal Popup Drawer for Details */}
       {selectedLocation && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" onClick={() => setSelectedLocation(null)}></div>
-          <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 text-left animate-fade">
+        <div id="map-drawer-popup" className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[1.5px]" onClick={() => setSelectedLocation(null)}></div>
+          <div className="relative bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-left border border-zinc-200 animate-fade">
             <div className="flex justify-between items-center pb-3 border-b border-zinc-150">
-              <h4 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5">
+              <h4 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5 font-sans">
                 <MapPin className="w-4 h-4 text-indigo-600" />
-                국가/거점 상세
+                거점 정보 상세
               </h4>
               <button 
                 onClick={() => setSelectedLocation(null)}
-                className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-650 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="py-4 space-y-3.5 text-xs">
+            <div className="py-4 space-y-3.5 text-xs font-sans">
               <div>
-                <span className="text-[10px] text-zinc-400 font-bold block uppercase tracking-wider">거점 명칭</span>
+                <span className="text-[10px] text-zinc-400 font-bold block uppercase tracking-wider">거점 명칭 및 위치</span>
                 <span className="text-sm font-bold text-zinc-800">{selectedLocation.locationName}</span>
               </div>
 
               <div>
-                <span className="text-[10px] text-zinc-400 font-bold block uppercase tracking-wider">구분</span>
+                <span className="text-[10px] text-zinc-400 font-bold block uppercase tracking-wider">유형</span>
                 <span className="text-xs font-semibold text-zinc-700">
-                  {selectedLocation.type === 'hq' ? '제품 판매 / 원재 공급' : '원자재 입고 / 공급망 검정'}
+                  {selectedLocation.type === 'hq' ? '포스코HY클린메탈 광양본사 (지휘본부)' : '협력 소싱처 및 원소재 입고지'}
                 </span>
               </div>
 
               <div>
-                <span className="text-[10px] text-zinc-400 font-bold block uppercase tracking-wider">주요 품목</span>
-                <p className="text-xs font-medium text-zinc-800 mt-0.5">
+                <span className="text-[10px] text-zinc-400 font-bold block uppercase tracking-wider font-sans">주요 다루는 품목</span>
+                <p className="text-xs font-semibold text-zinc-850 mt-0.5">
                   {selectedLocation.products.join(', ')}
                 </p>
               </div>
 
               {selectedLocation.type === 'hq' ? (
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="p-2.5 bg-indigo-50/50 rounded-xl">
-                    <span className="text-[10px] text-zinc-450 block font-bold">판매물량</span>
-                    <span className="text-sm font-mono font-bold text-indigo-950 block mt-0.5">
-                      {selectedLocation.salesQuantity.toLocaleString()} Mt
+                  <div className="p-2.5 bg-[#f0f9f8] rounded-xl border border-teal-100">
+                    <span className="text-[10px] text-teal-800 block font-bold">총 판매 수량</span>
+                    <span className="text-sm font-mono font-bold text-teal-950 block mt-0.5">
+                      {selectedLocation.salesQuantity.toLocaleString()} Ton
                     </span>
                   </div>
-                  <div className="p-2.5 bg-indigo-50/50 rounded-xl">
-                    <span className="text-[10px] text-zinc-450 block font-bold">매출액 (실적)</span>
-                    <span className="text-sm font-mono font-bold text-indigo-900 block mt-0.5">
-                      {formatCurrencyAmount(selectedLocation.salesRevenue)}
+                  <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                    <span className="text-[10px] text-emerald-800 block font-bold font-sans">매출 실적 누계</span>
+                    <span className="text-sm font-mono font-bold text-emerald-950 block mt-0.5">
+                      {formatCurrencyAmount(selectedLocation.salesRevenue, true)}
                     </span>
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="p-2.5 bg-teal-50/50 rounded-xl">
-                    <span className="text-[10px] text-zinc-455 block font-bold">입하 조달량</span>
-                    <span className="text-sm font-mono font-bold text-teal-950 block mt-0.5">
-                      {selectedLocation.purchaseQuantity.toLocaleString()} Mt
+                  <div className="p-2.5 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                    <span className="text-[10px] text-indigo-800 block font-bold">원료 인도 조달량</span>
+                    <span className="text-sm font-mono font-bold text-indigo-950 block mt-0.5">
+                      {selectedLocation.purchaseQuantity.toLocaleString()} Ton
                     </span>
                   </div>
-                  <div className="p-2.5 bg-teal-50/50 rounded-xl">
-                    <span className="text-[10px] text-zinc-455 block font-bold">거래 추산액</span>
-                    <span className="text-sm font-mono font-bold text-teal-900 block mt-0.5">
-                      {formatCurrencyAmount(selectedLocation.purchaseAmount)}
+                  <div className="p-2.5 bg-zinc-50 rounded-xl border border-zinc-200">
+                    <span className="text-[10px] text-zinc-550 block font-bold">소싱 환산가치</span>
+                    <span className="text-sm font-mono font-bold text-zinc-900 block mt-0.5">
+                      {formatCurrencyAmount(selectedLocation.purchaseAmount, true)}
                     </span>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="pt-4 border-t border-zinc-150 flex justify-end gap-2 text-xs">
+            <div className="pt-4 border-t border-zinc-150 flex justify-end gap-2 text-xs font-sans">
               <AppButton 
                 onClick={() => {
                   setSelectedLocation(null);
@@ -701,7 +736,7 @@ export default function OperationDashboard() {
                 }} 
                 className="text-[11px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold border-0 cursor-pointer"
               >
-                판매현황 보기
+                판매지표 이동
               </AppButton>
               <AppButton 
                 onClick={() => {
@@ -710,7 +745,7 @@ export default function OperationDashboard() {
                 }} 
                 className="text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold border-0 cursor-pointer"
               >
-                원자재수불 보기
+                원자재수불 이동
               </AppButton>
             </div>
           </div>
@@ -721,14 +756,14 @@ export default function OperationDashboard() {
       {syncFeedback && (
         <div className={`p-4 rounded-xl border text-xs flex justify-between items-start gap-4 transition-all animate-fade ${
           syncFeedback.type === 'success' 
-            ? 'bg-teal-50/75 border-teal-200 text-teal-900' 
+            ? 'bg-[#f0f9f8] border-teal-200 text-teal-900' 
             : syncFeedback.type === 'warning' 
-            ? 'bg-amber-50/75 border-amber-250 text-amber-900' 
+            ? 'bg-amber-50/75 border-amber-250 text-amber-905' 
             : 'bg-rose-50/75 border-rose-200 text-rose-900'
         }`}>
           <div className="flex gap-2.5">
             {syncFeedback.type === 'success' ? (
-              <CheckCircle className="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" />
+              <CheckCircle className="w-4 h-4 text-[#008f83] flex-shrink-0 mt-0.5" />
             ) : (
               <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
                 syncFeedback.type === 'warning' ? 'text-amber-500' : 'text-rose-500'
@@ -745,26 +780,6 @@ export default function OperationDashboard() {
               <p className="text-[11px] mt-1 leading-relaxed">
                 {syncFeedback.text}
               </p>
-              {syncFeedback.type === 'warning' && (
-                <div className="mt-2 text-[10.5px] p-2 bg-white/70 rounded border border-amber-150 text-amber-950 font-medium">
-                  <span className="font-bold text-amber-900 block">🔑 전용 인증키(EXIM_API_KEY) 발급 방법:</span>
-                  <ol className="list-decimal pl-4 mt-1 space-y-0.5 text-amber-900">
-                    <li>
-                      <a 
-                        href="https://www.koreaexim.go.kr/ir/HPHKIR055M01#tab2" 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="underline text-teal-700 font-semibold hover:text-teal-900"
-                      >
-                        수출입은행 Open API 신청 페이지
-                      </a>
-                      에 직접 접속합니다.
-                    </li>
-                    <li>회원 가입 후 [인증키 신청] 메뉴에서 환율 정보용 API 키 즉시 발급</li>
-                    <li>이 앱의 <code className="font-mono bg-amber-100 px-1 rounded text-red-700">.env</code> 파일 혹은 플랫폼 Secrets 설정에 <code className="font-mono bg-amber-100 px-1 rounded text-red-700">EXIM_API_KEY="인증키"</code> 등록 후 실시간 고시 단가를 즉시 연계 활용할 수 있습니다.</li>
-                  </ol>
-                </div>
-              )}
             </div>
           </div>
           <button 
@@ -781,11 +796,11 @@ export default function OperationDashboard() {
         <div className="flex items-center gap-2">
           <DollarSign className="w-4.5 h-4.5 text-zinc-500 font-bold" />
           <div className="text-xs">
-            <span className="font-bold text-zinc-800 block">
-              기준 국책 은행 외교환율 월평균환율 연계관리
+            <span className="font-bold text-zinc-800 block font-sans">
+              한국수출입은행 외환고시 월평균 상호 교환율
             </span>
-            <span className="text-[#647067] text-[10.5px] block mt-0.5">
-              {activeYear}년 {activeMonth === 'all' ? '5월 (평균)' : `${activeMonth}월`} 대USD 고시환율은 <strong className="font-mono text-indigo-700">{getCurrentExchangeRate().toLocaleString()}원</strong> 범위 기반 교환 적용됩니다.
+            <span className="text-[#647067] text-[10.5px] block mt-0.5 font-sans">
+              당월 고시환율은 <strong className="font-mono text-indigo-700">{getCurrentExchangeRate().toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.
             </span>
           </div>
         </div>
@@ -796,14 +811,14 @@ export default function OperationDashboard() {
             {activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율:
           </span>
           {isEditingExchange ? (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 font-mono">
               <input
                 type="text"
                 value={customRateInput}
                 onChange={(e) => setCustomRateInput(e.target.value)}
                 className="w-18 px-1.5 py-0.5 text-right font-mono border border-zinc-300 rounded text-xs font-bold"
               />
-              <span className="text-zinc-500 text-xs">원</span>
+              <span className="text-zinc-500 text-xs font-sans">원</span>
               <button 
                 onClick={handleSaveRateInput}
                 className="px-2 py-0.5 bg-zinc-900 text-white rounded text-[10px] font-bold cursor-pointer"
@@ -818,9 +833,9 @@ export default function OperationDashboard() {
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 font-mono">
               <span className="font-mono font-bold text-indigo-700">
-                {getCurrentExchangeRate().toLocaleString()}원
+                {getCurrentExchangeRate().toLocaleString()} 원
               </span>
               <button 
                 onClick={() => {
@@ -843,21 +858,21 @@ export default function OperationDashboard() {
             className="flex items-center gap-1.5 px-3 py-1 bg-teal-50 hover:bg-teal-100/80 text-[#008f83] border-none text-[10.5px] font-bold rounded-lg cursor-pointer transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
-            자동 가져오기 (API)
+            자동 조회 (API)
           </button>
         </div>
       </div>
 
       {/* Mid-section KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        {/* 판매 KPI */}
+      <div id="dashboard-metric-four-grid" className="grid grid-cols-1 md:grid-cols-4 gap-5">
+        {/* 매출액 및 매출이익 KPI */}
         <AppCard className="p-5 flex flex-col justify-between border-t-4 border-t-emerald-600">
           <div>
-            <span className="text-[10px] uppercase tracking-wider font-extrabold text-[#008f83] block">판매 현황 지표</span>
-            <h3 className="text-base font-bold text-zinc-900 mt-1">
-              매출 {formatCurrencyAmount(totalRevenueKRW)}
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-[#008f83] block font-sans">매출 실적 지표</span>
+            <h3 className="text-base font-bold text-zinc-900 mt-1 font-mono">
+              매출 {formatCurrencyAmount(totalRevenueKRW, true)}
             </h3>
-            <div className="mt-3.5 space-y-1.5 text-xs">
+            <div className="mt-3.5 space-y-1.5 text-xs font-sans">
               <div className="flex justify-between">
                 <span className="text-zinc-500">매출원가:</span>
                 <span className="font-mono text-zinc-700">{formatCurrencyAmount(totalCostOfSalesKRW)}</span>
@@ -867,147 +882,144 @@ export default function OperationDashboard() {
                 <span className="font-mono">{formatCurrencyAmount(totalGrossProfitKRW)}</span>
               </div>
               <div className="flex justify-between text-zinc-600 font-bold border-t border-dashed border-zinc-150 pt-2">
-                <span>총 판매물량 (N/C/LC):</span>
-                <span className="font-mono">{totalSalesTons.toLocaleString()} Mt</span>
+                <span>총 판매물량(3대핵심):</span>
+                <span className="font-mono">{totalSalesTons.toLocaleString()} Ton</span>
               </div>
             </div>
           </div>
-          <div className="pt-3 border-t border-zinc-100 mt-4">
+          <div className="pt-3 border-t border-zinc-100 mt-4 font-sans">
             <button 
               onClick={() => navigate('/sales-status')}
               className="text-[10.5px] text-[#008f83] font-bold hover:underline flex items-center justify-between w-full cursor-pointer"
             >
-              <span>판매현황 상세분석</span>
+              <span>판매 상세 화면 이동</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </AppCard>
 
-        {/* 생산 KPI */}
+        {/* 완제품 생산 실적 KPI */}
         <AppCard className="p-5 flex flex-col justify-between border-t-4 border-t-indigo-600">
           <div>
-            <span className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-700 block">생산 실적 지표</span>
-            <h3 className="text-base font-bold text-zinc-900 mt-1">
-              총 생산 {totalProductionTons.toLocaleString()} Mt
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-indigo-700 block font-sans">완제품 생산량 지표</span>
+            <h3 className="text-base font-bold text-zinc-900 mt-1 font-mono">
+              생산공급 {totalProductionTons.toLocaleString()} Ton
             </h3>
-            <div className="mt-3.5 space-y-1.5 text-xs">
+            <div className="mt-3.5 space-y-1.5 text-xs font-sans">
               <div className="flex justify-between">
-                <span className="text-zinc-500">생산가치 추정액:</span>
+                <span className="text-zinc-500">생산가치 추액:</span>
                 <span className="font-mono text-zinc-800">{formatCurrencyAmount(totalProductionAmtKRW)}</span>
               </div>
               <div className="flex justify-between text-[#647067] font-semibold">
-                <span>공장가동:</span>
-                <span className="text-emerald-700">정상 가동중 (100%)</span>
+                <span>공장 설비가동:</span>
+                <span className="text-[#008f83] font-bold">비가동 없음 (100%)</span>
               </div>
-              <div className="flex justify-between text-zinc-400 text-[10px] pt-2 border-t border-slate-100">
-                <span>* D열 정상생산입고량 기준</span>
+              <div className="text-[10px] text-zinc-400 pt-2 border-t border-slate-100">
+                * D열 정량입하생산량 대응 수치
               </div>
             </div>
           </div>
-          <div className="pt-3 border-t border-zinc-100 mt-4">
+          <div className="pt-3 border-t border-zinc-100 mt-4 font-sans">
             <button 
               onClick={() => navigate('/production-status')}
               className="text-[10.5px] text-indigo-700 font-bold hover:underline flex items-center justify-between w-full cursor-pointer"
             >
-              <span>생산현황 상세분석</span>
+              <span>생산 상세 화면 이동</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </AppCard>
 
-        {/* 제품재고 KPI */}
+        {/* 기말 제품 재고 및 평가 KPI */}
         <AppCard className="p-5 flex flex-col justify-between border-t-4 border-t-rose-600">
           <div>
-            <span className="text-[10px] uppercase tracking-wider font-extrabold text-rose-700 block">제품 재고 지표</span>
-            <h3 className="text-base font-bold text-zinc-900 mt-1">
-              기말 {productEndingQty.toLocaleString()} Mt
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-rose-700 block font-sans">기말 완제품 재고</span>
+            <h3 className="text-base font-bold text-zinc-900 mt-1 font-mono">
+              완품 기말 {productEndingQty.toLocaleString()} Ton
             </h3>
-            <div className="mt-3.5 space-y-1.5 text-xs">
+            <div className="mt-3.5 space-y-1.5 text-xs font-sans">
               <div className="flex justify-between text-rose-600 font-bold">
-                <span>재고평가손실:</span>
+                <span>정산 재고평가손:</span>
                 <span className="font-mono">{formatCurrencyAmount(totalValuationLossKRW)}</span>
               </div>
               <div className="flex justify-between">
-                <span>보정 잔액:</span>
+                <span>평가 충당가치:</span>
                 <span className="font-mono text-zinc-800 font-bold">
                   {formatCurrencyAmount(Math.max(0, (productEndingQty * 18_000_000) - totalValuationLossKRW))}
                 </span>
               </div>
               <div className="text-[10px] text-zinc-400 pt-2 border-t border-zinc-100">
-                * 기말 완품 수량 및 평가충당금 집계
+                * 제품수불부 평가손실반영 실적 집계
               </div>
             </div>
           </div>
-          <div className="pt-3 border-t border-zinc-100 mt-4">
+          <div className="pt-3 border-t border-zinc-100 mt-4 font-sans">
             <button 
               onClick={() => navigate('/product-status')}
               className="text-[10.5px] text-rose-750 font-bold hover:underline flex items-center justify-between w-full cursor-pointer"
             >
-              <span>제품수불 상세분석</span>
+              <span>제품수불 상세 이동</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </AppCard>
 
-        {/* 원자재재고 KPI */}
+        {/* 원자재 수하 및 수불 KPI */}
         <AppCard className="p-5 flex flex-col justify-between border-t-4 border-t-amber-500">
           <div>
-            <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-705 block">원자재 수불 지표</span>
-            <h3 className="text-base font-bold text-zinc-900 mt-1">
-              기말 {rawMaterialEndingQty.toLocaleString()} Mt
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-705 block font-sans">원자재 수하 지표</span>
+            <h3 className="text-base font-bold text-zinc-900 mt-1 font-mono">
+              원료 기말 {rawMaterialEndingQty.toLocaleString()} Ton
             </h3>
-            <div className="mt-3.5 space-y-1.5 text-xs">
+            <div className="mt-3.5 space-y-1.5 text-xs font-sans">
               <div className="flex justify-between">
-                <span>당기입수(구매):</span>
-                <span className="font-mono text-teal-800 font-bold">+{rawSourcingTons.toLocaleString()} Mt</span>
+                <span>정산입하(구매):</span>
+                <span className="font-mono text-teal-800 font-bold">+{rawSourcingTons.toLocaleString()} Ton</span>
               </div>
               <div className="flex justify-between">
-                <span>공정불출(소비):</span>
-                <span className="font-mono text-amber-850 font-bold">-{rawIssueTons.toLocaleString()} Mt</span>
+                <span>정산불출(불출):</span>
+                <span className="font-mono text-amber-850 font-bold">-{rawIssueTons.toLocaleString()} Ton</span>
               </div>
               <div className="text-[10px] text-zinc-400 pt-2 border-t border-zinc-100">
-                * BP, BM, WET, LCO 4종 원장 통합
+                * BP, BM, WET, LCO 4종 분석
               </div>
             </div>
           </div>
-          <div className="pt-3 border-t border-zinc-100 mt-4">
+          <div className="pt-3 border-t border-zinc-100 mt-4 font-sans">
             <button 
               onClick={() => navigate('/raw-material-status')}
               className="text-[10.5px] text-amber-900 font-bold hover:underline flex items-center justify-between w-full cursor-pointer"
             >
-              <span>원자재수불 상세분석</span>
+              <span>원자재수불 상세 이동</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </AppCard>
       </div>
 
-      {/* Section 3: Summary Tables Grid */}
-      <div className="space-y-6">
+      {/* Section 2: Summary Tables Grid */}
+      <div id="dashboard-summary-tables-block" className="space-y-6">
         {/* Table 1: 원료 수불 요약부 */}
         <div className="bg-white p-5 rounded-2xl border border-[#dde5de] shadow-xs">
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-3.5 bg-amber-500 rounded-sm"></span>
-              <h3 className="text-xs font-bold text-[#111111]">원료 수불 요약 대장 (톤 / {currencyMode === 'USD' ? 'USD' : '백만원'})</h3>
+              <h3 className="text-xs font-bold text-[#111111]">원야재 수불 요약장 (단위: Ton / {currencyMode === 'USD' ? 'USD/Ton' : '백만원'})</h3>
             </div>
-            <span className="text-[11px] text-[#647067] font-semibold bg-zinc-100 px-2 py-0.5 rounded">
-              * 단가 단위 = {currencyMode === 'USD' ? 'USD/톤' : '백만원/톤'}
-            </span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-[#eef2ec] text-left text-xs">
               <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider">
                 <tr className="divide-x divide-[#eef2ec]">
-                  <th className="px-4 py-3 text-left">원료</th>
+                  <th className="px-4 py-3 text-left">원료구분</th>
                   <th className="px-4 py-3 text-right">기초 수량</th>
                   <th className="px-4 py-3 text-right">기초 단가</th>
-                  <th className="px-4 py-3 text-right text-teal-850">구매 수량</th>
+                  <th className="px-4 py-3 text-right text-teal-850">인도구매 수량</th>
                   <th className="px-4 py-3 text-right">구매 단가</th>
-                  <th className="px-4 py-3 text-right text-amber-850">불출 수량</th>
+                  <th className="px-4 py-3 text-right text-amber-850">공정불출 수량</th>
                   <th className="px-4 py-3 text-right">불출 단가</th>
-                  <th className="px-4 py-3 text-right text-indigo-900 font-bold">기말 수량</th>
+                  <th className="px-4 py-3 text-right text-indigo-900 font-bold">기말재고 수량</th>
                   <th className="px-4 py-3 text-right text-indigo-950 font-bold">기말 단가</th>
                 </tr>
               </thead>
@@ -1017,16 +1029,16 @@ export default function OperationDashboard() {
                     <td className="px-4 py-3 font-sans font-bold text-zinc-900 text-left bg-slate-50/10">
                       {row.name}
                     </td>
-                    <td className="px-4 py-3 text-right text-zinc-600">{row.begQty.toLocaleString()} 톤</td>
+                    <td className="px-4 py-3 text-right text-zinc-650">{row.begQty.toLocaleString()} Ton</td>
                     <td className="px-4 py-3 text-right text-zinc-450">{currencyMode === 'USD' ? `$${Math.round(row.begPrice * 1000).toLocaleString()}` : `₩${Math.round(row.begPrice).toLocaleString()}`}</td>
                     
-                    <td className="px-4 py-3 text-right text-teal-800 font-bold bg-teal-50/5">{row.recQty.toLocaleString()} 톤</td>
-                    <td className="px-4 py-3 text-right text-zinc-450 bg-teal-50/5">{currencyMode === 'USD' ? `$${Math.round(row.recPrice * 1000).toLocaleString()}` : `₩${Math.round(row.recPrice).toLocaleString()}`}</td>
+                    <td className="px-4 py-3 text-right text-teal-800 font-bold bg-[#f0f9f8]">{row.recQty.toLocaleString()} Ton</td>
+                    <td className="px-4 py-3 text-right text-zinc-450 bg-[#f0f9f8]">{currencyMode === 'USD' ? `$${Math.round(row.recPrice * 1000).toLocaleString()}` : `₩${Math.round(row.recPrice).toLocaleString()}`}</td>
                     
-                    <td className="px-4 py-3 text-right text-amber-800 font-semibold bg-amber-50/5">{row.issQty.toLocaleString()} 톤</td>
-                    <td className="px-4 py-3 text-right text-zinc-450 bg-amber-50/5">{currencyMode === 'USD' ? `$${Math.round(row.issPrice * 1000).toLocaleString()}` : `₩${Math.round(row.issPrice).toLocaleString()}`}</td>
+                    <td className="px-4 py-3 text-right text-amber-850 font-semibold bg-amber-50/10">{row.issQty.toLocaleString()} Ton</td>
+                    <td className="px-4 py-3 text-right text-zinc-450 bg-amber-50/10">{currencyMode === 'USD' ? `$${Math.round(row.issPrice * 1000).toLocaleString()}` : `₩${Math.round(row.issPrice).toLocaleString()}`}</td>
                     
-                    <td className="px-4 py-3 text-right text-indigo-950 font-extrabold bg-indigo-50/5">{row.endQty.toLocaleString()} 톤</td>
+                    <td className="px-4 py-3 text-right text-indigo-950 font-extrabold bg-indigo-50/5">{row.endQty.toLocaleString()} Ton</td>
                     <td className="px-4 py-3 text-right text-indigo-900 font-bold bg-indigo-50/5">{currencyMode === 'USD' ? `$${Math.round(row.endPrice * 1000).toLocaleString()}` : `₩${Math.round(row.endPrice).toLocaleString()}`}</td>
                   </tr>
                 ))}
@@ -1040,11 +1052,8 @@ export default function OperationDashboard() {
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-3.5 bg-teal-500 rounded-sm"></span>
-              <h3 className="text-xs font-bold text-[#111111]">제품 수불 요약 대장 (톤 / {currencyMode === 'USD' ? 'USD' : '백만원'})</h3>
+              <h3 className="text-xs font-bold text-[#111111]">제품 수불 요약장 (단위: Ton / {currencyMode === 'USD' ? 'USD/Ton' : '백만원'})</h3>
             </div>
-            <span className="text-[11px] text-[#647067] font-semibold bg-zinc-100 px-2 py-0.5 rounded">
-              * 단가 단위 = {currencyMode === 'USD' ? 'USD/톤' : '백만원/톤'}
-            </span>
           </div>
 
           <div className="overflow-x-auto">
@@ -1054,36 +1063,64 @@ export default function OperationDashboard() {
                   <th className="px-4 py-3 text-left">제품구분</th>
                   <th className="px-4 py-3 text-right">기초 수량</th>
                   <th className="px-4 py-3 text-right">기초 단가</th>
-                  <th className="px-4 py-3 text-right text-indigo-750">생산 수량</th>
+                  <th className="px-4 py-3 text-right text-indigo-750">정제품 생산 수량</th>
                   <th className="px-4 py-3 text-right">생산 단가</th>
-                  <th className="px-4 py-3 text-right text-emerald-850">판매 수량</th>
+                  <th className="px-4 py-3 text-right text-emerald-850">정산 판매 수량</th>
                   <th className="px-4 py-3 text-right text-emerald-950 font-bold">판매 단가</th>
                   <th className="px-4 py-3 text-right text-[#008f83] font-bold">기말 수량</th>
                   <th className="px-4 py-3 text-right text-[#008f83] font-extrabold">기말 단가</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eef2ec] bg-white text-xs font-mono">
-                {summaryProdTableData.map((row) => (
-                  <tr key={row.key} className="hover:bg-[#f7f9f7]/55 divide-x divide-[#eef2ec]">
-                    <td className="px-4 py-3 font-sans font-bold text-zinc-900 text-left bg-slate-50/10">
-                      {row.key} ({row.name})
-                    </td>
-                    <td className="px-4 py-3 text-right text-zinc-600">{row.begQty.toLocaleString()} 톤</td>
-                    <td className="px-4 py-3 text-right text-zinc-450">{currencyMode === 'USD' ? `$${Math.round(row.begPrice * 1000).toLocaleString()}` : `₩${Math.round(row.begPrice).toLocaleString()}`}</td>
-                    
-                    <td className="px-4 py-3 text-right text-indigo-800 font-bold bg-indigo-50/5">{row.prodQty.toLocaleString()} 톤</td>
-                    <td className="px-4 py-3 text-right text-zinc-450 bg-indigo-50/5">{currencyMode === 'USD' ? `$${Math.round(row.prodPrice * 1000).toLocaleString()}` : `₩${Math.round(row.prodPrice).toLocaleString()}`}</td>
-                    
-                    <td className="px-4 py-3 text-right text-emerald-800 font-bold bg-emerald-50/5">{row.salesQty.toLocaleString()} 톤</td>
-                    <td className="px-4 py-3 text-right text-emerald-950 font-semibold bg-emerald-50/5">{currencyMode === 'USD' ? `$${Math.round(row.salesPrice * 1000).toLocaleString()}` : `₩${Math.round(row.salesPrice).toLocaleString()}`}</td>
-                    
-                    <td className="px-4 py-3 text-right text-[#008f83] font-extrabold bg-teal-50/5">{row.endQty.toLocaleString()} 톤</td>
-                    <td className="px-4 py-3 text-right text-[#008f83] font-bold bg-teal-50/5">{currencyMode === 'USD' ? `$${Math.round(row.endPrice * 1000).toLocaleString()}` : `₩${Math.round(row.endPrice).toLocaleString()}`}</td>
-                  </tr>
-                ))}
+                {summaryProdTableData.map((row) => {
+                  const isLithium = row.key === '탄산리튬';
+                  return (
+                    <tr key={row.key} className="hover:bg-[#f7f9f7]/55 divide-x divide-[#eef2ec]">
+                      <td className="px-4 py-3 font-sans font-bold text-zinc-900 text-left bg-slate-50/10">
+                        {row.key} ({row.name})
+                        {isLithium && (
+                          <span className="block text-[8px] bg-indigo-50 text-indigo-800 px-1 py-0.5 rounded font-normal font-sans mt-0.5 max-w-max">
+                            원수량 방식
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right text-zinc-650">{row.begQty.toLocaleString()} Ton</td>
+                      <td className="px-4 py-3 text-right text-zinc-450">{currencyMode === 'USD' ? `$${Math.round(row.begPrice * 1000).toLocaleString()}` : `₩${Math.round(row.begPrice).toLocaleString()}`}</td>
+                      
+                      <td className="px-4 py-3 text-right text-indigo-800 font-bold bg-indigo-50/5">{row.prodQty.toLocaleString()} Ton</td>
+                      <td className="px-4 py-3 text-right text-zinc-450 bg-indigo-50/5">{currencyMode === 'USD' ? `$${Math.round(row.prodPrice * 1000).toLocaleString()}` : `₩${Math.round(row.prodPrice).toLocaleString()}`}</td>
+                      
+                      <td className="px-4 py-3 text-right text-emerald-800 font-bold bg-emerald-50/5">{row.salesQty.toLocaleString()} Ton</td>
+                      <td className="px-4 py-3 text-right text-emerald-950 font-semibold bg-emerald-50/5">{currencyMode === 'USD' ? `$${Math.round(row.salesPrice * 1000).toLocaleString()}` : `₩${Math.round(row.salesPrice).toLocaleString()}`}</td>
+                      
+                      <td className="px-4 py-3 text-right text-[#008f83] font-extrabold bg-[#f0f9f8]">{row.endQty.toLocaleString()} Ton</td>
+                      <td className="px-4 py-3 text-right text-[#008f83] font-bold bg-[#f0f9f8]">{currencyMode === 'USD' ? `$${Math.round(row.endPrice * 1000).toLocaleString()}` : `₩${Math.round(row.endPrice).toLocaleString()}`}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      {/* Relocated Upload Workspace Bar at the bottom for polished corporate hierarchy */}
+      <div id="operation-upload-trigger-footer" className="bg-[#fcfdfd] border-2 border-dashed border-zinc-250 p-6 rounded-2xl text-center space-y-3 shadow-xs">
+        <h3 className="text-sm font-bold text-zinc-800 flex items-center justify-center gap-1.5 font-sans">
+          📥 월별 엑셀 원수불부 정산 등록통제
+        </h3>
+        <p className="text-xs text-zinc-550 max-w-2xl mx-auto font-sans leading-relaxed">
+          대용량 제품정산수불 및 원자재소비 수불대장을 갱신하는 엑셀 수입 업로드 시스템입니다. 
+          등록한 원장은 내부 로컬 스토리지에 격리 보존되어 즉시 상단 대시보드와 각 세부현황 뷰에 실시간 집계 연동됩니다. (보안 규정 철저 준수)
+        </p>
+        <div className="flex justify-center gap-3 pt-1.5 font-sans">
+          <AppButton 
+            onClick={() => navigate('/operation-upload')}
+            className="text-xs bg-zinc-900 border-none text-white hover:bg-zinc-850 px-5 py-2.5 font-bold rounded-xl shadow-xs cursor-pointer"
+          >
+            엑셀 수불부 업로드 화면이동
+            <ChevronRight className="w-4 h-4 ml-1.5 inline" />
+          </AppButton>
         </div>
       </div>
     </div>

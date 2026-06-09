@@ -7,7 +7,26 @@ export interface RawMaterialLedgerRecord {
   month: number;
   sourceType: '원자재수불부';
   rawMaterialName: string;
+  materialCode?: string;
+  canonicalMaterialName?: string;
   unit: string;
+
+  beginningQty?: number;
+  beginningAmount?: number;
+  beginningUnitPrice?: number;
+
+  purchaseQty?: number;
+  purchaseAmount?: number;
+  purchaseUnitPrice?: number;
+
+  issueQty?: number;
+  issueAmount?: number;
+  issueUnitPrice?: number;
+
+  endingQty?: number;
+  endingAmount?: number;
+  endingUnitPrice?: number;
+
   beginningInventory: number;
   receiptTotal: number;
   issueTotal: number;

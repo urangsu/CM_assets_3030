@@ -18,6 +18,7 @@ import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { PRODUCT_NAME_MAP, getLithiumConversionRates, saveLithiumConversionRates } from '../lib/operation/productMaster';
 import { parseProductLedgerRows, ProductLedgerRecord } from '../lib/operation/productLedgerParser';
+import { parseRawMaterialLedgerRows } from '../lib/operation/rawMaterialLedgerParser';
 import { OperationStorage, OperationUploadHistory, RawMaterialLedgerRecord } from '../lib/operation/operationStorage';
 import * as XLSX from 'xlsx';
 
@@ -249,40 +250,10 @@ export default function OperationUpload() {
   };
 
   const processRawMaterialArrayAndValidate = (jsonData: any[][]) => {
-    // Generate simple records from columns A (rawMaterialName), B (unit), C (beginning), D (receipt), E (issue), F (ending)
-    // C열 기초재고, H열 입고합계, P열 출고합계, Q열 기말재고 mapping 
-    const records: RawMaterialLedgerRecord[] = [];
-    
-    jsonData.forEach((row, idx) => {
-      if (idx < 2) return; // Skip potential headers
-      const rawMaterialName = String(row[0] || '').trim();
-      const unit = String(row[1] || 'Mt').trim();
-      if (!rawMaterialName || unit.includes('단위') || rawMaterialName.includes('계') || rawMaterialName.includes('품목')) {
-        return;
-      }
-
-      const beginning = parseNumber(row[2]);
-      const receiptTotal = parseNumber(row[7] || row[3] || 0); // Column H or fallbacks
-      const issueTotal = parseNumber(row[15] || row[8] || 0); // Column P or fallbacks
-      const ending = parseNumber(row[16] || row[10] || 0); // Column Q or fallbacks
-
-      records.push({
-        id: `${year}_${month}_raw_${idx}`,
-        year,
-        month,
-        sourceType: '원자재수불부',
-        rawMaterialName,
-        unit,
-        beginningInventory: beginning,
-        receiptTotal,
-        issueTotal,
-        endingInventory: ending,
-        uploadedAt: new Date().toISOString()
-      });
-    });
+    const records = parseRawMaterialLedgerRows(jsonData, year, month);
 
     if (records.length === 0) {
-      alert('인식 가능한 원자재 항목을 찾지 못했습니다. 2행 이상의 원자재명, 단위, 기초재고, 당기입고, 당기출고, 기말재고 행이 포함되어 있어야 합니다.');
+      alert('인식 가능한 원자재 3행 묶음(수량/금액/단가)을 찾지 못했습니다. 원자재명(A), 단위(B), 기초재고(C), 당기입고(D/H), 당기출고(I/P), 기말재고(Q) 행이 정상 섭취될 수 있도록 구성해 주십시오.');
       return;
     }
 

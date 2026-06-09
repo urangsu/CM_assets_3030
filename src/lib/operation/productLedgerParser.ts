@@ -148,8 +148,8 @@ export function parseProductLedgerRows(
         const issTotalVal = parseNumber(targetRow[15]);
 
         const endInvVal = parseNumber(targetRow[16]);
-        const invLossVal = parseNumber(targetRow[17]);
-        const valAppliedVal = parseNumber(targetRow[18]);
+        const invLossVal = (unitVal === '수량' && amtRow) ? parseNumber(amtRow[17]) : parseNumber(targetRow[17]);
+        const valAppliedVal = (unitVal === '수량' && amtRow) ? parseNumber(amtRow[18]) : parseNumber(targetRow[18]);
 
         const rec: ProductLedgerRecord = {
           id: `${year}_${month}_${resolved.canonicalProductName}_${unitVal}`,

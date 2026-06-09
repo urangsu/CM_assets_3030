@@ -6,11 +6,24 @@ import {
   FileSpreadsheet, 
   Settings,
   ChevronDown,
+  ChevronRight,
   Info 
 } from 'lucide-react';
 import { AppCard } from '../components/ui/AppCard';
 import { OperationStorage, ProductLedgerRecord } from '../lib/operation/operationStorage';
 import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
+
+function formatKRWMillion(valueKRW: number): string {
+  if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
+  const val = Math.round(valueKRW / 1_000_000);
+  if (val < 0) return `-₩${Math.abs(val).toLocaleString()}백만원`;
+  return `₩${val.toLocaleString()}백만원`;
+}
+
+function formatKRWBillion(valueKRW: number): string {
+  if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
+  return `₩${(valueKRW / 1_000_000_000).toFixed(1)}십억원`;
+}
 
 export default function ProductStatus() {
   const [activeYear, setActiveYear] = useState<string>('2026');
@@ -18,6 +31,16 @@ export default function ProductStatus() {
   const [currencyMode, setCurrencyMode] = useState<'KRW' | 'USD'>('KRW');
   const [records, setRecords] = useState<ProductLedgerRecord[]>([]);
   const [isSampleData, setIsSampleData] = useState<boolean>(false);
+  
+  // Track expanded product groups
+  const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = (prodName: string) => {
+    setExpandedProducts(prev => ({
+      ...prev,
+      [prodName]: !prev[prodName]
+    }));
+  };
 
   const loadData = () => {
     const list = OperationStorage.getProductRecords(activeYear);
@@ -83,8 +106,8 @@ export default function ProductStatus() {
         otherIssue: 1,
         issueTotal: qVal + 8,
         endingInventory: Math.round(qVal * 1.25),
-        inventoryValuationLoss: 0,
-        valuationApplied: 0,
+        inventoryValuationLoss: 25_000_000, // assign properly
+        valuationApplied: 25_000_000,
         revenue: qVal * prcVal,
         costOfSales: Math.round(qVal * prcVal * 0.82),
         grossProfit: Math.round(qVal * prcVal * 0.18),
@@ -148,44 +171,34 @@ export default function ProductStatus() {
   // Map exchange rate
   const exRate = ExchangeRateStorage.getRate(activeYear, Number(activeMonth));
 
-  const formatValue = (val: number, unit: '수량' | '금액' | '단가', isMonetaryField: boolean) => {
-    // If it's a structural quantity field, return with decimal places and no conversion
-    if (unit === '수량' && !isMonetaryField) {
-      if (val === 0) return '-';
-      return val.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    }
-
-    // Monetary Field Formatting
-    if (isMonetaryField || unit === '금액' || unit === '단가') {
-      if (val === 0) return '-';
-      
-      let converted = val;
-      if (currencyMode === 'USD') {
-        converted = val / exRate;
-        if (unit === '단가') {
-          return `$${converted.toLocaleString(undefined, { maximumFractionDigits: 1 })}`;
-        }
-        // In USD, show direct converted amount (or divide by 1000 for thousand USD? Full formatting is very standard and legible)
-        return `$${Math.round(converted).toLocaleString()}`;
-      } else {
-        // In KRW
-        if (unit === '단가') {
-          return `₩${val.toLocaleString()}`;
-        }
-        // Convert full KRW to millions (백만원) for table output to preserve tidy layout
-        const krmM = val / 1_000_000;
-        return `₩${Math.round(krmM).toLocaleString()}M`;
-      }
-    }
-
-    return val === 0 ? '-' : val.toLocaleString();
+  const formatQuantity = (val: number) => {
+    if (val === 0) return '-';
+    return `${val.toLocaleString(undefined, { maximumFractionDigits: 1 })} Ton`;
   };
+
+  const formatMonetaryValue = (val: number, isUnitPrice: boolean = false) => {
+    if (val === 0) return '-';
+    if (currencyMode === 'USD') {
+      const usdVal = val / exRate;
+      if (isUnitPrice) {
+        return `$${Math.round(usdVal).toLocaleString()}`;
+      }
+      return `$${(usdVal / 1_000_000).toFixed(2)}M`;
+    } else {
+      if (isUnitPrice) {
+        return `₩${Math.round(val).toLocaleString()}`;
+      }
+      return formatKRWMillion(val);
+    }
+  };
+
+  const PRODUCTS_TO_SHOW = ['황산니켈', '황산코발트', '탄산리튬', '황산망간', '구리'];
 
   return (
     <div className="space-y-6">
       {/* Simulation Banner */}
       {isSampleData && (
-        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-2.5 shadow-sm animate-fade">
+        <div id="simulated-warning-box" className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-2.5 shadow-sm animate-fade">
           <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-xs">
             <span className="font-bold">⚠️ 시뮬레이션 표기 (수불 정보 없음)</span>
@@ -197,14 +210,14 @@ export default function ProductStatus() {
       )}
 
       {/* Header Panel */}
-      <div className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div id="product-status-header" className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded font-bold">실무 엑셀 대장 (이미지 1)</span>
+            <span className="text-xs bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded font-bold">POSCO HYCM</span>
           </div>
-          <h2 className="text-[20px] font-bold text-zinc-900 leading-tight mt-1">제품 수불 현황 상세표</h2>
+          <h2 className="text-[20px] font-bold text-zinc-900 leading-tight mt-1">제품 수불 현황</h2>
           <p className="text-xs text-zinc-500 mt-1">
-            황산니켈, 황산코발트, 탄산리튬 등 핵심 완제품의 기초재고, 당기입합계, 세부 출고항목 및 기말수불 전체를 수불대장 원본 규격으로 확인합니다.
+            황산니켈, 황산코발트, 탄산리튬 등 핵심 완제품의 정산 수량과 재고가치, 매출 성과를 1개 제품당 1행으로 확인합니다.
           </p>
         </div>
 
@@ -213,14 +226,16 @@ export default function ProductStatus() {
           {/* Currency Toggle */}
           <div className="flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200">
             <button
+              id="product-currency-krw-btn"
               onClick={() => setCurrencyMode('KRW')}
               className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
                 currencyMode === 'KRW' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-500'
               }`}
             >
-              원화 (백만원M)
+              원화 (백만원)
             </button>
             <button
+              id="product-currency-usd-btn"
               onClick={() => setCurrencyMode('USD')}
               className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-colors ${
                 currencyMode === 'USD' ? 'bg-white text-indigo-700 shadow-xs' : 'text-zinc-500'
@@ -234,9 +249,10 @@ export default function ProductStatus() {
           <div className="flex items-center gap-2 bg-[#f8f9fa] p-2 rounded-xl border border-zinc-150 text-xs">
             <Calendar className="w-4 h-4 text-zinc-400" />
             <select
+              id="product-year-select"
               value={activeYear}
               onChange={(e) => setActiveYear(e.target.value)}
-              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer"
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700"
             >
               {['2024', '2025', '2026', '2027', '2028'].map(yr => (
                 <option key={yr} value={yr}>{yr}년</option>
@@ -244,9 +260,10 @@ export default function ProductStatus() {
             </select>
             <span className="text-zinc-300">|</span>
             <select
+              id="product-month-select"
               value={activeMonth}
               onChange={(e) => setActiveMonth(e.target.value)}
-              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer"
+              className="font-bold bg-transparent border-0 focus:ring-0 cursor-pointer text-zinc-700"
             >
               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
                 <option key={m} value={String(m)}>{m}월</option>
@@ -256,12 +273,12 @@ export default function ProductStatus() {
         </div>
       </div>
 
-      {/* Standard Product Subeul Sheet Table (Matching Image 1 EXACTLY!) */}
+      {/* Main Table Content */}
       <div className="bg-white border border-[#dde5de] rounded-2xl shadow-xs overflow-hidden">
         <div className="p-4 bg-[#f8f9fa] border-b border-[#dde5de] flex justify-between items-center text-xs">
-          <span className="font-bold text-zinc-700 flex items-center gap-1.5">
+          <span className="font-bold text-zinc-700 flex items-center gap-1.5 font-sans">
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            POSCO HYCM {activeYear}년 {activeMonth}월 제품수불 정산 장부
+            POSCO HYCM {activeYear}년 {activeMonth}월 제품수불 결과 요약대장
           </span>
           <span className="text-zinc-400 font-mono text-[10px]">
             기준 환율: 1 USD = {exRate.toLocaleString()} KRW
@@ -269,143 +286,205 @@ export default function ProductStatus() {
         </div>
 
         <div className="overflow-x-auto">
-          {/* Grid Layout of Detailed Columns */}
-          <table className="min-w-full divide-y divide-[#eef2ec] text-left text-[11px]">
+          <table id="product-summary-master-table" className="min-w-full divide-y divide-[#eef2ec] text-left text-xs">
             <thead className="bg-[#f7f9f7] text-[10px] text-[#647067] font-bold uppercase tracking-wider sticky top-0">
               <tr>
-                <th className="px-3 py-3 border-r border-[#e5e8eb] min-w-[90px] text-zinc-700 sticky left-0 bg-[#f7f9f7] z-10">제품명</th>
-                <th className="px-2 py-3 border-r border-[#e5e8eb] text-center min-w-[50px] sticky left-[90px] bg-[#f7f9f7] z-10">단위</th>
-                <th className="px-2 py-3 text-right text-zinc-600">기초재고</th>
-                <th className="px-2 py-3 text-right bg-indigo-50/25">정상입고</th>
-                <th className="px-2 py-3 text-right">이동입고</th>
-                <th className="px-2 py-3 text-right">반품입고</th>
-                <th className="px-2 py-3 text-right">기타입고</th>
-                <th className="px-2 py-3 text-right font-extrabold bg-indigo-50/40 text-indigo-900 border-r border-[#eef2ec]">입고합계</th>
-                <th className="px-2 py-3 text-right bg-emerald-50/25 font-bold">판매출고</th>
-                <th className="px-2 py-3 text-right">재투입</th>
-                <th className="px-2 py-3 text-right">보상출고</th>
-                <th className="px-2 py-3 text-right">견본출고</th>
-                <th className="px-2 py-3 text-right">이동출고</th>
-                <th className="px-2 py-3 text-right text-red-700">폐기</th>
-                <th className="px-2 py-3 text-right">기타출고</th>
-                <th className="px-2 py-3 text-right font-extrabold bg-emerald-50/40 text-emerald-900 border-r border-[#eef2ec]">출고합계</th>
-                <th className="px-2 py-3 text-right font-extrabold bg-zinc-100 text-zinc-900">기말재고</th>
+                <th className="px-4 py-3 border-r border-[#e5e8eb] w-[20px]"></th>
+                <th className="px-3 py-3 border-r border-[#e5e8eb] min-w-[120px] text-zinc-700">제품명</th>
+                <th className="px-2 py-3 border-r border-[#e5e8eb] text-center min-w-[60px]">단위</th>
+                <th className="px-2 py-3 text-right">기초재고 수량</th>
+                <th className="px-2 py-3 text-right bg-indigo-50/15">정상입고 수량</th>
+                <th className="px-2 py-3 text-right">입고합계 수량</th>
+                <th className="px-2 py-3 text-right">판매출고 수량</th>
+                <th className="px-2 py-3 text-right">출고합계 수량</th>
+                <th className="px-2 py-3 text-right font-extrabold text-zinc-900 border-r border-[#eef2ec]">기말재고 수량</th>
                 <th className="px-2 py-3 text-right text-rose-600 font-bold">재고평가손</th>
                 <th className="px-2 py-3 text-right text-indigo-850">평가손반영</th>
                 <th className="px-2 py-3 text-right font-bold text-slate-800">매출액 (T)</th>
-                <th className="px-2 py-3 text-right text-slate-705">매출원가 (T)</th>
+                <th className="px-2 py-3 text-right text-slate-700">매출원가 (T)</th>
                 <th className="px-2 py-3 text-right font-extrabold text-emerald-800">매출이익 (T)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#eef2ec] bg-white font-mono text-[10.5px]">
-              {records.length === 0 ? (
-                <tr>
-                  <td colSpan={22} className="text-center py-8 text-zinc-400 font-sans">
-                    표시할 제품 수불 정보가 존재하지 않습니다.
-                  </td>
-                </tr>
-              ) : (
-                records.map((row, idx) => {
-                  const isQty = row.unit === '수량';
-                  const isAmt = row.unit === '금액';
-                  const isPrice = row.unit === '단가';
+            <tbody className="divide-y divide-[#eef2ec] bg-white font-mono text-[11px]">
+              {PRODUCTS_TO_SHOW.map(name => {
+                const qtyRow = records.find(r => r.productName === name && r.unit === '수량');
+                const amtRow = records.find(r => r.productName === name && r.unit === '금액');
+                const prcRow = records.find(r => r.productName === name && r.unit === '단가');
+                const isExpanded = !!expandedProducts[name];
 
-                  // Apply styling classes based on unit type and rows
-                  let bgClass = "hover:bg-[#f7f9f7]/35";
-                  if (row.unit === '단가') bgClass += " bg-[#fcfdfd] text-zinc-500 text-[10px]";
-                  if (row.unit === '금액') bgClass += " bg-gray-50/30";
-
-                  // Check if this is the start of a product group to merge cell with Rowspan=3
-                  const isFirstRow = idx % 3 === 0;
-
+                if (!qtyRow) {
                   return (
-                    <tr key={row.id} className={bgClass}>
-                      {isFirstRow && (
-                        <td 
-                          rowSpan={3} 
-                          className="px-3 py-3 border-r border-[#e5e8eb] font-sans font-bold text-zinc-900 align-middle text-left bg-white sticky left-0 z-10 shadow-[1px_0_0_0_#dde5de]"
-                        >
-                          {row.productName}
-                          {row.productName === '탄산리튬' && (
-                            <span className="block text-[8px] bg-indigo-55 text-indigo-700 px-1 py-0.5 rounded font-normal font-sans mt-0.5">
-                              Li 원수량기반
-                            </span>
-                          )}
-                        </td>
-                      )}
-                      <td className="px-2 py-2 border-r border-[#e5e8eb] text-center font-bold text-zinc-500 sticky left-[90px] bg-white z-10 shadow-[1px_0_0_0_#dde5de]">
-                        {row.unit}
-                      </td>
-
-                      {/* 기초재고 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.beginningInventory, row.unit, false)}</td>
-
-                      {/* 정상입고 */}
-                      <td className="px-2 py-2 text-right bg-indigo-50/10 font-bold text-indigo-950">{formatValue(row.normalReceipt, row.unit, false)}</td>
-
-                      {/* 이동입고 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.transferReceipt, row.unit, false)}</td>
-
-                      {/* 반품입고 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.returnReceipt, row.unit, false)}</td>
-
-                      {/* 기타입고 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.otherReceipt, row.unit, false)}</td>
-
-                      {/* 당기입합계 */}
-                      <td className="px-2 py-2 text-right bg-indigo-50/20 text-indigo-900 font-extrabold border-r border-[#eef2ec]">{formatValue(row.receiptTotal, row.unit, false)}</td>
-
-                      {/* 판매 (출고) */}
-                      <td className="px-2 py-2 text-right bg-emerald-50/10 font-extrabold text-emerald-900">{formatValue(row.salesQuantity, row.unit, false)}</td>
-
-                      {/* 재투입 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.reInput, row.unit, false)}</td>
-
-                      {/* 보상 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.compensation, row.unit, false)}</td>
-
-                      {/* 견본 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.sample, row.unit, false)}</td>
-
-                      {/* 이동출고 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.transferIssue, row.unit, false)}</td>
-
-                      {/* 폐기 */}
-                      <td className="px-2 py-2 text-right font-semibold text-rose-750">{formatValue(row.disposal, row.unit, false)}</td>
-
-                      {/* 기타출고 */}
-                      <td className="px-2 py-2 text-right">{formatValue(row.otherIssue, row.unit, false)}</td>
-
-                      {/* 출고합계 */}
-                      <td className="px-2 py-2 text-right bg-emerald-50/20 text-emerald-950 font-extrabold border-r border-[#eef2ec]">{formatValue(row.issueTotal, row.unit, false)}</td>
-
-                      {/* 기말재고 */}
-                      <td className="px-2 py-2 text-right bg-zinc-50 font-bold text-zinc-900">{formatValue(row.endingInventory, row.unit, false)}</td>
-
-                      {/* 재고평가손 */}
-                      <td className="px-2 py-2 text-right text-rose-600 font-semibold">{formatValue(row.inventoryValuationLoss, row.unit, true)}</td>
-
-                      {/* 평가손반영 */}
-                      <td className="px-2 py-2 text-right text-indigo-800">{formatValue(row.valuationApplied, row.unit, true)}</td>
-
-                      {/* 매출액 (T-Col 수량행) */}
-                      <td className="px-2 py-2 text-right bg-[#fcfdfd] text-[#111111] font-bold">
-                        {isQty ? formatValue(row.revenue, '금액', true) : '-'}
-                      </td>
-
-                      {/* 매출원가 (T-Col 금액행) */}
-                      <td className="px-2 py-2 text-right bg-[#fcfdfd]">
-                        {isQty ? formatValue(row.costOfSales, '금액', true) : '-'}
-                      </td>
-
-                      {/* 매출이익 (T-Col 단가행) */}
-                      <td className="px-2 py-2 text-right bg-[#fcfdfd] font-extrabold text-teal-800">
-                        {isQty ? formatValue(row.grossProfit, '금액', true) : '-'}
+                    <tr key={name} className="hover:bg-zinc-50/50">
+                      <td className="px-4 py-3 border-r border-[#eef2ec]"></td>
+                      <td className="px-3 py-3 border-r border-[#eef2ec] font-sans font-medium text-zinc-550">{name}</td>
+                      <td colSpan={12} className="px-2 py-3 text-center text-zinc-400 font-sans text-[11px]">
+                        당월 수불 데이터가 없습니다.
                       </td>
                     </tr>
                   );
-                })
-              )}
+                }
+
+                return (
+                  <React.Fragment key={name}>
+                    {/* Main Summary Row */}
+                    <tr 
+                      className={`hover:bg-[#f7f9f7]/40 cursor-pointer transition-colors ${
+                        isExpanded ? 'bg-indigo-50/5' : ''
+                      }`}
+                      onClick={() => toggleExpand(name)}
+                    >
+                      <td className="px-4 py-3 border-r border-[#e5e8eb] text-center">
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4 text-zinc-500 mx-auto" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-zinc-500 mx-auto" />
+                        )}
+                      </td>
+                      <td className="px-3 py-3 border-r border-[#e5e8eb] font-sans font-bold text-zinc-900 text-left">
+                        {name}
+                        {name === '탄산리튬' && (
+                          <span className="block text-[8px] bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded font-normal font-sans mt-0.5 max-w-fit">
+                            원수량 기반
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-3 border-r border-[#e5e8eb] text-center font-bold text-zinc-400">
+                        Ton
+                      </td>
+
+                      {/* Quantities */}
+                      <td className="px-2 py-3 text-right">{formatQuantity(qtyRow.beginningInventory)}</td>
+                      <td className="px-2 py-3 text-right bg-indigo-50/10 font-bold text-indigo-950">{formatQuantity(qtyRow.normalReceipt)}</td>
+                      <td className="px-2 py-3 text-right">{formatQuantity(qtyRow.receiptTotal)}</td>
+                      <td className="px-2 py-3 text-right font-semibold text-emerald-950">{formatQuantity(qtyRow.salesQuantity)}</td>
+                      <td className="px-2 py-3 text-right">{formatQuantity(qtyRow.issueTotal)}</td>
+                      <td className="px-2 py-3 text-right bg-zinc-50/50 font-extrabold text-zinc-900 border-r border-[#e5e8eb]">
+                        {formatQuantity(qtyRow.endingInventory)}
+                      </td>
+
+                      {/* Valuation metrics */}
+                      <td className="px-2 py-3 text-right text-rose-600 font-semibold">
+                        {formatMonetaryValue(qtyRow.inventoryValuationLoss ?? 0)}
+                      </td>
+                      <td className="px-2 py-3 text-right text-indigo-800">
+                        {formatMonetaryValue(qtyRow.valuationApplied ?? 0)}
+                      </td>
+
+                      {/* Revenue and Profit copied directly to Quantity record (under unit=Quantity, T-cols) */}
+                      <td className="px-2 py-3 text-right font-bold text-slate-800 bg-[#fcfdfd]">
+                        {formatMonetaryValue(qtyRow.revenue ?? 0)}
+                      </td>
+                      <td className="px-2 py-3 text-right">
+                        {formatMonetaryValue(qtyRow.costOfSales ?? 0)}
+                      </td>
+                      <td className="px-2 py-3 text-right font-extrabold text-emerald-800 bg-[#fcfdfd]">
+                        {formatMonetaryValue(qtyRow.grossProfit ?? 0)}
+                      </td>
+                    </tr>
+
+                    {/* Explanded 3-Row Detail (Same layout as excel source sheet) */}
+                    {isExpanded && (
+                      <tr className="bg-zinc-50/45 animate-fade">
+                        <td colSpan={14} className="p-0 border-t border-[#eef2ec]">
+                          <div className="p-4 bg-zinc-50/50 rounded-b-xl border-l-2 border-emerald-500 space-y-2">
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold font-sans">
+                              {name} 수불부 원본 3행 정산상세
+                            </span>
+
+                            <table className="min-w-full text-left text-[10.5px] border border-[#eef2ec]">
+                              <thead className="bg-[#fcfdfc] font-sans font-bold text-[#647067]">
+                                <tr className="divide-x divide-[#eef2ec] border-b border-[#eef2ec]">
+                                  <th className="px-2.5 py-1.5 w-[50px] text-center">단위행</th>
+                                  <th className="px-2 py-1.5 text-right">기초재고</th>
+                                  <th className="px-2 py-1.5 text-right bg-indigo-50/10">정상입고</th>
+                                  <th className="px-2 py-1.5 text-right">이동입고</th>
+                                  <th className="px-2 py-1.5 text-right">반품입고</th>
+                                  <th className="px-2 py-1.5 text-right">기타입고</th>
+                                  <th className="px-2 py-1.5 text-right font-bold bg-indigo-50/15">입고합계</th>
+                                  <th className="px-2 py-1.5 text-right bg-emerald-50/10">판매출고</th>
+                                  <th className="px-2 py-1.5 text-right">재투입</th>
+                                  <th className="px-2 py-1.5 text-right">보상출고</th>
+                                  <th className="px-2 py-1.5 text-right">견본출고</th>
+                                  <th className="px-2 py-1.5 text-right">이동출고</th>
+                                  <th className="px-2 py-1.5 text-right text-red-600">폐기</th>
+                                  <th className="px-2 py-1.5 text-right">기타출고</th>
+                                  <th className="px-2 py-1.5 text-right font-bold bg-emerald-50/15">출고합계</th>
+                                  <th className="px-2 py-1.5 text-right font-bold bg-zinc-100">기말재고</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#eef2ec] bg-white">
+                                {/* Qty */}
+                                <tr className="divide-x divide-[#eef2ec]">
+                                  <td className="px-2.5 py-1.5 font-bold text-center text-zinc-500 bg-[#fcfdfc]">수량</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.beginningInventory.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.normalReceipt.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.transferReceipt.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.returnReceipt.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.otherReceipt.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-indigo-950 bg-indigo-50/5">{qtyRow.receiptTotal.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-emerald-950 bg-emerald-50/5">{qtyRow.salesQuantity.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.reInput.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.compensation.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.sample.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.transferIssue.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right text-rose-650">{qtyRow.disposal.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{qtyRow.otherIssue.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-emerald-950 bg-emerald-50/5">{qtyRow.issueTotal.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-zinc-900 bg-zinc-50">{qtyRow.endingInventory.toLocaleString()}</td>
+                                </tr>
+
+                                {/* Amount */}
+                                {amtRow && (
+                                  <tr className="divide-x divide-[#eef2ec] bg-gray-50/20 text-zinc-600">
+                                    <td className="px-2.5 py-1.5 font-bold text-center text-zinc-500 bg-[#fcfdfc]">금액</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.beginningInventory)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.normalReceipt)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.transferReceipt)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.returnReceipt)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.otherReceipt)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-indigo-50/5">{formatMonetaryValue(amtRow.receiptTotal)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-emerald-50/5">{formatMonetaryValue(amtRow.salesQuantity)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.reInput)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.compensation)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.sample)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.transferIssue)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.disposal)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(amtRow.otherIssue)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-emerald-50/5">{formatMonetaryValue(amtRow.issueTotal)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-zinc-50">{formatMonetaryValue(amtRow.endingInventory)}</td>
+                                  </tr>
+                                )}
+
+                                {/* Price */}
+                                {prcRow && (
+                                  <tr className="divide-x divide-[#eef2ec] bg-[#fdfdfd] text-zinc-400">
+                                    <td className="px-2.5 py-1.5 font-bold text-center text-zinc-400 bg-[#fcfdfc]">단가</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.beginningInventory, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.normalReceipt, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.transferReceipt, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.returnReceipt, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.otherReceipt, true)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-indigo-50/5">{formatMonetaryValue(prcRow.receiptTotal, true)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-emerald-50/5">{formatMonetaryValue(prcRow.salesQuantity, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.reInput, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.compensation, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.sample, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.transferIssue, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.disposal, true)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatMonetaryValue(prcRow.otherIssue, true)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-emerald-50/5">{formatMonetaryValue(prcRow.issueTotal, true)}</td>
+                                    <td className="px-2 py-1.5 text-right font-bold bg-zinc-50">{formatMonetaryValue(prcRow.endingInventory, true)}</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
