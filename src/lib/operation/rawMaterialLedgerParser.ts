@@ -9,22 +9,86 @@ function parseNumber(val: any): number {
   return Number.isNaN(num) ? 0 : num;
 }
 
-export function resolveRawMaterial(rawName: string): { code: string; canonicalName: string } {
-  const clean = rawName.toUpperCase().replace(/\s+/g, '');
-  if (clean.includes('BP') || clean.includes('POWDER') || clean.includes('파우더') || clean.includes('블랙파우더')) {
-    return { code: 'BP', canonicalName: 'BP (Black Powder 원료)' };
+export function isRawItemCode(text: string): boolean {
+  if (!text) return false;
+  const clean = text.trim();
+  if (clean === '') return false;
+
+  const blocked = [
+    '합계', '소계', '총계', '구분', '단위', '품목', '원료', '금액', '수량', '단가',
+    '이동', '출고', '입고', '기말', '기초', '평균', '누계', '원자재', '수불', '매매'
+  ];
+  for (const b of blocked) {
+    if (clean.includes(b)) return false;
   }
-  if (clean.includes('WET') || clean.includes('습식')) {
-    return { code: 'WET', canonicalName: 'WET (Wet BM)' };
-  }
-  if (clean.includes('LCO') || clean.includes('산화물') || clean.includes('리튬코발트')) {
-    return { code: 'LCO', canonicalName: 'LCO (리튬코발트산화물, Lithium Cobalt Oxide)' };
-  }
-  if (clean.includes('BM') || clean.includes('MASS') || clean.includes('블랙매스')) {
-    return { code: 'BM', canonicalName: 'BM (Black Mass)' };
-  }
-  return { code: rawName, canonicalName: rawName };
+
+  // Raw codes examples: B111OT-ETC-ETC, B622WE-USA-ABT, BLCOCE-IND-ANS, MN-MN3O4
+  // They are typically alphanumeric starting with letters and having format like AA11 or AA-BB or AA_BB or AA
+  const hasLetter = /[A-Za-z]/.test(clean);
+  const hasDigit = /[0-9]/.test(clean);
+  if (!hasLetter) return false;
+
+  // Let's exclude long description text. Code is typically shorter than 30 chars and does not have spaces
+  if (clean.length > 30) return false;
+  if (clean.includes(' ')) return false;
+
+  return true;
 }
+
+export function resolveRawMaterialGroup(rawCode: string, amountRowName: string, priceRowName: string): 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타' {
+  const text = `${rawCode} ${amountRowName} ${priceRowName}`.toUpperCase();
+
+  if (text.includes('WET')) return 'WET';
+  if (text.includes('LCO') || rawCode.startsWith('BLCO')) return 'LCO';
+  if (text.includes('MN') || text.includes('망간')) return 'MN';
+
+  // 622 셀/팩/기타 계열은 기본 BM
+  if (rawCode.includes('622')) return 'BM';
+
+  // 811 양극활/NCA 계열은 일단 BP로 분류하되, 마스터에서 수정 가능하게 둔다.
+  if (rawCode.includes('811')) return 'BP';
+
+  // 111, 523 기타 계열은 기본 BP로 두되, 마스터에서 수정 가능하게 둔다.
+  if (rawCode.includes('111') || rawCode.includes('523')) return 'BP';
+
+  return '기타';
+}
+
+export function getRawMaterialGroup(rawCode: string, amountRowName: string, priceRowName: string): 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타' {
+  const stored = localStorage.getItem('hycm_raw_material_group_mapping');
+  if (stored) {
+    try {
+      const mapping = JSON.parse(stored);
+      if (mapping[rawCode]) {
+        return mapping[rawCode];
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return resolveRawMaterialGroup(rawCode, amountRowName, priceRowName);
+}
+
+const COL = {
+  itemName: 0,
+  beginning: 1,
+  purchase: 2,
+  transferIn: 3,
+  receiptTotal: 4,
+
+  processIssue: 5,
+  salesIssue: 6,
+  sampleIssue: 7,
+  transferIssue: 8,
+  disposalIssue: 9,
+  devExpenseIssue: 10,
+  devAssetIssue: 11,
+  pilotIssue: 12,
+  otherIssue: 13,
+  issueTotal: 14,
+
+  ending: 15,
+};
 
 export function parseRawMaterialLedgerRows(
   rawRows: any[][],
@@ -36,70 +100,87 @@ export function parseRawMaterialLedgerRows(
 
   for (let i = 0; i < cleanRows.length; i++) {
     const row = cleanRows[i];
-    const rawMaterialName = String(row[0] || '').trim();
-    const unitStr = String(row[1] || '').trim();
+    const firstCell = String(row[0] || '').trim();
 
-    // Check if we found a block starting with '수량'
-    if (unitStr === '수량' && rawMaterialName) {
-      if (rawMaterialName.includes('계') || rawMaterialName.includes('품목')) {
-        continue;
-      }
-      
-      const resolved = resolveRawMaterial(rawMaterialName);
-      let amountRow: any[] | null = null;
-      let priceRow: any[] | null = null;
+    if (isRawItemCode(firstCell)) {
+      // We found a Quantity row!
+      // The Amount row should be right next to it: i + 1
+      // The Price row should be next: i + 2
+      if (i + 1 >= cleanRows.length) continue;
 
-      // Find '금액' and '단가' rows matching the pattern
-      for (let j = i + 1; j < Math.min(i + 15, cleanRows.length); j++) {
-        const nextRow = cleanRows[j];
-        const nextUnit = String(nextRow[1] || '').trim();
-        const nextSubName = String(nextRow[0] || '').trim();
+      const qRow = row;
+      const aRow = cleanRows[i + 1];
+      // Price row might be i + 2, let's verify if there is one or default to empty row
+      const pRow = (i + 2 < cleanRows.length) ? cleanRows[i + 2] : [];
 
-        if (nextUnit === '수량' || (nextSubName && nextSubName !== rawMaterialName && resolveRawMaterial(nextSubName).code !== resolved.code)) {
-          break;
-        }
+      const rawItemCode = firstCell;
+      const amountLabel = String(aRow[0] || '').trim();
+      const priceLabel = String(pRow[0] || '').trim();
 
-        if (nextUnit === '금액' && !amountRow) {
-          amountRow = nextRow;
-        } else if (nextUnit === '단가' && !priceRow) {
-          priceRow = nextRow;
-        }
-      }
+      const group = getRawMaterialGroup(rawItemCode, amountLabel, priceLabel);
 
-      const amtRow = amountRow || [];
-      const prcRow = priceRow || [];
+      // Quantities
+      const beginningQty = parseNumber(qRow[COL.beginning]);
+      const purchaseQty = parseNumber(qRow[COL.purchase]);
+      const transferInQty = parseNumber(qRow[COL.transferIn]);
+      const receiptTotalQty = parseNumber(qRow[COL.receiptTotal]);
+      const processIssueQty = parseNumber(qRow[COL.processIssue]);
+      const salesIssueQty = parseNumber(qRow[COL.salesIssue]);
+      const sampleIssueQty = parseNumber(qRow[COL.sampleIssue]);
+      const transferIssueQty = parseNumber(qRow[COL.transferIssue]);
+      const disposalIssueQty = parseNumber(qRow[COL.disposalIssue]);
+      const devExpenseIssueQty = parseNumber(qRow[COL.devExpenseIssue]);
+      const devAssetIssueQty = parseNumber(qRow[COL.devAssetIssue]);
+      const pilotIssueQty = parseNumber(qRow[COL.pilotIssue]);
+      const otherIssueQty = parseNumber(qRow[COL.otherIssue]);
+      const issueTotalQty = parseNumber(qRow[COL.issueTotal]);
+      const endingQty = parseNumber(qRow[COL.ending]);
 
-      // Extract raw values
-      // Column indexes mapping:
-      // Col 2: beginning (기초)
-      // Col 3: purchase / receipt (구매/정상입고)
-      // Col 8: issue / usage (재투입/생산불출/출고)
-      // Col 16: ending (기말재고)
-      const beginningQty = parseNumber(row[2]);
-      const beginningAmount = parseNumber(amtRow[2]);
-      const beginningUnitPrice = parseNumber(prcRow[2]);
+      // Amounts
+      const beginningAmount = parseNumber(aRow[COL.beginning]);
+      const purchaseAmount = parseNumber(aRow[COL.purchase]);
+      const transferInAmount = parseNumber(aRow[COL.transferIn]);
+      const receiptTotalAmount = parseNumber(aRow[COL.receiptTotal]);
+      const processIssueAmount = parseNumber(aRow[COL.processIssue]);
+      const salesIssueAmount = parseNumber(aRow[COL.salesIssue]);
+      const sampleIssueAmount = parseNumber(aRow[COL.sampleIssue]);
+      const transferIssueAmount = parseNumber(aRow[COL.transferIssue]);
+      const disposalIssueAmount = parseNumber(aRow[COL.disposalIssue]);
+      const devExpenseIssueAmount = parseNumber(aRow[COL.devExpenseIssue]);
+      const devAssetIssueAmount = parseNumber(aRow[COL.devAssetIssue]);
+      const pilotIssueAmount = parseNumber(aRow[COL.pilotIssue]);
+      const otherIssueAmount = parseNumber(aRow[COL.otherIssue]);
+      const issueTotalAmount = parseNumber(aRow[COL.issueTotal]);
+      const endingAmount = parseNumber(aRow[COL.ending]);
 
-      const purchaseQty = parseNumber(row[3]) || parseNumber(row[7]); // normal purchase or sum
-      const purchaseAmount = parseNumber(amtRow[3]) || parseNumber(amtRow[7]);
-      const purchaseUnitPrice = parseNumber(prcRow[3]) || parseNumber(prcRow[7]);
-
-      const issueQty = parseNumber(row[8]) || parseNumber(row[15]); // normal issue or sum
-      const issueAmount = parseNumber(amtRow[8]) || parseNumber(amtRow[15]);
-      const issueUnitPrice = parseNumber(prcRow[8]) || parseNumber(prcRow[15]);
-
-      const endingQty = parseNumber(row[16]);
-      const endingAmount = parseNumber(amtRow[16]);
-      const endingUnitPrice = parseNumber(prcRow[16]);
+      // Unit Prices
+      const beginningUnitPrice = parseNumber(pRow[COL.beginning]);
+      const purchaseUnitPrice = parseNumber(pRow[COL.purchase]);
+      const transferInUnitPrice = parseNumber(pRow[COL.transferIn]);
+      const receiptTotalUnitPrice = parseNumber(pRow[COL.receiptTotal]);
+      const processIssueUnitPrice = parseNumber(pRow[COL.processIssue]);
+      const salesIssueUnitPrice = parseNumber(pRow[COL.salesIssue]);
+      const sampleIssueUnitPrice = parseNumber(pRow[COL.sampleIssue]);
+      const transferIssueUnitPrice = parseNumber(pRow[COL.transferIssue]);
+      const disposalIssueUnitPrice = parseNumber(pRow[COL.disposalIssue]);
+      const devExpenseIssueUnitPrice = parseNumber(pRow[COL.devExpenseIssue]);
+      const devAssetIssueUnitPrice = parseNumber(pRow[COL.devAssetIssue]);
+      const pilotIssueUnitPrice = parseNumber(pRow[COL.pilotIssue]);
+      const otherIssueUnitPrice = parseNumber(pRow[COL.otherIssue]);
+      const issueTotalUnitPrice = parseNumber(pRow[COL.issueTotal]);
+      const endingUnitPrice = parseNumber(pRow[COL.ending]);
 
       const rec: RawMaterialLedgerRecord = {
-        id: `${year}_${month}_raw_${resolved.code}`,
+        id: `${year}_${month}_raw_${rawItemCode}`,
         year,
         month,
         sourceType: '원자재수불부',
-        rawMaterialName: rawMaterialName,
-        materialCode: resolved.code,
-        canonicalMaterialName: resolved.canonicalName,
-        unit: '수량',
+        rawItemCode,
+        rawItemName: amountLabel || rawItemCode,
+        materialGroup: group,
+        quantityRowLabel: rawItemCode,
+        amountRowLabel: amountLabel,
+        unitPriceRowLabel: priceLabel,
 
         beginningQty,
         beginningAmount,
@@ -109,27 +190,75 @@ export function parseRawMaterialLedgerRows(
         purchaseAmount,
         purchaseUnitPrice,
 
-        issueQty,
-        issueAmount,
-        issueUnitPrice,
+        transferInQty,
+        transferInAmount,
+        transferInUnitPrice,
+
+        receiptTotalQty,
+        receiptTotalAmount,
+        receiptTotalUnitPrice,
+
+        processIssueQty,
+        processIssueAmount,
+        processIssueUnitPrice,
+
+        salesIssueQty,
+        salesIssueAmount,
+        salesIssueUnitPrice,
+
+        sampleIssueQty,
+        sampleIssueAmount,
+        sampleIssueUnitPrice,
+
+        transferIssueQty,
+        transferIssueAmount,
+        transferIssueUnitPrice,
+
+        disposalIssueQty,
+        disposalIssueAmount,
+        disposalIssueUnitPrice,
+
+        devExpenseIssueQty,
+        devExpenseIssueAmount,
+        devExpenseIssueUnitPrice,
+
+        devAssetIssueQty,
+        devAssetIssueAmount,
+        devAssetIssueUnitPrice,
+
+        pilotIssueQty,
+        pilotIssueAmount,
+        pilotIssueUnitPrice,
+
+        otherIssueQty,
+        otherIssueAmount,
+        otherIssueUnitPrice,
+
+        issueTotalQty,
+        issueTotalAmount,
+        issueTotalUnitPrice,
 
         endingQty,
         endingAmount,
         endingUnitPrice,
 
-        // Keep backward compat fields just in case
-        beginningInventory: beginningQty,
-        receiptTotal: purchaseQty,
-        issueTotal: issueQty,
-        endingInventory: endingQty,
+        uploadedAt: new Date().toISOString(),
 
-        uploadedAt: new Date().toISOString()
+        // Backward-compatibility attributes
+        rawMaterialName: amountLabel || rawItemCode,
+        materialCode: rawItemCode,
+        canonicalMaterialName: amountLabel || rawItemCode,
+        unit: '수량',
+        beginningInventory: beginningQty,
+        receiptTotal: receiptTotalQty,
+        issueTotal: issueTotalQty,
+        endingInventory: endingQty
       };
 
       records.push(rec);
 
-      // Fast-forward i to skip金額 and 단가
-      i += (amountRow ? 1 : 0) + (priceRow ? 1 : 0);
+      // Skip the Amount row and Price row
+      i += 2;
     }
   }
 

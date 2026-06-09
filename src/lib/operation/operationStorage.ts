@@ -6,33 +6,86 @@ export interface RawMaterialLedgerRecord {
   year: string;
   month: number;
   sourceType: '원자재수불부';
-  rawMaterialName: string;
+
+  rawItemCode: string; // A
+  rawItemName: string; // A label / details
+  materialGroup: 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타';
+
+  quantityRowLabel: string;
+  amountRowLabel: string;
+  unitPriceRowLabel: string;
+
+  beginningQty: number;
+  beginningAmount: number;
+  beginningUnitPrice: number;
+
+  purchaseQty: number;
+  purchaseAmount: number;
+  purchaseUnitPrice: number;
+
+  transferInQty: number;
+  transferInAmount: number;
+  transferInUnitPrice: number;
+
+  receiptTotalQty: number;
+  receiptTotalAmount: number;
+  receiptTotalUnitPrice: number;
+
+  processIssueQty: number;
+  processIssueAmount: number;
+  processIssueUnitPrice: number;
+
+  salesIssueQty: number;
+  salesIssueAmount: number;
+  salesIssueUnitPrice: number;
+
+  sampleIssueQty: number;
+  sampleIssueAmount: number;
+  sampleIssueUnitPrice: number;
+
+  transferIssueQty: number;
+  transferIssueAmount: number;
+  transferIssueUnitPrice: number;
+
+  disposalIssueQty: number;
+  disposalIssueAmount: number;
+  disposalIssueUnitPrice: number;
+
+  devExpenseIssueQty: number;
+  devExpenseIssueAmount: number;
+  devExpenseIssueUnitPrice: number;
+
+  devAssetIssueQty: number;
+  devAssetIssueAmount: number;
+  devAssetIssueUnitPrice: number;
+
+  pilotIssueQty: number;
+  pilotIssueAmount: number;
+  pilotIssueUnitPrice: number;
+
+  otherIssueQty: number;
+  otherIssueAmount: number;
+  otherIssueUnitPrice: number;
+
+  issueTotalQty: number;
+  issueTotalAmount: number;
+  issueTotalUnitPrice: number;
+
+  endingQty: number;
+  endingAmount: number;
+  endingUnitPrice: number;
+
+  uploadedAt: string;
+
+  // Backward-compatibility attributes
+  rawMaterialName?: string;
   materialCode?: string;
   canonicalMaterialName?: string;
-  unit: string;
-
-  beginningQty?: number;
-  beginningAmount?: number;
-  beginningUnitPrice?: number;
-
-  purchaseQty?: number;
-  purchaseAmount?: number;
-  purchaseUnitPrice?: number;
-
-  issueQty?: number;
-  issueAmount?: number;
-  issueUnitPrice?: number;
-
-  endingQty?: number;
-  endingAmount?: number;
-  endingUnitPrice?: number;
-
-  beginningInventory: number;
-  receiptTotal: number;
-  issueTotal: number;
-  endingInventory: number;
-  uploadedAt: string;
-  rawPastedData?: string;
+  unit?: string;
+  beginningInventory?: number;
+  receiptTotal?: number;
+  issueTotal?: number;
+  endingInventory?: number;
 }
 
 export interface OperationUploadHistory {

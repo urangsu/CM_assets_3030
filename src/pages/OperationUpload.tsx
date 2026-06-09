@@ -56,12 +56,18 @@ export default function OperationUpload() {
   const [rawValidationResult, setRawValidationResult] = useState<{
     success: boolean;
     rowLength: number;
+    normalCount: number;
+    warningCount: number;
+    errorCount: number;
+    warnings: string[];
+    errors: string[];
+    headerDetected: boolean;
     summary: {
       receipts: number;
       issues: number;
       ending: number;
     };
-    records: any[];
+    records: RawMaterialLedgerRecord[];
   } | null>(null);
 
   const [historyList, setHistoryList] = useState<OperationUploadHistory[]>([]);
@@ -69,10 +75,58 @@ export default function OperationUpload() {
   const [editingYear, setEditingYear] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState<string>('');
 
+  const [rawGroupMapping, setRawGroupMapping] = useState<Record<string, 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타'>>({});
+  const [newMappingCode, setNewMappingCode] = useState('');
+  const [newMappingGroup, setNewMappingGroup] = useState<'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타'>('BP');
+
   useEffect(() => {
     setHistoryList(OperationStorage.getUploadHistory());
     setLithiumRates(getLithiumConversionRates());
+
+    const storedMapping = localStorage.getItem('hycm_raw_material_group_mapping');
+    if (storedMapping) {
+      try {
+        setRawGroupMapping(JSON.parse(storedMapping));
+      } catch {
+        setRawGroupMapping({});
+      }
+    } else {
+      const defaultMapping: Record<string, 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타'> = {
+        'B111OT-ETC-ETC': 'BP',
+        'B622WE-USA-ABT': 'BM',
+        'BLCOCE-IND-ANS': 'LCO',
+        'MN-MN3O4': 'MN'
+      };
+      localStorage.setItem('hycm_raw_material_group_mapping', JSON.stringify(defaultMapping));
+      setRawGroupMapping(defaultMapping);
+    }
   }, []);
+
+  const handleSaveGroupMapping = (code: string, group: 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타') => {
+    const updated = { ...rawGroupMapping, [code]: group };
+    setRawGroupMapping(updated);
+    localStorage.setItem('hycm_raw_material_group_mapping', JSON.stringify(updated));
+    window.dispatchEvent(new Event('operation-ledger-changed'));
+  };
+
+  const handleAddGroupMapping = () => {
+    if (!newMappingCode.trim()) return;
+    const cleanCode = newMappingCode.trim().toUpperCase();
+    const updated = { ...rawGroupMapping, [cleanCode]: newMappingGroup };
+    setRawGroupMapping(updated);
+    localStorage.setItem('hycm_raw_material_group_mapping', JSON.stringify(updated));
+    setNewMappingCode('');
+    window.dispatchEvent(new Event('operation-ledger-changed'));
+    alert(`[완료] 품목 매핑 등록 성공: ${cleanCode} -> ${newMappingGroup}`);
+  };
+
+  const handleDeleteGroupMapping = (code: string) => {
+    const updated = { ...rawGroupMapping };
+    delete updated[code];
+    setRawGroupMapping(updated);
+    localStorage.setItem('hycm_raw_material_group_mapping', JSON.stringify(updated));
+    window.dispatchEvent(new Event('operation-ledger-changed'));
+  };
 
   const handleUpdateHistoryAndList = () => {
     setHistoryList(OperationStorage.getUploadHistory());
@@ -252,18 +306,130 @@ export default function OperationUpload() {
   const processRawMaterialArrayAndValidate = (jsonData: any[][]) => {
     const records = parseRawMaterialLedgerRows(jsonData, year, month);
 
-    if (records.length === 0) {
-      alert('인식 가능한 원자재 3행 묶음(수량/금액/단가)을 찾지 못했습니다. 원자재명(A), 단위(B), 기초재고(C), 당기입고(D/H), 당기출고(I/P), 기말재고(Q) 행이 정상 섭취될 수 있도록 구성해 주십시오.');
+    if (jsonData.length === 0 || records.length === 0) {
+      setRawValidationResult({
+        success: false,
+        rowLength: 0,
+        normalCount: 0,
+        warningCount: 0,
+        errorCount: 1,
+        warnings: [],
+        errors: ['인식 가능한 원자재 3행 묶음(수량/금액/단가)을 찾지 못했습니다. 품목코드(A열), 기초(B열), 구매(C열), 이동(D열), 입고합계(E열) 등으로 구성된 3행 묶음 형식을 확인해 주세요.'],
+        headerDetected: false,
+        summary: { receipts: 0, issues: 0, ending: 0 },
+        records: []
+      });
       return;
     }
 
-    const receiptsSum = records.reduce((acc, r) => acc + r.receiptTotal, 0);
-    const issuesSum = records.reduce((acc, r) => acc + r.issueTotal, 0);
-    const endingSum = records.reduce((acc, r) => acc + r.endingInventory, 0);
+    // Checking headers
+    let headerDetected = false;
+    for (const row of jsonData.slice(0, 15)) {
+      for (const cell of row) {
+        const textStr = String(cell || '').trim();
+        if (textStr.includes('원자재수불부') || textStr.includes('기초') || textStr.includes('입고') || textStr.includes('출고') || textStr.includes('수품') || textStr.includes('기말') || textStr.includes('이동')) {
+          headerDetected = true;
+          break;
+        }
+      }
+      if (headerDetected) break;
+    }
+
+    const warnings: string[] = [];
+    const errors: string[] = [];
+
+    if (!headerDetected) {
+      warnings.push('헤더 감지 실패: 파일 상단에서 "원자재수불부" 또는 "기초", "입고" 등의 표준 수불 단어가 감지되지 않았습니다.');
+    }
+
+    function formatKRWMillion(val: number) {
+      return `${Math.round(val / 1_000_000).toLocaleString()}백만원`;
+    }
+
+    // Run verification on each parsed record
+    records.forEach((r) => {
+      // 1. Missing item code
+      if (!r.rawItemCode) {
+        errors.push(`A열의 품목코드가 누락되었습니다.`);
+      }
+
+      // 2. Missing row checking inside the 3-row cluster
+      if (!r.amountRowLabel) {
+        errors.push(`품목 [${r.rawItemCode}]: 금액 행(2번째 행)의 라벨이 누락되었습니다.`);
+      }
+      if (!r.unitPriceRowLabel) {
+        errors.push(`품목 [${r.rawItemCode}]: 단가 행(3번째 행)의 라벨이 누락되었습니다.`);
+      }
+
+      // 3. 입고합계 검증: 기초가 아니라 구매+이동 = 입고합계
+      const sumReceiptQty = r.purchaseQty + r.transferInQty;
+      const receiptDiff = Math.abs(sumReceiptQty - r.receiptTotalQty);
+      if (receiptDiff > 0.1) {
+        warnings.push(`[${r.rawItemCode}] 입고합계 불일치: 구매(${r.purchaseQty.toFixed(1)}) + 이동입고(${r.transferInQty.toFixed(1)}) = ${sumReceiptQty.toFixed(1)} Ton, 표기된 입고합계(${r.receiptTotalQty.toFixed(1)})와 ${receiptDiff.toFixed(1)} Ton 차이`);
+      }
+
+      // 4. 출고합계 검증: 공정+판매+견본+이동+폐기+개발비용+개발자산+시운전+기타 = 출고합계
+      const sumIssueQty = r.processIssueQty + r.salesIssueQty + r.sampleIssueQty + r.transferIssueQty + r.disposalIssueQty + r.devExpenseIssueQty + r.devAssetIssueQty + r.pilotIssueQty + r.otherIssueQty;
+      const issueDiff = Math.abs(sumIssueQty - r.issueTotalQty);
+      if (issueDiff > 0.1) {
+        warnings.push(`[${r.rawItemCode}] 출고합계 불일치: 세부 소계 합산(${sumIssueQty.toFixed(1)})과 표기된 출고합계(${r.issueTotalQty.toFixed(1)}) 사이에 ${issueDiff.toFixed(1)} Ton 차이`);
+      }
+
+      // 5. 기말 검증: 기초재고 + 입고합계 - 출고합계 = 기말재고
+      const expectedEnd = r.beginningQty + r.receiptTotalQty - r.issueTotalQty;
+      const endingDiff = Math.abs(expectedEnd - r.endingQty);
+      if (endingDiff > 0.1) {
+        warnings.push(`${r.rawItemCode}: 기말재고 산식 차이 ${endingDiff.toFixed(1)} Ton (산식값: 기초[${r.beginningQty.toFixed(1)}] + 입고[${r.receiptTotalQty.toFixed(1)}] - 출고[${r.issueTotalQty.toFixed(1)}] = ${expectedEnd.toFixed(1)}, 표기기말: ${r.endingQty.toFixed(1)})`);
+      }
+
+      // 6. 금액/수량/단가 검증: 금액 ÷ 수량 ≈ 단가
+      if (r.beginningQty > 0.1 && r.beginningUnitPrice > 0) {
+        const productAmt = r.beginningQty * r.beginningUnitPrice;
+        const diffAmt = Math.abs(productAmt - r.beginningAmount);
+        if (diffAmt > 5000000) {
+          warnings.push(`[${r.rawItemCode}] 기초재고의 (수량 x 단가)와 금액 편차: ${formatKRWMillion(diffAmt)} 차이`);
+        }
+      }
+      if (r.purchaseQty > 0.1 && r.purchaseUnitPrice > 0) {
+        const productAmt = r.purchaseQty * r.purchaseUnitPrice;
+        const diffAmt = Math.abs(productAmt - r.purchaseAmount);
+        if (diffAmt > 5000000) {
+          warnings.push(`[${r.rawItemCode}] 당기구매의 (수량 x 단가)와 금액 편차: ${formatKRWMillion(diffAmt)} 차이`);
+        }
+      }
+      if (r.endingQty > 0.1 && r.endingUnitPrice > 0) {
+        const productAmt = r.endingQty * r.endingUnitPrice;
+        const diffAmt = Math.abs(productAmt - r.endingAmount);
+        if (diffAmt > 5000000) {
+          warnings.push(`[${r.rawItemCode}] 기말재고의 (수량 x 단가)와 금액 편차: ${formatKRWMillion(diffAmt)} 차이`);
+        }
+      }
+
+      // 7. 원료군 분류 결과 경고
+      if (r.materialGroup === 'MN') {
+        warnings.push(`${r.rawItemCode}: 원료군 MN으로 분류됨, 대시보드 요약 제외`);
+      } else if (r.materialGroup === '기타') {
+        warnings.push(`${r.rawItemCode}: 원료군 '기타'로 분류됨`);
+      }
+    });
+
+    const receiptsSum = records.reduce((acc, r) => acc + r.receiptTotalQty, 0);
+    const issuesSum = records.reduce((acc, r) => acc + r.issueTotalQty, 0);
+    const endingSum = records.reduce((acc, r) => acc + r.endingQty, 0);
+
+    const errorCount = errors.length;
+    const warningCount = warnings.length;
+    const normalCount = Math.max(0, records.length - errorCount);
 
     setRawValidationResult({
-      success: true,
+      success: errors.length === 0,
       rowLength: records.length,
+      normalCount,
+      warningCount,
+      errorCount,
+      warnings,
+      errors,
+      headerDetected,
       summary: {
         receipts: receiptsSum,
         issues: issuesSum,
@@ -274,8 +440,13 @@ export default function OperationUpload() {
   };
 
   const handleSaveRawMaterial = () => {
-    if (!rawValidationResult || !rawValidationResult.success || rawValidationResult.records.length === 0) {
+    if (!rawValidationResult || rawValidationResult.records.length === 0) {
       alert('먼저 데이터를 검증해 주십시오.');
+      return;
+    }
+
+    if (rawValidationResult.errorCount > 0) {
+      alert(`[오류] 검증 오류가 ${rawValidationResult.errorCount}건 존재합니다. 오류 목록을 해결한 뒤 다시 시도해 주십시오.`);
       return;
     }
 
@@ -291,7 +462,11 @@ export default function OperationUpload() {
         rowLength: recordsToSave.length
       });
 
-      alert(`[완료] ${year}년 ${month}월 원자재 수불 데이터(${recordsToSave.length}행)가 정상적으로 반영되었습니다.`);
+      let alertMsg = `[완료] ${year}년 ${month}월 원자재 수불 데이터(${recordsToSave.length}품목)가 정상적으로 반영되었습니다.`;
+      if (rawValidationResult.warningCount > 0) {
+        alertMsg += `\n(주의: 경고 항목 ${rawValidationResult.warningCount}건이 존재합니다.)`;
+      }
+      alert(alertMsg);
       resetUploadState();
       handleUpdateHistoryAndList();
     } catch (e: any) {
@@ -472,7 +647,7 @@ export default function OperationUpload() {
               <AppButton 
                 onClick={activeTab === 'product' ? handleSaveProductLedger : handleSaveRawMaterial} 
                 className="bg-brand-500 text-white hover:bg-brand-600"
-                disabled={activeTab === 'product' ? !validationResult?.success : !rawValidationResult?.success}
+                disabled={activeTab === 'product' ? !validationResult?.success : (!rawValidationResult || rawValidationResult.errorCount > 0)}
               >
                 <Save className="w-4 h-4 mr-1.5 inline-block" />
                 수불부 최종 반영 및 저장
@@ -549,86 +724,201 @@ export default function OperationUpload() {
                 )
               ) : (
                 rawValidationResult ? (
-                  rawValidationResult.success ? (
-                    <div className="space-y-3 text-xs">
-                      <div className="p-3 bg-emerald-50 text-[#008f83] border border-emerald-150 rounded-xl flex items-start gap-2">
-                        <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold">원자재 수불부 인식 성공</p>
-                          <p className="text-[11px]">{rawValidationResult.rowLength}개의 독립된 자재 항목이 파싱 완료되었습니다.</p>
-                        </div>
-                      </div>
+                  <div className="space-y-4 text-xs">
+                    {/* Header check badge */}
+                    <div className="flex justify-between items-center bg-[#f8f9fa] p-2 rounded-lg border border-zinc-150">
+                      <span className="text-zinc-500 font-semibold font-sans">1. 헤더 표준 감지:</span>
+                      {rawValidationResult.headerDetected ? (
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded font-bold">감지성공</span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded font-bold">미감지(주의)</span>
+                      )}
+                    </div>
 
-                      <div className="space-y-2 bg-[#f8f9fa] p-3 rounded-xl border border-zinc-150">
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">총 입고량 매핑 합계:</span>
-                          <span className="font-mono font-bold text-emerald-700">{rawValidationResult.summary.receipts.toLocaleString()} Mt</span>
+                    {/* Overall count */}
+                    <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl space-y-1.5">
+                      <div className="text-[11px] font-bold text-zinc-700 flex justify-between">
+                        <span>2. 3행 품목 묶음 집계:</span>
+                        <span className="font-mono text-zinc-900 font-extrabold">{rawValidationResult.rowLength}개 품목 감지</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 pt-1 text-center font-sans">
+                        <div className="bg-emerald-50 text-emerald-805 rounded p-1 text-[10px] font-bold">
+                          정상: {rawValidationResult.normalCount}
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">총 출고량 매핑 합계:</span>
-                          <span className="font-mono font-bold text-red-700">{rawValidationResult.summary.issues.toLocaleString()} Mt</span>
+                        <div className="bg-amber-50 text-amber-805 rounded p-1 text-[10px] font-bold">
+                          주의: {rawValidationResult.warningCount}
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">기말 재고량 합계:</span>
-                          <span className="font-mono font-bold text-indigo-700">{rawValidationResult.summary.ending.toLocaleString()} Mt</span>
+                        <div className="bg-red-55 text-red-805 rounded p-1 text-[10px] font-bold">
+                          오류: {rawValidationResult.errorCount}
                         </div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="text-xs text-red-500 p-2 bg-red-55 rounded-lg">동작 검증 실패</div>
-                  )
+
+                    {/* Validation logs (Errors) */}
+                    {rawValidationResult.errors.length > 0 && (
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                        <p className="text-[10px] font-bold text-red-650 flex items-center gap-1">
+                          <XCircle className="w-3 h-3 text-red-500" /> 오류 로그 (저장 불가):
+                        </p>
+                        {rawValidationResult.errors.map((err, idx) => (
+                          <div key={idx} className="p-1.5 bg-red-50 border border-red-150 text-red-750 rounded text-[10px] font-mono leading-tight">
+                            • {err}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Validation logs (Warnings) */}
+                    {rawValidationResult.warnings.length > 0 && (
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        <p className="text-[10px] font-bold text-amber-650 flex items-center gap-1">
+                          <Info className="w-3 h-3 text-amber-500" /> 무결성 권고 및 경고 ({rawValidationResult.warningCount}건):
+                        </p>
+                        {rawValidationResult.warnings.map((warn, idx) => (
+                          <div key={idx} className="p-1.5 bg-amber-50 border border-amber-150 text-amber-850 rounded text-[10px] font-mono leading-tight">
+                            • {warn}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Totals Summary */}
+                    <div className="space-y-2 bg-[#f8f9fa] p-3 rounded-xl border border-zinc-150">
+                      <div className="text-[11px] font-bold text-zinc-700 mb-1 border-b pb-1 font-mono">수불 합산 단위 검증 (Ton)</div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-zinc-500 font-sans">총 당기입고합계:</span>
+                        <span className="font-mono font-bold text-emerald-700">{rawValidationResult.summary.receipts.toLocaleString(undefined, { maximumFractionDigits: 1 })} Ton</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-zinc-500 font-sans font-sans">총 당기출고합계:</span>
+                        <span className="font-mono font-bold text-red-700">{rawValidationResult.summary.issues.toLocaleString(undefined, { maximumFractionDigits: 1 })} Ton</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-zinc-500 font-sans font-sans">기말 재고량 누적:</span>
+                        <span className="font-mono font-bold text-indigo-700">{rawValidationResult.summary.ending.toLocaleString(undefined, { maximumFractionDigits: 1 })} Ton</span>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div className="text-center py-8 text-xs text-zinc-400">
-                    원자재 수불부 업로드 대기중입니다.
+                    <Database className="w-8 h-8 text-zinc-300 mx-auto mb-2" />
+                    원자재 수불부 파일 업로드 또는 클립보드 복사입력 후 검증을 시작하십시오.
                   </div>
                 )
               )}
             </AppCard>
 
-            {/* Lithium Conversion Master Card */}
-            <AppCard className="p-6">
-              <h3 className="text-xs font-bold text-[#191f28] mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-zinc-700">
-                  <Settings className="w-3.5 h-3.5 text-brand-600" />
-                  탄산리튬 Li 함량(환산율) 마스터
-                </span>
-              </h3>
-              <p className="text-[10px] text-zinc-500 mb-3">
-                탄산리튬 원 수량을 Li 메탈 환산 물량으로 변환하는 함량 비율 마스터 수치입니다.
-              </p>
-              
-              <div className="space-y-2">
-                {Object.entries(lithiumRates).sort().map(([yr, rateVal]) => {
-                  const rate = rateVal as number;
-                  return (
-                    <div key={yr} className="flex justify-between items-center text-xs p-2 bg-[#f8f9fa] rounded-lg border border-zinc-150">
-                      <span className="font-mono font-semibold text-zinc-600">{yr}년</span>
-                      {editingYear === yr ? (
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            className="w-16 p-1 text-right bg-white border border-[#dde5de] rounded text-xs font-mono font-bold"
-                          />
-                          <span className="text-zinc-500">%</span>
-                          <button onClick={() => handleSaveRate(yr)} className="px-1.5 py-0.5 bg-brand-500 text-white rounded text-[10px] font-bold">
-                            저장
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-brand-700">{rate}%</span>
-                          <button onClick={() => handleEditRate(yr, rate)} className="text-[10px] text-brand-600 font-semibold hover:underline">
-                            수정
-                          </button>
-                        </div>
-                      )}
+            {/* Tab adaptive settings card */}
+            {activeTab === 'product' ? (
+              <AppCard className="p-6">
+                <h3 className="text-xs font-bold text-[#191f28] mb-3 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-zinc-700">
+                    <Settings className="w-3.5 h-3.5 text-brand-600" />
+                    탄산리튬 Li 함량(환산율) 마스터
+                  </span>
+                </h3>
+                <p className="text-[10px] text-zinc-500 mb-3">
+                  탄산리튬 원 수량을 Li 메탈 환산 물량으로 변환하는 함량 비율 마스터 수치입니다.
+                </p>
+                
+                <div className="space-y-2">
+                  {Object.entries(lithiumRates).sort().map(([yr, rateVal]) => {
+                    const rate = rateVal as number;
+                    return (
+                      <div key={yr} className="flex justify-between items-center text-xs p-2 bg-[#f8f9fa] rounded-lg border border-zinc-150">
+                        <span className="font-mono font-semibold text-zinc-600">{yr}년</span>
+                        {editingYear === yr ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingValue}
+                              onChange={(e) => setEditingValue(e.target.value)}
+                              className="w-16 p-1 text-right bg-white border border-[#dde5de] rounded text-xs font-mono font-bold"
+                            />
+                            <span className="text-zinc-500">%</span>
+                            <button onClick={() => handleSaveRate(yr)} className="px-1.5 py-0.5 bg-brand-500 text-white rounded text-[10px] font-bold">
+                              저장
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-brand-700">{rate}%</span>
+                            <button onClick={() => handleEditRate(yr, rate)} className="text-[10px] text-brand-600 font-semibold hover:underline">
+                              수정
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </AppCard>
+            ) : (
+              <AppCard className="p-6">
+                <h3 className="text-xs font-bold text-[#191f28] mb-3 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-zinc-700">
+                    <Settings className="w-3.5 h-3.5 text-indigo-600" />
+                    원자재 품목 매핑 마스터
+                  </span>
+                </h3>
+                <p className="text-[10px] text-zinc-500 mb-3">
+                  품목코드별 원료군 매핑 마스터입니다. 마스터에 등록된 코드는 업로드 검증 시 우선 순위로 반영됩니다.
+                </p>
+                
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {Object.entries(rawGroupMapping).map(([code, g]) => (
+                    <div key={code} className="flex justify-between items-center text-xs p-2 bg-[#f8f9fa] rounded-lg border border-zinc-150">
+                      <span className="font-mono font-semibold text-zinc-600 truncate max-w-[120px]" title={code}>{code}</span>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={g}
+                          onChange={(e) => handleSaveGroupMapping(code, e.target.value as any)}
+                          className="text-[10px] p-1 bg-white border border-[#dde5de] rounded font-bold"
+                        >
+                          {['BP', 'BM', 'WET', 'LCO', 'MN', '기타'].map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => handleDeleteGroupMapping(code)}
+                          className="text-[10px] text-red-500 font-bold hover:underline"
+                        >
+                          삭제
+                        </button>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            </AppCard>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-zinc-150 space-y-2">
+                  <p className="text-[10px] font-bold text-zinc-700">새로운 품목 매핑 추가</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="품목코드 (예: B111-ETC)"
+                      value={newMappingCode}
+                      onChange={(e) => setNewMappingCode(e.target.value)}
+                      className="text-[10px] p-1.5 border border-[#dde5de] bg-white rounded flex-1 focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                    <select
+                      value={newMappingGroup}
+                      onChange={(e) => setNewMappingGroup(e.target.value as any)}
+                      className="text-[10px] p-1.5 bg-white border border-[#dde5de] rounded font-bold"
+                    >
+                      {['BP', 'BM', 'WET', 'LCO', 'MN', '기타'].map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleAddGroupMapping}
+                      className="px-2.5 py-1.5 bg-indigo-600 text-white rounded text-[10px] font-bold shrink-0"
+                    >
+                      추가
+                    </button>
+                  </div>
+                </div>
+              </AppCard>
+            )}
           </div>
         </div>
       )}

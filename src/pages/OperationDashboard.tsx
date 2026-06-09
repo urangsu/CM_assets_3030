@@ -231,17 +231,90 @@ export default function OperationDashboard() {
         const scaleIssue = qty;
         const begQty = Math.round(qty * 0.95);
 
+        const endingQty = begQty + scaleReceipt - scaleIssue;
+        const seedPrice = k.prc;
+
         materials.push({
           id: `seed_raw_${yearStr}_${m}_${k.key}`,
           year: yearStr,
           month: m,
           sourceType: '원자재수불부',
+          rawItemCode: k.key,
+          rawItemName: k.rawName,
+          materialGroup: k.key as any,
+          quantityRowLabel: k.key,
+          amountRowLabel: k.rawName,
+          unitPriceRowLabel: k.key,
+
+          beginningQty: begQty,
+          beginningAmount: begQty * seedPrice,
+          beginningUnitPrice: seedPrice,
+
+          purchaseQty: scaleReceipt,
+          purchaseAmount: scaleReceipt * seedPrice,
+          purchaseUnitPrice: seedPrice,
+
+          transferInQty: 0,
+          transferInAmount: 0,
+          transferInUnitPrice: 0,
+
+          receiptTotalQty: scaleReceipt,
+          receiptTotalAmount: scaleReceipt * seedPrice,
+          receiptTotalUnitPrice: seedPrice,
+
+          processIssueQty: scaleIssue,
+          processIssueAmount: scaleIssue * seedPrice,
+          processIssueUnitPrice: seedPrice,
+
+          salesIssueQty: 0,
+          salesIssueAmount: 0,
+          salesIssueUnitPrice: 0,
+
+          sampleIssueQty: 0,
+          sampleIssueAmount: 0,
+          sampleIssueUnitPrice: 0,
+
+          transferIssueQty: 0,
+          transferIssueAmount: 0,
+          transferIssueUnitPrice: 0,
+
+          disposalIssueQty: 0,
+          disposalIssueAmount: 0,
+          disposalIssueUnitPrice: 0,
+
+          devExpenseIssueQty: 0,
+          devExpenseIssueAmount: 0,
+          devExpenseIssueUnitPrice: 0,
+
+          devAssetIssueQty: 0,
+          devAssetIssueAmount: 0,
+          devAssetIssueUnitPrice: 0,
+
+          pilotIssueQty: 0,
+          pilotIssueAmount: 0,
+          pilotIssueUnitPrice: 0,
+
+          otherIssueQty: 0,
+          otherIssueAmount: 0,
+          otherIssueUnitPrice: 0,
+
+          issueTotalQty: scaleIssue,
+          issueTotalAmount: scaleIssue * seedPrice,
+          issueTotalUnitPrice: seedPrice,
+
+          endingQty: endingQty,
+          endingAmount: endingQty * seedPrice,
+          endingUnitPrice: seedPrice,
+
+          // Backward-compatibility attributes
           rawMaterialName: k.rawName,
+          materialCode: k.key,
+          canonicalMaterialName: k.rawName,
           unit: '수량',
           beginningInventory: begQty,
           receiptTotal: scaleReceipt,
           issueTotal: scaleIssue,
-          endingInventory: begQty + scaleReceipt - scaleIssue,
+          endingInventory: endingQty,
           uploadedAt: new Date().toISOString()
         });
       });
