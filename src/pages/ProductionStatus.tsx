@@ -217,6 +217,7 @@ export default function ProductionStatus() {
   const totalProductionTons = finalTableData.reduce((acc, item) => acc + item.productionQty, 0);
   const totalConvertedProductionTons = finalTableData.reduce((acc, item) => acc + item.convertedQty, 0);
   const totalProductionAmtValue = finalTableData.reduce((acc, item) => acc + item.productionAmt, 0);
+  const productCount = new Set(filteredQtyRecords.map(r => r.productName)).size || finalTableData.length;
 
   const lithiumObj = productAggMap.get('탄산리튬');
   const lithiumConvertedProd = lithiumObj ? lithiumObj.convertedQty : 0;
@@ -350,21 +351,23 @@ export default function ProductionStatus() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10.5px] text-[#647067] font-bold block">총 생산 실물량</span>
+          <span className="text-[10.5px] text-[#647067] font-bold block">총 생산량</span>
           <span className="text-xl font-bold text-zinc-900 font-mono mt-1 block">{totalProductionTons.toLocaleString()} Mt</span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10.5px] text-teal-800 font-bold block">총 환산 생산량</span>
-          <span className="text-xl font-bold text-teal-700 font-mono mt-1 block">{totalConvertedProductionTons.toLocaleString()} Mt</span>
+          <span className="text-[10.5px] text-teal-800 font-bold block">생산금액</span>
+          <span className="text-xl font-bold text-teal-700 font-mono mt-1 block">
+            {formatCurrency(convertAmount(totalProductionAmtValue))}
+          </span>
         </div>
         <div className="bg-white border border-[#dde5de] p-5 rounded-2xl shadow-xs">
-          <span className="text-[10.5px] text-indigo-700 font-bold block">탄산리튬 환산 생산량</span>
-          <span className="text-xl font-bold text-indigo-805 font-mono mt-1 block">{lithiumConvertedProd.toLocaleString(undefined, { maximumFractionDigits: 1 })} Mt</span>
+          <span className="text-[10.5px] text-indigo-700 font-bold block">제품 수</span>
+          <span className="text-xl font-bold text-indigo-805 font-mono mt-1 block">{productCount}개 구분</span>
         </div>
         <div className="bg-[#f0fcf9] border border-teal-150 p-5 rounded-2xl shadow-xs">
-          <span className="text-[10.5px] text-teal-800 font-bold block">총 생산가치 (정상입고 금액)</span>
-          <span className="text-xl font-bold text-emerald-800 font-mono mt-1 block">
-            {formatCurrency(convertAmount(totalProductionAmtValue))}
+          <span className="text-[10.5px] text-teal-800 font-bold block">전월 대비 (vs Previous Month)</span>
+          <span className="text-sm font-bold text-emerald-800 mt-1.5 block">
+            {MoMText}
           </span>
         </div>
       </div>

@@ -123,6 +123,106 @@ async function startServer() {
     }
   });
 
+  // Korea Exim Bank Exchange Rate API proxy
+  app.get("/api/exim-rate", async (req, res) => {
+    try {
+      const year = String(req.query.year || "2026");
+      const month = Number(req.query.month || 5);
+      
+      const apiKey = process.env.EXIM_API_KEY;
+      if (!apiKey || apiKey === "MY_EXIM_API_KEY" || apiKey.trim() === "") {
+        console.warn("[EXIM API] EXIM_API_KEY is not configured in .env");
+        return res.json({
+          success: false,
+          reason: "API_KEY_MISSING",
+          message: "한국수출입은행 API 인증키가 설정되지 않았습니다. .env.example을 참고하여 EXIM_API_KEY를 구성해 주십시오."
+        });
+      }
+
+      // Determine starting day. If querying the current year & month, start from today/yesterday.
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const currentDay = now.getDate();
+
+      let startDay = 15; // default mid-month weekday
+      if (Number(year) === currentYear && month === currentMonth) {
+        startDay = currentDay;
+      }
+
+      let foundRate: number | null = null;
+      let queriedDate = "";
+      
+      // Loop backwards up to 10 days to find a valid business day (the API doesn't return data on weekends/holidays)
+      for (let i = 0; i < 10; i++) {
+        const targetDate = new Date(Number(year), month - 1, startDay - i);
+        
+        const yFormat = targetDate.getFullYear();
+        const mFormat = String(targetDate.getMonth() + 1).padStart(2, "0");
+        const dFormat = String(targetDate.getDate()).padStart(2, "0");
+        const paramDate = `${yFormat}${mFormat}${dFormat}`;
+
+        const requestUrl = `https://www.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${encodeURIComponent(apiKey)}&searchdate=${paramDate}&data=AP01`;
+        
+        console.log(`[EXIM API Proxy] Fetching date ${paramDate}...`);
+        
+        try {
+          const response = await fetch(requestUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
+              "Accept": "application/json"
+            }
+          });
+
+          if (!response.ok) {
+            console.error(`[EXIM API Proxy] HTTP status ${response.status} for ${paramDate}`);
+            continue;
+          }
+
+          const rawData: any = await response.json();
+          if (Array.isArray(rawData) && rawData.length > 0) {
+            // Find USD record
+            const usdRecord = rawData.find((item: any) => item.cur_unit === "USD" || item.cur_unit === "usd");
+            if (usdRecord && usdRecord.deal_bas_r) {
+              const rateStr = String(usdRecord.deal_bas_r).replace(/,/g, "");
+              const rateVal = parseFloat(rateStr);
+              if (!isNaN(rateVal) && rateVal > 0) {
+                foundRate = rateVal;
+                queriedDate = paramDate;
+                break; // Found ! Exit fallback loop.
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`[EXIM API Proxy] Network/parsing error for ${paramDate}:`, err);
+        }
+      }
+
+      if (foundRate) {
+        console.log(`[EXIM API Proxy] Success! Found USD rate: ${foundRate} on ${queriedDate}`);
+        return res.json({
+          success: true,
+          rate: foundRate,
+          date: queriedDate,
+          source: "koreaexim_api"
+        });
+      } else {
+        return res.json({
+          success: false,
+          reason: "NO_BUSINESS_DAY_DATA",
+          message: `${year}년 ${month}월 기준 유효한 국책은행 실시간 영업일 환율 공시 내역을 찾을 수 없습니다.`
+        });
+      }
+    } catch (outerError: any) {
+      console.error("[EXIM API Proxy Outer Error]:", outerError);
+      return res.status(500).json({
+        success: false,
+        reason: "SERVER_ERROR",
+        message: outerError.message || "서버 내부 처리 중 환율 API 호출 장애가 발생했습니다."
+      });
+    }
+  });
+
   // API routes
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, text } = req.body;

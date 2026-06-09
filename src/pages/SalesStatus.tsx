@@ -240,9 +240,9 @@ export default function SalesStatus() {
           <div className="flex items-center gap-1.5">
             <span className="text-xs bg-slate-100 text-zinc-550 px-2 py-0.5 rounded font-bold">운영 대시보드 연계</span>
           </div>
-          <h2 className="text-[20px] font-bold text-zinc-900 leading-tight mt-1">판매 현황 집계</h2>
+          <h2 className="text-[20px] font-bold text-zinc-900 leading-tight mt-1">판매 현황</h2>
           <p className="text-xs text-zinc-500 mt-1">
-            제품 수불부의 실제 출고 판매량(I열)과 매출액, 매출원가(T열)를 자동 집계하여 최신 판매동향을 월별 환전 단가와 함께 분석합니다.
+            제품수불부의 판매수량, 매출액, 매출원가, 매출이익을 확인합니다.
           </p>
         </div>
 
@@ -365,7 +365,7 @@ export default function SalesStatus() {
             onChange={(e) => setFilterProduct(e.target.value)}
             className="text-xs p-2.5 bg-white border border-[#dde5de] rounded-xl focus:outline-none focus:border-teal-500 w-full sm:w-64"
           >
-            <option value="all">전체 Canonical 핵심제품군 [All]</option>
+            <option value="all">전체 제품</option>
             <option value="황산니켈">황산니켈 (Ni)</option>
             <option value="황산코발트">황산코발트 (Co)</option>
             <option value="탄산리튬">탄산리튬 (Li)</option>
