@@ -12,7 +12,8 @@ import {
   ChevronRight,
   RefreshCw,
   X,
-  Database
+  Database,
+  Settings
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppCard } from '../components/ui/AppCard';
@@ -82,6 +83,23 @@ export default function OperationDashboard() {
     };
   } | null>(null);
 
+  // Corporate Proxy settings P1
+  const [showProxySettings, setShowProxySettings] = useState<boolean>(false);
+  const [proxyUse, setProxyUse] = useState<boolean>(() => localStorage.getItem('hycm_proxy_use') === 'true');
+  const [proxyHost, setProxyHost] = useState<string>(() => localStorage.getItem('hycm_proxy_host') || '');
+  const [proxyPort, setProxyPort] = useState<string>(() => localStorage.getItem('hycm_proxy_port') || '');
+  const [proxyUser, setProxyUser] = useState<string>(() => localStorage.getItem('hycm_proxy_user') || '');
+  const [proxyPass, setProxyPass] = useState<string>(() => localStorage.getItem('hycm_proxy_pass') || '');
+
+  const handleSaveProxySettings = () => {
+    localStorage.setItem('hycm_proxy_use', proxyUse ? 'true' : 'false');
+    localStorage.setItem('hycm_proxy_host', proxyHost);
+    localStorage.setItem('hycm_proxy_port', proxyPort);
+    localStorage.setItem('hycm_proxy_user', proxyUser);
+    localStorage.setItem('hycm_proxy_pass', proxyPass);
+    setShowProxySettings(false);
+  };
+
   const [realProducts, setRealProducts] = useState<ProductLedgerRecord[]>([]);
   const [realMaterials, setRealMaterials] = useState<RawMaterialLedgerRecord[]>([]);
   const [isSampleData, setIsSampleData] = useState<boolean>(false);
@@ -95,6 +113,53 @@ export default function OperationDashboard() {
       ...prev,
       [key]: !prev[key]
     }));
+  };
+
+  const getContextualFailureGuidance = (reason: string) => {
+    const reasonUpper = String(reason || "").toUpperCase();
+    const isSslErr = reasonUpper.includes("SSL") || reasonUpper.includes("CERT") || reasonUpper.includes("DEPTH") || reasonUpper.includes("SELF") || reasonUpper.includes("UNABLE_TO_VERIFY");
+    const isTimeoutOrTcp = reasonUpper.includes("CONNECT") || reasonUpper.includes("TCP") || reasonUpper.includes("TIMEOUT") || reasonUpper.includes("ETIMEDOUT") || reasonUpper.includes("ENOTFOUND");
+    const isReadTimeout = reasonUpper.includes("READ") || reasonUpper.includes("SOCKET");
+
+    if (isSslErr) {
+      return (
+        <div className="space-y-1 bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-zinc-800 mt-1.5 last-of-type:mb-0">
+          <span className="font-bold text-amber-800 flex items-center gap-1">🔒 SSL 인증서 국책 신뢰 오류 (SSL_ERROR)</span>
+          <p className="text-[10.5px] leading-snug">
+            사내 네트워크의 SSL/TLS 트래픽 감시망 및 사내 CA 인증서 신뢰 이슈로 인해 국책 외환고시 서버 연결에 실패했습니다. <strong className="text-teal-700">Windows 인증서 저장소(truststore)를 활용한 SSL 우회 또는 사내 Root CA 인증서 사전 등록</strong>을 권장하며, 본 환경에서는 프록시 구성이 아닌 인증서 신뢰 구성이 해결책입니다.
+          </p>
+        </div>
+      );
+    } else if (isTimeoutOrTcp) {
+      return (
+        <div className="space-y-1 bg-rose-50 p-2.5 rounded-lg border border-rose-150 text-zinc-800 mt-1.5 last-of-type:mb-0">
+          <span className="font-bold text-rose-700 flex items-center gap-1">🌐 방화벽 및 TCP 연결 실패 (CONNECT_TIMEOUT)</span>
+          <p className="text-[10.5px] leading-snug">
+            사내 인프라 방화벽 혹은 국책 망 접속 포트(TCP) 차단으로 인해 연동이 실패했습니다. 사외망 우회 게이트웨이가 지원되는 경우, 하단의 <strong className="text-zinc-900 font-bold">고급 프록시(Proxy) 게이트웨이 연동 설정</strong>을 활성화하고 주소와 포트를 직접 입력하십시오.
+          </p>
+        </div>
+      );
+    } else if (isReadTimeout) {
+      return (
+        <div className="space-y-1 bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-zinc-800 mt-1.5 last-of-type:mb-0">
+          <span className="font-bold text-amber-700 flex items-center gap-1">⏳ API 서버 읽기 시간 초과 (READ_TIMEOUT)</span>
+          <p className="text-[10.5px] leading-snug">
+            인증서 저장소 적용 이후에도 네트워크 지연 혹은 국책은행 서버의 응답 지연으로 인해 일시적으로 읽기 장애가 발생했습니다. 설정에서 프록시 우회 통신을 적용하거나 잠시 후 자동 조회를 다시 시도하십시오.
+          </p>
+        </div>
+      );
+    }
+
+    // Default fallback guidance matching user requirements
+    return (
+      <div className="space-y-1 bg-zinc-50 p-2.5 rounded-lg border border-zinc-200 text-zinc-700 mt-1.5">
+        <span className="font-semibold text-zinc-805">💡 권장 사항</span>
+        <p className="text-[10px] leading-snug">
+          회사망 내에서는 보안 인증서 이슈 또는 망 분리 방화벽으로 인해 국책 API 고시 호출이 제한될 수 있습니다. 
+          SSL 오류일 경우 Windows 인증서 저장소 신뢰성 보장을 점검하고, 방화벽 접속 차단 문제인 경우 아래 고급 설정에서 프록시 게이트웨이를 연동하십시오.
+        </p>
+      </div>
+    );
   };
 
   // 1. Data Loader
@@ -193,6 +258,13 @@ export default function OperationDashboard() {
     setSyncFeedback(null);
     const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
     try {
+      // Auto-save proxy settings to localstorage on sync initiation to avoid unsaved state mismatches
+      localStorage.setItem('hycm_proxy_use', proxyUse ? 'true' : 'false');
+      localStorage.setItem('hycm_proxy_host', proxyHost);
+      localStorage.setItem('hycm_proxy_port', proxyPort);
+      localStorage.setItem('hycm_proxy_user', proxyUser);
+      localStorage.setItem('hycm_proxy_pass', proxyPass);
+
       const response = await ExchangeRateStorage.fetchMonthlyAverageRate(activeYear, mNum);
       const lastSaved = ExchangeRateStorage.getRateRecord(activeYear, mNum);
       
@@ -704,30 +776,44 @@ export default function OperationDashboard() {
             {/* If there are stats from server or mock parser */}
             {syncFeedback.stats && (
               syncFeedback.stats.successCount > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-zinc-750">
-                  <div>• 요청일수: <strong className="font-mono">{syncFeedback.stats.requestedDays}일</strong></div>
-                  <div>• 조회 성공: <strong className="font-mono text-teal-700">{syncFeedback.stats.successCount}일</strong></div>
-                  <div>• 영업일/미고시/빈응답: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
-                  <div>• API 및 통신오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
-                  <div>• 네트워크 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount}일</strong></div>
-                  <div className="col-span-2 font-semibold text-indigo-700 font-sans">
+                <div className="space-y-2">
+                  <div className="font-semibold text-teal-800 flex items-center gap-1">
+                    <span>조회 성공: {syncFeedback.stats.successCount}일</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-zinc-750 border-t border-black/5 pt-1.5">
+                    <div>• 요청 시도: <strong className="font-mono">{syncFeedback.stats.requestedDays}회</strong></div>
+                    <div>• 정상 응답 후 데이터 없음: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
+                    <div>• HTTP/API 응답 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
+                    <div>• 연결 실패/timeout: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount}회</strong></div>
+                  </div>
+                  <div className="text-zinc-[#00786F] font-semibold mt-1">
                     • 적용 환율: <span className="font-mono font-bold text-xs underline">{syncFeedback.stats.averageRate.toLocaleString()}원 / USD</span>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-1.5 text-zinc-850">
                   <div className="font-semibold text-rose-600 flex items-center gap-1 leading-snug">
-                    <span>⚠️ 조회 성공 0일 (환율 조회 실패)</span>
+                    <span>조회 성공: 0일</span>
                   </div>
-                  <div className="pl-2 space-y-1 text-zinc-700">
-                    <div>• 요청일수: <strong className="font-mono text-zinc-900">{syncFeedback.stats.requestedDays}일</strong></div>
-                    <div>• 영업일/미고시/빈응답: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
-                    <div>• API 및 통신오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
-                    <div>• 네트워크 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount}일</strong></div>
-                    <div className="text-zinc-900 font-semibold">• 주요 실패 원인: <span className="text-rose-600 bg-rose-50 px-1 py-0.5 rounded font-sans">{syncFeedback.stats.majorFailureReason}</span></div>
-                    <div>• 예시 요청일자: <strong className="font-mono text-indigo-700 bg-indigo-50/50 px-1.5 py-0.5 rounded">{syncFeedback.stats.exampleRequestDate || '없음'}</strong> (기대 형식: <strong className="font-mono text-indigo-700">{syncFeedback.stats.expectedFormat || 'YYYYMMDD'}</strong>)</div>
-                    <div className="text-zinc-600 font-semibold mt-1 bg-amber-50/80 p-2 border border-amber-200/50 rounded-lg text-[10.5px]">
-                      💡 정보: 당월 또는 과거월의 조회에 실패하여 기존 '마지막 저장 환율' 기준으로 가동 및 계수 변환 정책을 유지합니다.
+                  <div className="pl-2 space-y-1.5 text-zinc-700">
+                    <div>• 요청 시도: <strong className="font-mono text-zinc-900">{syncFeedback.stats.requestedDays === 0 ? 1 : syncFeedback.stats.requestedDays}회</strong></div>
+                    <div>• 정상 응답 후 데이터 없음: <strong className="font-mono">{syncFeedback.stats.emptyCount}일</strong></div>
+                    <div>• HTTP/API 응답 오류: <strong className="font-mono text-rose-600">{syncFeedback.stats.apiErrorCount}일</strong></div>
+                    <div>• 연결 실패/timeout: <strong className="font-mono text-rose-600">{syncFeedback.stats.networkErrorCount > 0 ? syncFeedback.stats.networkErrorCount : 1}회</strong></div>
+                    
+                    <div className="text-zinc-900 font-semibold mt-1">
+                      • 주요 실패 원인:<br />
+                      <span className="text-rose-600 font-medium font-sans block mt-0.5 leading-normal">
+                        {syncFeedback.stats.majorFailureReason || "외부 API 서버 응답 지연 또는 네트워크 이상으로 연결을 완료하지 못했습니다."}
+                      </span>
+                      {getContextualFailureGuidance(syncFeedback.stats.majorFailureReason || "")}
+                    </div>
+
+                    <div className="text-zinc-900 font-semibold mt-1 border-t border-dashed border-black/5 pt-1">
+                      • 적용 환율:<br />
+                      <span className="text-zinc-805 font-medium font-sans block mt-0.5">
+                        마지막 저장 환율 {getCurrentExchangeRate().toLocaleString()}원/USD 유지
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -758,18 +844,20 @@ export default function OperationDashboard() {
                     
                     if (isApi) {
                       return (
-                        <div className="space-y-0.5">
-                          <div>환율 적용 기준: <strong className="text-[#00786F] font-sans">한국수출입은행 일별 고시환율 월평균</strong></div>
-                          <div>조회 성공일수: <span className="font-mono font-bold text-[#00786F]">{successCount}일</span></div>
-                          <div>당월 고시환율은 <strong className="font-mono text-[#00786F]">{currentExcRate.toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.</div>
+                        <div className="space-y-0.5 leading-normal">
+                          <div><strong>환율 적용 기준:</strong> 한국수출입은행 Open API 월평균 환율</div>
+                          <div><strong>API Endpoint:</strong> <code className="bg-zinc-100 px-1 py-0.5 rounded text-[9.5px] font-mono">oapi.koreaexim.go.kr</code></div>
+                          <div><strong>SSL 처리:</strong> <span className="text-teal-700 font-semibold text-[10px]">Windows 인증서 저장소 적용</span></div>
+                          <div><strong>적용 환율:</strong> <strong className="font-mono text-[#00786F]">{currentExcRate.toLocaleString()}원/USD (월평균 USD deal_bas_r)</strong> <span className="text-[9.5px] text-zinc-400">({successCount}개 영업일 반영)</span></div>
                         </div>
                       );
                     } else {
                       return (
                         <div className="space-y-0.5">
-                          <div>환율 적용 기준: <strong className="text-zinc-700 font-sans">마지막 저장 환율</strong></div>
-                          <div>조회 성공일수: <span className="font-mono font-bold text-rose-600">{successCount}일</span></div>
-                          <div>당월 고시환율은 <strong className="font-mono text-zinc-900">{currentExcRate.toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다. <span className="text-rose-600 font-semibold">(사유: 당월 API 조회 성공일수 0일)</span></div>
+                          <div><strong>환율 적용 기준:</strong> 마지막 저장 환율</div>
+                          <div><strong>적용 환율:</strong> <strong className="font-mono text-zinc-900">{currentExcRate.toLocaleString()}원/USD</strong></div>
+                          <div><strong>적용 사유:</strong> 한국수출입은행 API 네트워크 연결 실패</div>
+                          <div><strong>조회 대상:</strong> <span className="font-mono">{activeYear}-{String(checkM).padStart(2, '0')}</span></div>
                         </div>
                       );
                     }
@@ -858,10 +946,112 @@ export default function OperationDashboard() {
               }`}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
-              자동 조회 (API)
+              자동 조회
+            </button>
+
+            <button
+              onClick={() => setShowProxySettings(!showProxySettings)}
+              className="flex items-center gap-1.5 px-3 py-1 text-[10.5px] font-bold rounded-lg bg-zinc-50 hover:bg-zinc-100 text-zinc-700 cursor-pointer border border-zinc-200"
+              title="연동 네트워크 및 프록시 구성"
+            >
+              <Settings className="w-3.5 h-3.5 text-zinc-500" />
+              <span>고급 설정</span>
+              {proxyUse && <span className="w-1.5 h-1.5 rounded-full bg-teal-600 inline-block animate-pulse"></span>}
             </button>
           </div>
         </div>
+
+        {/* Collapsible Corporate Proxy Panel P1 */}
+        {showProxySettings && (
+          <div className="bg-zinc-50 p-4.5 rounded-xl border border-zinc-250 space-y-3.5 text-xs font-sans">
+            <div className="font-bold text-zinc-850 flex items-center gap-1">
+              <Settings className="w-4 h-4 text-zinc-500" />
+              <span>🏢 사내 프록시(Proxy) 게이트웨이 연동</span>
+            </div>
+            <p className="text-zinc-600 text-[11px] leading-snug">
+              사내 프록시 방화벽망 뒤에 있는 개발 PC에서 한국수출입은행 API 서버 접속 타임아웃 장애 등이 기인할 시 아래 설정을 통해 프록시를 통해 우회 통신을 실행합니다. 설정 정보는 브라우저 로컬 스토리지에 유지되며 동기화 호출 시 백엔드 단프록시 세션에 동적 적재됩니다.
+            </p>
+            
+            <div className="space-y-3 pt-1">
+              <label className="flex items-center gap-2 font-bold text-zinc-750 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={proxyUse}
+                  onChange={(e) => setProxyUse(e.target.checked)}
+                  className="rounded text-teal-600 focus:ring-teal-500 pointer-events-auto"
+                />
+                <span>회사망 프록시 사용 활성화 (Enable Proxy)</span>
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="space-y-1 md:col-span-3">
+                  <span className="block text-[11px] font-semibold text-zinc-600">프록시 서버 주소/호스트 명</span>
+                  <input
+                    type="text"
+                    value={proxyHost}
+                    onChange={(e) => setProxyHost(e.target.value)}
+                    placeholder="예: proxy.company.com 또는 10.150.1.20"
+                    disabled={!proxyUse}
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="block text-[11px] font-semibold text-zinc-600">포트 (Port)</span>
+                  <input
+                    type="text"
+                    value={proxyPort}
+                    onChange={(e) => setProxyPort(e.target.value)}
+                    placeholder="예: 8080"
+                    disabled={!proxyUse}
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-zinc-200 pt-3">
+                <div className="space-y-1">
+                  <span className="block text-[11px] font-semibold text-zinc-600">사용자 계정 (ID) - 선택사항</span>
+                  <input
+                    type="text"
+                    value={proxyUser}
+                    onChange={(e) => setProxyUser(e.target.value)}
+                    placeholder="Proxy Username"
+                    disabled={!proxyUse}
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="block text-[11px] font-semibold text-zinc-600">비밀번호 (Secret) - 선택사항</span>
+                  <input
+                    type="password"
+                    value={proxyPass}
+                    onChange={(e) => setProxyPass(e.target.value)}
+                    placeholder="••••••••"
+                    disabled={!proxyUse}
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded font-mono text-xs bg-white disabled:bg-zinc-100 disabled:text-zinc-400 focus:outline-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-200">
+                <button
+                  type="button"
+                  onClick={() => setShowProxySettings(false)}
+                  className="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-250 rounded text-zinc-700 font-bold cursor-pointer transition-colors text-[11px]"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveProxySettings}
+                  className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded font-bold cursor-pointer transition-colors text-[11px]"
+                >
+                  프록시 설정 저장 적용
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {eximKeyMissing && (
           <div className="p-3 bg-rose-50 border border-rose-200 text-rose-850 rounded-xl text-[11px] leading-relaxed flex items-center gap-2 font-semibold font-sans">

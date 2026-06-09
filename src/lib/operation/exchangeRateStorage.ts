@@ -65,7 +65,20 @@ export const ExchangeRateStorage = {
     details?: any[];
   }> {
     try {
-      const response = await fetch(`/api/exim-monthly-average-rate?year=${year}&month=${month}`);
+      const useProxy = localStorage.getItem('hycm_proxy_use') || 'false';
+      const proxyHost = localStorage.getItem('hycm_proxy_host') || '';
+      const proxyPort = localStorage.getItem('hycm_proxy_port') || '';
+      const proxyUser = localStorage.getItem('hycm_proxy_user') || '';
+      const proxyPass = localStorage.getItem('hycm_proxy_pass') || '';
+
+      let url = `/api/exim-monthly-average-rate?year=${year}&month=${month}`;
+      if (useProxy === 'true') {
+        url += `&useProxy=true&proxyHost=${encodeURIComponent(proxyHost)}&proxyPort=${encodeURIComponent(proxyPort)}&proxyUser=${encodeURIComponent(proxyUser)}&proxyPass=${encodeURIComponent(proxyPass)}`;
+      } else {
+        url += `&useProxy=false`;
+      }
+
+      const response = await fetch(url);
       const data = await response.json();
       
       if (data.success && data.averageRate) {
