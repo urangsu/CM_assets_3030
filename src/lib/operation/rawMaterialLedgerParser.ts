@@ -37,34 +37,60 @@ export function isRawItemCode(text: string): boolean {
 }
 
 export function resolveRawMaterialGroup(rawCode: string, amountRowName: string, priceRowName: string): 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타' {
+  const code = String(rawCode || '').trim().toUpperCase();
   const text = `${rawCode} ${amountRowName} ${priceRowName}`.toUpperCase();
 
-  if (text.includes('WET')) return 'WET';
-  if (text.includes('LCO') || rawCode.startsWith('BLCO')) return 'LCO';
-  if (text.includes('MN') || text.includes('망간')) return 'MN';
+  // 1. LCO 우선
+  if (code.startsWith('BLCO') || text.includes('LCO')) {
+    return 'LCO';
+  }
 
-  // Black Mass (BM)
-  if (rawCode.includes('622') || text.includes('MASS') || text.includes('BM')) return 'BM';
+  // 2. WET 우선
+  // B622WE-USA-ABT, B622WT-..., B622WET-... 같은 코드가 여기에 들어와야 한다.
+  if (
+    /^B\d*(WE|WT|WET)/.test(code) ||
+    code.includes('-WE') ||
+    code.includes('-WT') ||
+    code.includes('-WET') ||
+    text.includes('WET BM') ||
+    text.includes('WET')
+  ) {
+    return 'WET';
+  }
 
-  // Black Powder (BP)
-  if (rawCode.includes('111') || rawCode.includes('523') || rawCode.includes('811') || text.includes('POWDER') || text.includes('BP')) return 'BP';
+  // 3. BP = 811 계열
+  if (code.includes('811')) {
+    return 'BP';
+  }
 
+  // 4. BM = 622 계열 중 WET 제외
+  if (code.includes('622')) {
+    return 'BM';
+  }
+
+  // 5. 망간은 상세에는 남기되 4대 원료 요약에서는 제외 가능
+  if (code.startsWith('MN') || text.includes('망간') || text.includes('MN')) {
+    return 'MN';
+  }
+
+  // 6. 111, 523 등은 BP로 넣지 않는다.
   return '기타';
 }
 
 export function getRawMaterialGroup(rawCode: string, amountRowName: string, priceRowName: string): 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타' {
+  const code = String(rawCode || '').trim().toUpperCase();
   const stored = localStorage.getItem('hycm_raw_material_group_mapping');
   if (stored) {
     try {
       const mapping = JSON.parse(stored);
-      if (mapping[rawCode]) {
-        return mapping[rawCode];
+      if (mapping[code]) {
+        return mapping[code];
       }
     } catch {
       // ignore
     }
   }
-  return resolveRawMaterialGroup(rawCode, amountRowName, priceRowName);
+  return resolveRawMaterialGroup(code, amountRowName, priceRowName);
 }
 
 const COL = {

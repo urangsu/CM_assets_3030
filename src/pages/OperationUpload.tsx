@@ -19,7 +19,7 @@ import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { PRODUCT_NAME_MAP, getLithiumConversionRates, saveLithiumConversionRates } from '../lib/operation/productMaster';
 import { parseProductLedgerRows, ProductLedgerRecord } from '../lib/operation/productLedgerParser';
-import { parseRawMaterialLedgerRows } from '../lib/operation/rawMaterialLedgerParser';
+import { parseRawMaterialLedgerRows, resolveRawMaterialGroup } from '../lib/operation/rawMaterialLedgerParser';
 import { OperationStorage, OperationUploadHistory, RawMaterialLedgerRecord } from '../lib/operation/operationStorage';
 import * as XLSX from 'xlsx';
 
@@ -97,6 +97,16 @@ export default function OperationUpload() {
     setHistoryList(OperationStorage.getUploadHistory());
     setLithiumRates(getLithiumConversionRates());
 
+    const RAW_GROUP_MAPPING_VERSION_KEY = 'hycm_raw_material_group_mapping_version';
+    const RAW_GROUP_MAPPING_VERSION = '2026_raw_group_v2';
+
+    // Migrate old incorrect default mapping
+    const currentVer = localStorage.getItem(RAW_GROUP_MAPPING_VERSION_KEY);
+    if (currentVer !== RAW_GROUP_MAPPING_VERSION) {
+      localStorage.removeItem('hycm_raw_material_group_mapping');
+      localStorage.setItem(RAW_GROUP_MAPPING_VERSION_KEY, RAW_GROUP_MAPPING_VERSION);
+    }
+
     const storedMapping = localStorage.getItem('hycm_raw_material_group_mapping');
     if (storedMapping) {
       try {
@@ -105,14 +115,7 @@ export default function OperationUpload() {
         setRawGroupMapping({});
       }
     } else {
-      const defaultMapping: Record<string, 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타'> = {
-        'B111OT-ETC-ETC': 'BP',
-        'B622WE-USA-ABT': 'BM',
-        'BLCOCE-IND-ANS': 'LCO',
-        'MN-MN3O4': 'MN'
-      };
-      localStorage.setItem('hycm_raw_material_group_mapping', JSON.stringify(defaultMapping));
-      setRawGroupMapping(defaultMapping);
+      setRawGroupMapping({});
     }
   }, []);
 
@@ -541,6 +544,32 @@ export default function OperationUpload() {
       handleUpdateHistoryAndList();
       alert(`[완료] ${purgeYear}년 ${purgeMonth}월 제품수불부 원본 데이터가 강제 삭제 및 초기화되었습니다.`);
     }
+  };
+
+  const handleReclassifyRawMaterials = (targetYear: string) => {
+    const records = OperationStorage.getRawMaterialRecords(targetYear);
+    if (!records || records.length === 0) {
+      alert(`[안내] ${targetYear}년에 등록된 원자재수불부 데이터가 없습니다.`);
+      return;
+    }
+
+    const updated = records.map((r) => ({
+      ...r,
+      rawItemCode: String(r.rawItemCode || '').trim().toUpperCase(),
+      materialGroup: resolveRawMaterialGroup(
+        String(r.rawItemCode || '').trim().toUpperCase(),
+        r.amountRowLabel || r.rawItemName || '',
+        r.unitPriceRowLabel || ''
+      ),
+    }));
+
+    localStorage.setItem(
+      OperationStorage.getRawMaterialLedgerKey(targetYear),
+      JSON.stringify(updated)
+    );
+
+    window.dispatchEvent(new Event('operation-ledger-changed'));
+    alert(`[완료] ${targetYear}년 원자재수불부 데이터(${updated.length}건)를 교체된 자동 분류 알고리즘에 따라 전체 재분류 반영 완료하였습니다.`);
   };
 
   return (
@@ -1043,6 +1072,34 @@ export default function OperationUpload() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 선택 연월 제품수불부 삭제
+              </button>
+            </div>
+          </div>
+
+          {/* 원자재 수불부 원료군 재분류 기능 */}
+          <div className="mb-6 p-4 bg-blue-50/50 border border-blue-100 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="space-y-1">
+              <span className="font-bold text-[#191f28] block">원자재수불부 원료군 재분류 (알고리즘 기준)</span>
+              <p className="text-[11px] text-zinc-500">
+                수정되어 교체된 원자재 분류 알고리즘에 맞추어, 이미 저장된 전체 원자재 데이터의 원료군(BP/BM/WET/LCO)을 일괄 재정비 분류합니다.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={purgeYear}
+                onChange={(e) => setPurgeYear(e.target.value)}
+                className="bg-white border border-zinc-250 rounded-lg p-1.5 px-2 text-xs font-semibold"
+              >
+                {['2024', '2025', '2026', '2027', '2028'].map(y => (
+                  <option key={y} value={y}>{y}년 전체</option>
+                ))}
+              </select>
+              <button
+                onClick={() => handleReclassifyRawMaterials(purgeYear)}
+                className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold p-1.5 px-3 rounded-lg text-[11px] transition-colors cursor-pointer border-none"
+              >
+                <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
+                원료군 일괄 재분류 실행
               </button>
             </div>
           </div>

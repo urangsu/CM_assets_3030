@@ -205,7 +205,8 @@ export default function RawMaterialStatus() {
     return Object.values(aggregated);
   };
 
-  const summaryRows = Object.values(groupSummaries);
+  const SUMMARY_GROUPS = ['BP', 'BM', 'WET', 'LCO'];
+  const summaryRows = SUMMARY_GROUPS.map(g => groupSummaries[g]).filter(Boolean);
 
   return (
     <div className="space-y-6 animate-fade font-sans">
