@@ -38,7 +38,7 @@ export function ChartCard({
           </div>
         )}
       </div>
-      <div className={cn("p-6 w-full min-w-0 min-h-[300px]", contentClassName)}>
+      <div className={cn("p-6 w-full min-w-0 h-[320px] min-h-[320px]", contentClassName)}>
         {isEmpty ? (
           <EmptyState icon={BarChart3} title="데이터 없음" description={emptyMessage} />
         ) : (

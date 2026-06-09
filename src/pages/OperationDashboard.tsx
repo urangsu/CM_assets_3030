@@ -64,6 +64,7 @@ export default function OperationDashboard() {
   const [isSyncingExchange, setIsSyncingExchange] = useState<boolean>(false);
   const [customRateInput, setCustomRateInput] = useState<string>('');
   const [isEditingExchange, setIsEditingExchange] = useState<boolean>(false);
+  const [eximKeyMissing, setEximKeyMissing] = useState<boolean>(false);
   const [syncFeedback, setSyncFeedback] = useState<{
     type: 'success' | 'warning' | 'error' | '';
     text: string;
@@ -108,6 +109,16 @@ export default function OperationDashboard() {
 
   useEffect(() => {
     loadData();
+
+    // Check key status
+    fetch('/api/exim-key-status')
+      .then(r => r.json())
+      .then(data => {
+        setEximKeyMissing(!data.hasKey);
+      })
+      .catch(() => {
+        // Fallback or ignore in pure static cases
+      });
 
     const handler = () => {
       loadData();
@@ -256,47 +267,49 @@ export default function OperationDashboard() {
 
   const MAP_POINTS: OperationMapPoint[] = [];
 
-  // Always include HQ Korea
-  MAP_POINTS.push({
-    id: 'KR',
-    countryCode: 'KR',
-    countryName: '대한민국',
-    locationName: '대한민국 · 광양/포항 HQ',
-    type: 'hq',
-    salesQuantity: totalSalesTons,
-    salesRevenue: totalRevenueKRW,
-    purchaseQuantity: 0,
-    purchaseAmount: 0,
-    products: ['황산니켈', '황산코발트', '탄산리튬', '황산망간', '구리'],
-    coords: COUNTRY_COORDS.KR
-  });
-
   // Construct other coordinates dynamically based on loaded/demo country records
-  const uniqueCountryCodes = Array.from(new Set(currentMonthRecords.map(r => r.countryCode))) as string[];
-  uniqueCountryCodes.forEach((code: string) => {
-    if (code === 'KR') return;
-    const recordsForCountry = currentMonthRecords.filter(r => r.countryCode === code);
-    const purchaseQty = recordsForCountry.filter(r => r.type === 'purchase').reduce((s, r) => s + r.quantityTon, 0);
-    const purchaseAmt = recordsForCountry.filter(r => r.type === 'purchase').reduce((s, r) => s + r.amountKRW, 0);
-    const salesQty = recordsForCountry.filter(r => r.type === 'sales').reduce((s, r) => s + r.quantityTon, 0);
-    const salesAmt = recordsForCountry.filter(r => r.type === 'sales').reduce((s, r) => s + r.amountKRW, 0);
-    
-    const items = Array.from(new Set(recordsForCountry.map(r => r.materialName || r.productName || ''))).filter(Boolean) as string[];
+  const otherCountryCodes = Array.from(new Set(currentMonthRecords.map(r => r.countryCode))).filter(code => code !== 'KR') as string[];
 
+  if (otherCountryCodes.length > 0) {
+    // Only push HQ Korea if other country records exist!
     MAP_POINTS.push({
-      id: code,
-      countryCode: code,
-      countryName: (recordsForCountry[0]?.countryName || code) as string,
-      locationName: `${recordsForCountry[0]?.countryName || code} 거점`,
-      type: purchaseQty > 0 ? 'purchase' : 'sales',
-      salesQuantity: salesQty,
-      salesRevenue: salesAmt,
-      purchaseQuantity: purchaseQty,
-      purchaseAmount: purchaseAmt,
-      products: items,
-      coords: COUNTRY_COORDS[code] || { x: 50, y: 50 }
+      id: 'KR',
+      countryCode: 'KR',
+      countryName: '대한민국',
+      locationName: '대한민국 · 광양/포항 HQ',
+      type: 'hq',
+      salesQuantity: totalSalesTons,
+      salesRevenue: totalRevenueKRW,
+      purchaseQuantity: 0,
+      purchaseAmount: 0,
+      products: ['황산니켈', '황산코발트', '탄산리튬', '황산망간', '구리'],
+      coords: COUNTRY_COORDS.KR
     });
-  });
+
+    otherCountryCodes.forEach((code: string) => {
+      const recordsForCountry = currentMonthRecords.filter(r => r.countryCode === code);
+      const purchaseQty = recordsForCountry.filter(r => r.type === 'purchase').reduce((s, r) => s + r.quantityTon, 0);
+      const purchaseAmt = recordsForCountry.filter(r => r.type === 'purchase').reduce((s, r) => s + r.amountKRW, 0);
+      const salesQty = recordsForCountry.filter(r => r.type === 'sales').reduce((s, r) => s + r.quantityTon, 0);
+      const salesAmt = recordsForCountry.filter(r => r.type === 'sales').reduce((s, r) => s + r.amountKRW, 0);
+      
+      const items = Array.from(new Set(recordsForCountry.map(r => r.materialName || r.productName || ''))).filter(Boolean) as string[];
+
+      MAP_POINTS.push({
+        id: code,
+        countryCode: code,
+        countryName: (recordsForCountry[0]?.countryName || code) as string,
+        locationName: `${recordsForCountry[0]?.countryName || code} 거점`,
+        type: purchaseQty > 0 ? 'purchase' : 'sales',
+        salesQuantity: salesQty,
+        salesRevenue: salesAmt,
+        purchaseQuantity: purchaseQty,
+        purchaseAmount: purchaseAmt,
+        products: items,
+        coords: COUNTRY_COORDS[code] || { x: 50, y: 50 }
+      });
+    });
+  }
 
   // Raw Materials Normalized Parser
   const getNormalizedMaterialName = (rawName: string): string => {
@@ -404,15 +417,11 @@ export default function OperationDashboard() {
       {/* Page Title */}
       <div id="dashboard-header-block" className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs bg-[#f2f4f6] text-[#4e5968] px-2.5 py-0.5 rounded font-bold font-mono">HYCM Integrated Operations</span>
-            <span className="text-xs bg-teal-50 text-teal-800 px-2 py-0.5 rounded font-bold">수불 일치 검수단</span>
-          </div>
-          <h2 className="text-[20px] font-bold text-[#111111] leading-tight mt-1.5 font-sans">
+          <h2 className="text-[20px] font-bold text-[#111111] leading-tight font-sans">
             운영 대시보드
           </h2>
           <p className="text-xs text-zinc-500 mt-1">
-            제품 판매, 완제품 생산, 원자재 수하 및 기말고 가치 흐름을 통합 대조합니다.
+            제품 생산 및 판매 실적, 원자재 수급 현황을 통합하여 분석합니다.
           </p>
         </div>
 
@@ -643,95 +652,113 @@ export default function OperationDashboard() {
       )}
 
       {/* Exchange Rate Bar */}
-      <div className="bg-[#fcfdfd] border border-zinc-250 p-4.5 rounded-2xl shadow-xs flex flex-wrap justify-between items-center gap-3.5">
-        <div className="flex items-center gap-2">
-          <DollarSign className="w-4.5 h-4.5 text-zinc-500 font-bold" />
-          <div className="text-xs">
-            <span className="font-bold text-zinc-800 block font-sans">
-              한국수출입은행 외환고시 월평균 상호 교환율
+      <div className="bg-[#fcfdfd] border border-zinc-250 p-4.5 rounded-2xl shadow-xs flex flex-col gap-3">
+        <div className="flex flex-wrap justify-between items-center gap-3.5">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-4.5 h-4.5 text-zinc-500 font-bold" />
+            <div className="text-xs">
+              <span className="font-bold text-zinc-800 block font-sans">
+                한국수출입은행 외환고시 월평균 상호 교환율
+              </span>
+              <span className="text-[#647067] text-[10.5px] block mt-0.5 font-sans">
+                {getCurrentExchangeRate() > 0 ? (
+                  <>당월 고시환율은 <strong className="font-mono text-indigo-700">{getCurrentExchangeRate().toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.</>
+                ) : (
+                  <strong className="text-rose-600">환율 정보 없음 {eximKeyMissing ? "(EXIM_API_KEY 미설정 상태로 변경 및 조회 제한)" : "(수동 환율을 입력하거나 오른쪽 자동 조회를 사용하여 동기화해 주십시오)"}</strong>
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Sync panel */}
+          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-zinc-100 text-xs">
+            <span className="text-[11px] font-bold text-zinc-505 font-mono">
+              {activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율:
             </span>
-            <span className="text-[#647067] text-[10.5px] block mt-0.5 font-sans">
-              {getCurrentExchangeRate() > 0 ? (
-                <>당월 고시환율은 <strong className="font-mono text-indigo-700">{getCurrentExchangeRate().toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.</>
-              ) : (
-                <strong className="text-rose-600">환율 정보 없음 (수동 환율을 입력하거나 오른쪽 자동 조회를 사용하여 동기화해 주십시오)</strong>
-              )}
-            </span>
+            {isEditingExchange && !eximKeyMissing ? (
+              <div className="flex items-center gap-1.5 font-mono">
+                <input
+                  type="text"
+                  value={customRateInput}
+                  onChange={(e) => setCustomRateInput(e.target.value)}
+                  placeholder="예: 1350.0"
+                  className="w-20 px-1.5 py-0.5 text-right font-mono border border-zinc-300 rounded text-xs font-bold"
+                />
+                <span className="text-zinc-500 text-xs font-sans">원</span>
+                <button 
+                  onClick={handleSaveRateInput}
+                  className="px-2 py-0.5 bg-zinc-900 text-white rounded text-[10px] font-bold cursor-pointer"
+                >
+                  저장
+                </button>
+                <button 
+                  onClick={() => setIsEditingExchange(false)}
+                  className="text-[10px] text-zinc-400 font-semibold cursor-pointer"
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 font-mono">
+                {getCurrentExchangeRate() > 0 ? (
+                  (() => {
+                    const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
+                    const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
+                    return (
+                      <span className="font-mono font-bold text-indigo-700">
+                        {getCurrentExchangeRate().toLocaleString()} 원
+                        <span className="text-[9px] font-sans text-zinc-400 ml-1.5 font-normal">
+                          ({rateRec?.source === 'api' ? '수출입은행 API 연동' : '마지막 저장 환율/수동'})
+                        </span>
+                      </span>
+                    );
+                  })()
+                ) : (
+                  <span className="font-sans font-bold text-rose-600 animate-pulse text-[11px]">
+                    환율 정보 없음
+                  </span>
+                )}
+                {!eximKeyMissing && (
+                  <button 
+                    onClick={() => {
+                      setCustomRateInput(getCurrentExchangeRate() > 0 ? String(getCurrentExchangeRate()) : '');
+                      setIsEditingExchange(true);
+                    }}
+                    className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-700 transition-colors"
+                    title="수동 수정"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="w-px h-4.5 bg-zinc-200 mx-1"></div>
+
+            <button
+              onClick={handleExchangeAutoSync}
+              disabled={isSyncingExchange || eximKeyMissing}
+              className={`flex items-center gap-1.5 px-3 py-1 text-[10.5px] font-bold rounded-lg transition-colors border-none ${
+                eximKeyMissing 
+                  ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed' 
+                  : 'bg-teal-50 hover:bg-teal-100/80 text-[#008f83] cursor-pointer'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
+              자동 조회 (API)
+            </button>
           </div>
         </div>
 
-        {/* Sync panel */}
-        <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-zinc-100 text-xs">
-          <span className="text-[11px] font-bold text-zinc-505 font-mono">
-            {activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율:
-          </span>
-          {isEditingExchange ? (
-            <div className="flex items-center gap-1.5 font-mono">
-              <input
-                type="text"
-                value={customRateInput}
-                onChange={(e) => setCustomRateInput(e.target.value)}
-                placeholder="예: 1350.0"
-                className="w-20 px-1.5 py-0.5 text-right font-mono border border-zinc-300 rounded text-xs font-bold"
-              />
-              <span className="text-zinc-500 text-xs font-sans">원</span>
-              <button 
-                onClick={handleSaveRateInput}
-                className="px-2 py-0.5 bg-zinc-900 text-white rounded text-[10px] font-bold cursor-pointer"
-              >
-                저장
-              </button>
-              <button 
-                onClick={() => setIsEditingExchange(false)}
-                className="text-[10px] text-zinc-400 font-semibold cursor-pointer"
-              >
-                취소
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 font-mono">
-              {getCurrentExchangeRate() > 0 ? (
-                (() => {
-                  const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
-                  const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
-                  return (
-                    <span className="font-mono font-bold text-indigo-700">
-                      {getCurrentExchangeRate().toLocaleString()} 원
-                      <span className="text-[9px] font-sans text-zinc-400 ml-1.5 font-normal">
-                        ({rateRec?.source === 'api' ? '수출입은행 API 연동' : '마지막 저장 환율/수동'})
-                      </span>
-                    </span>
-                  );
-                })()
-              ) : (
-                <span className="font-sans font-bold text-rose-600 animate-pulse text-[11px]">
-                  환율 정보 없음
-                </span>
-              )}
-              <button 
-                onClick={() => {
-                  setCustomRateInput(getCurrentExchangeRate() > 0 ? String(getCurrentExchangeRate()) : '');
-                  setIsEditingExchange(true);
-                }}
-                className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-700 transition-colors"
-                title="수동 수정"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          <div className="w-px h-4.5 bg-zinc-200 mx-1"></div>
-
-          <button
-            onClick={handleExchangeAutoSync}
-            disabled={isSyncingExchange}
-            className="flex items-center gap-1.5 px-3 py-1 bg-teal-50 hover:bg-teal-100/80 text-[#008f83] border-none text-[10.5px] font-bold rounded-lg cursor-pointer transition-colors"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingExchange ? 'animate-spin' : ''}`} />
-            자동 조회 (API)
-          </button>
-        </div>
+        {eximKeyMissing && (
+          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-850 rounded-xl text-[11px] leading-relaxed flex items-center gap-2 font-semibold font-sans">
+            <span className="text-sm">⚠️</span>
+            <span>
+              국책은행 외환고시 API 연동을 위한 인증키(EXIM_API_KEY) 설정이 누락되어 있습니다. 
+              이에 따라 실시간 자동 고시 환율 동기화 및 가공/임의 환율 수동 저장이 제한됩니다.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Mid-section KPI Cards */}
@@ -835,10 +862,10 @@ export default function OperationDashboard() {
           </div>
         </AppCard>
 
-        {/* 원자재 수하 및 수불 KPI */}
+        {/* 원자재 수급 및 수불 KPI */}
         <AppCard className="p-5 flex flex-col justify-between border-t-4 border-t-amber-500">
           <div>
-            <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-705 block font-sans">원자재 수하 지표</span>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-905 block font-sans">원자재 수불 지표</span>
             <h3 className="text-base font-bold text-zinc-900 mt-1 font-mono">
               원료 기말 {rawMaterialEndingQty.toLocaleString()} Ton
             </h3>

@@ -241,6 +241,13 @@ async function startServer() {
     }
   });
 
+  // check if EXIM_API_KEY is configured
+  app.get("/api/exim-key-status", (req, res) => {
+    const apiKey = process.env.EXIM_API_KEY;
+    const hasKey = !!(apiKey && apiKey !== "MY_EXIM_API_KEY" && apiKey.trim() !== "");
+    res.json({ hasKey });
+  });
+
   // Korea Exim Bank Exchange Rate API (Monthly Average calculation)
   app.get("/api/exim-monthly-average-rate", async (req, res) => {
     try {

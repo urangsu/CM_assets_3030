@@ -19,7 +19,8 @@ export function MonthlyTrendChart({
 }: MonthlyTrendChartProps) {
   return (
     <ChartCard title={title} description={description} className={className} isEmpty={data.length === 0}>
-      <ResponsiveContainer width="100%" height="100%">
+      <div className="relative w-full h-[260px] min-h-[260px]">
+        <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={data}
           margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
@@ -51,6 +52,7 @@ export function MonthlyTrendChart({
           <Line type="monotone" dataKey="actual" name="실적" stroke="#00786F" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
         </LineChart>
       </ResponsiveContainer>
+      </div>
     </ChartCard>
   );
 }

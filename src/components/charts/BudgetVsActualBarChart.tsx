@@ -54,36 +54,38 @@ export function BudgetVsActualBarChart({
 
   return (
     <ChartCard title={title} description={description} className={className} isEmpty={data.length === 0}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
-          barSize={32}
-        >
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF2EC" />
-          <XAxis 
-            dataKey="name" 
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: '#718872', fontSize: 12, fontWeight: 500 }}
-            dy={10}
-          />
-          <YAxis 
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: '#718872', fontSize: 12 }}
-            dx={-10}
-            tickFormatter={formatValue}
-          />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: '#F7F9F7' }} />
-          <Legend 
-            iconType="circle"
-            wrapperStyle={{ paddingTop: '20px', fontSize: '13px', fontWeight: 500 }}
-          />
-          <Bar dataKey="budget" name="예산" fill="#DDE5DE" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="actual" name="실적" fill="#00786F" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
+      <div className="relative w-full h-[260px] min-h-[260px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={data}
+            margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
+            barSize={32}
+          >
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF2EC" />
+            <XAxis 
+              dataKey="name" 
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#718872', fontSize: 12, fontWeight: 500 }}
+              dy={10}
+            />
+            <YAxis 
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#718872', fontSize: 12 }}
+              dx={-10}
+              tickFormatter={formatValue}
+            />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: '#F7F9F7' }} />
+            <Legend 
+              iconType="circle"
+              wrapperStyle={{ paddingTop: '20px', fontSize: '13px', fontWeight: 500 }}
+            />
+            <Bar dataKey="budget" name="예산" fill="#DDE5DE" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="actual" name="실적" fill="#00786F" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </ChartCard>
   );
 }

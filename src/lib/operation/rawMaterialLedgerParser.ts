@@ -82,8 +82,8 @@ export function resolveRawMaterialGroup(
     return 'BP';
   }
 
-  // 4. BM: 622 계열 중 WET 제외
-  if (code.includes('622')) {
+  // 4. BM: 622 계열 중 WET 제외, 그리고 111 및 523 계열도 BM에 분류
+  if (code.includes('622') || code.includes('111') || code.includes('523')) {
     return 'BM';
   }
 
@@ -117,7 +117,7 @@ export function getRawMaterialGroup(rawCode: string, amountRowName: string, pric
 }
 
 const RAW_GROUP_MAPPING_VERSION_KEY = 'hycm_raw_material_group_mapping_version';
-const RAW_GROUP_MAPPING_VERSION = '2026_raw_group_v3_contextual';
+const RAW_GROUP_MAPPING_VERSION = '2026_raw_group_v4_111_523_bm';
 
 export function migrateRawMaterialGroupMapping() {
   if (typeof window === 'undefined') return;
@@ -136,13 +136,10 @@ export function migrateRawMaterialGroupMapping() {
       delete mapping['B622WT-USA-ABT'];
       delete mapping['B622WET-USA-ABT'];
 
-      // 111/523을 BP로 박아둔 과거 매핑도 제거
+      // 111/523 과거 매핑도 모두 함께 제거 (새 교체된 알고리즘의 BM 분류가 우선)
       Object.keys(mapping).forEach((key) => {
         const code = key.toUpperCase();
-        if (
-          (code.includes('111') || code.includes('523')) &&
-          mapping[key] === 'BP'
-        ) {
+        if (code.includes('111') || code.includes('523')) {
           delete mapping[key];
         }
       });

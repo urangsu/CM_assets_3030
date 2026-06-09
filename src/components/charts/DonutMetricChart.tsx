@@ -42,7 +42,7 @@ export function DonutMetricChart({
 
   return (
     <ChartCard title={title} description={description} className={className} isEmpty={isEmpty}>
-      <div className="relative h-full w-full min-h-[240px]">
+      <div className="relative w-full h-[260px] min-h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
