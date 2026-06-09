@@ -36,18 +36,16 @@ export default function RawMaterialStatus() {
   const [viewTab, setViewTab] = useState<'summary' | 'details'>('summary');
 
   const [realMaterials, setRealMaterials] = useState<RawMaterialLedgerRecord[]>([]);
-  const [isSampleData, setIsSampleData] = useState<boolean>(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    BP: false,
+    BM: false,
+    WET: false,
+    LCO: false
+  });
 
   const loadData = () => {
     const listMaterials = OperationStorage.getRawMaterialRecords(activeYear);
-    
-    if (listMaterials && listMaterials.length > 0) {
-      setRealMaterials(listMaterials);
-      setIsSampleData(false);
-    } else {
-      setRealMaterials(getSampleRawMaterials(activeYear));
-      setIsSampleData(true);
-    }
+    setRealMaterials(listMaterials || []);
   };
 
   useEffect(() => {
@@ -58,114 +56,11 @@ export default function RawMaterialStatus() {
     };
   }, [activeYear]);
 
-  const getSampleRawMaterials = (yearStr: string): RawMaterialLedgerRecord[] => {
-    const months = Array.from({ length: 12 }, (_, i) => i + 1);
-    const materials: RawMaterialLedgerRecord[] = [];
-
-    const matSeeds = [
-      { name: 'Black Powder 원료(ABTC)', code: 'B111OT-ETC-ETC', group: 'BP', beginning: 65.3, purchase: 180.4, issue: 155.2, price: 28_000_000 },
-      { name: 'Black Mass Bulk', code: 'B622WE-USA-ABT', group: 'BM', beginning: 210.4, purchase: 740.5, issue: 650.0, price: 6_500_000 },
-      { name: 'Wet-BM (S-Zone)', code: 'B622WE-WET-SZ', group: 'WET', beginning: 120.0, purchase: 390.0, issue: 350.0, price: 12_000_051 },
-      { name: 'LCO Cell Powder', code: 'BLCOCE-IND-ANS', group: 'LCO', beginning: 24.5, purchase: 78.4, issue: 72.1, price: 45_000_000 },
-      { name: '망간 원료 분말', code: 'MN-MN3O4', group: 'MN', beginning: 12.0, purchase: 45.0, issue: 38.0, price: 3_200_000 }
-    ];
-
-    months.forEach((m) => {
-      const idxFactor = 0.95 + (m % 5) * 0.04;
-      matSeeds.forEach((seed, sIdx) => {
-        const start = Math.round(seed.beginning * idxFactor * 10) / 10;
-        const purchaseVal = Math.round(seed.purchase * idxFactor * 10) / 10;
-        const issueVal = Math.round(seed.issue * idxFactor * 10) / 10;
-        const end = Math.round((start + purchaseVal - issueVal) * 10) / 10;
-
-        materials.push({
-          id: `sample_raw_${yearStr}_${m}_${seed.code}`,
-          year: yearStr,
-          month: m,
-          sourceType: '원자재수불부',
-          rawItemCode: seed.code,
-          rawItemName: seed.name,
-          materialGroup: seed.group as any,
-          
-          quantityRowLabel: seed.code,
-          amountRowLabel: seed.name,
-          unitPriceRowLabel: seed.group,
-
-          beginningQty: start,
-          beginningAmount: start * seed.price,
-          beginningUnitPrice: seed.price,
-
-          purchaseQty: purchaseVal,
-          purchaseAmount: purchaseVal * seed.price,
-          purchaseUnitPrice: seed.price,
-
-          transferInQty: 0,
-          transferInAmount: 0,
-          transferInUnitPrice: 0,
-
-          receiptTotalQty: purchaseVal,
-          receiptTotalAmount: purchaseVal * seed.price,
-          receiptTotalUnitPrice: seed.price,
-
-          processIssueQty: issueVal,
-          processIssueAmount: issueVal * seed.price,
-          processIssueUnitPrice: seed.price,
-
-          salesIssueQty: 0,
-          salesIssueAmount: 0,
-          salesIssueUnitPrice: 0,
-
-          sampleIssueQty: 0,
-          sampleIssueAmount: 0,
-          sampleIssueUnitPrice: 0,
-
-          transferIssueQty: 0,
-          transferIssueAmount: 0,
-          transferIssueUnitPrice: 0,
-
-          disposalIssueQty: 0,
-          disposalIssueAmount: 0,
-          disposalIssueUnitPrice: 0,
-
-          devExpenseIssueQty: 0,
-          devExpenseIssueAmount: 0,
-          devExpenseIssueUnitPrice: 0,
-
-          devAssetIssueQty: 0,
-          devAssetIssueAmount: 0,
-          devAssetIssueUnitPrice: 0,
-
-          pilotIssueQty: 0,
-          pilotIssueAmount: 0,
-          pilotIssueUnitPrice: 0,
-
-          otherIssueQty: 0,
-          otherIssueAmount: 0,
-          otherIssueUnitPrice: 0,
-
-          issueTotalQty: issueVal,
-          issueTotalAmount: issueVal * seed.price,
-          issueTotalUnitPrice: seed.price,
-
-          endingQty: end,
-          endingAmount: end * seed.price,
-          endingUnitPrice: seed.price,
-
-          // Backward-compatibility attributes
-          rawMaterialName: seed.name,
-          materialCode: seed.code,
-          canonicalMaterialName: seed.name,
-          unit: '수량',
-          beginningInventory: start,
-          receiptTotal: purchaseVal,
-          issueTotal: issueVal,
-          endingInventory: end,
-          uploadedAt: new Date().toISOString()
-        });
-      });
-    });
-
-    return materials;
+  const toggleGroup = (group: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [group]: !prev[group]
+    }));
   };
 
   const currentExchangeRate = () => {
@@ -199,16 +94,19 @@ export default function RawMaterialStatus() {
     if (activeMonth !== 'all' && Number(r.month) !== Number(activeMonth)) return false;
     if (searchTerm) {
       const query = searchTerm.toLowerCase();
+      const code = (r.rawItemCode || '').toLowerCase();
+      const name = (r.rawItemName || r.rawMaterialName || '').toLowerCase();
+      const grp = (r.materialGroup || '').toLowerCase();
       return (
-        r.rawItemCode.toLowerCase().includes(query) ||
-        r.rawItemName.toLowerCase().includes(query) ||
-        r.materialGroup.toLowerCase().includes(query)
+        code.includes(query) ||
+        name.includes(query) ||
+        grp.includes(query)
       );
     }
     return true;
   });
 
-  // Aggregate by 4 specific groups: BP, BM, WET, LCO
+  // Aggregate by specific groups
   const groupSummaries: Record<string, {
     group: string;
     items: string[];
@@ -220,47 +118,109 @@ export default function RawMaterialStatus() {
     issueAmount: number;
     endingQty: number;
     endingAmount: number;
+    records: RawMaterialLedgerRecord[];
   }> = {
-    BP: { group: 'BP', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0 },
-    BM: { group: 'BM', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0 },
-    WET: { group: 'WET', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0 },
-    LCO: { group: 'LCO', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0 },
+    BP: { group: 'BP', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0, records: [] },
+    BM: { group: 'BM', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0, records: [] },
+    WET: { group: 'WET', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0, records: [] },
+    LCO: { group: 'LCO', items: [], beginningQty: 0, beginningAmount: 0, purchaseQty: 0, purchaseAmount: 0, issueQty: 0, issueAmount: 0, endingQty: 0, endingAmount: 0, records: [] },
   };
 
   filteredRecords.forEach(r => {
-    const group = r.materialGroup;
-    if (groupSummaries[group]) {
-      const itemDesc = `${r.rawItemCode} (${r.rawItemName})`;
-      if (!groupSummaries[group].items.includes(itemDesc)) {
-        groupSummaries[group].items.push(itemDesc);
-      }
-      groupSummaries[group].beginningQty += r.beginningQty;
-      groupSummaries[group].beginningAmount += r.beginningAmount;
-      groupSummaries[group].purchaseQty += r.receiptTotalQty || r.purchaseQty;
-      groupSummaries[group].purchaseAmount += r.receiptTotalAmount || r.purchaseAmount;
-      groupSummaries[group].issueQty += r.issueTotalQty;
-      groupSummaries[group].issueAmount += r.issueTotalAmount;
-      groupSummaries[group].endingQty += r.endingQty;
-      groupSummaries[group].endingAmount += r.endingAmount;
+    const group = r.materialGroup || '기타';
+    if (!groupSummaries[group]) {
+      groupSummaries[group] = {
+        group,
+        items: [],
+        beginningQty: 0,
+        beginningAmount: 0,
+        purchaseQty: 0,
+        purchaseAmount: 0,
+        issueQty: 0,
+        issueAmount: 0,
+        endingQty: 0,
+        endingAmount: 0,
+        records: []
+      };
     }
+    
+    const labelCode = r.rawItemCode || '';
+    const labelName = r.rawItemName || r.rawMaterialName || '';
+    const itemDesc = `${labelCode} (${labelName})`;
+    
+    if (!groupSummaries[group].items.includes(itemDesc)) {
+      groupSummaries[group].items.push(itemDesc);
+    }
+    groupSummaries[group].records.push(r);
+    groupSummaries[group].beginningQty += r.beginningQty || 0;
+    groupSummaries[group].beginningAmount += r.beginningAmount || 0;
+    groupSummaries[group].purchaseQty += r.receiptTotalQty || r.purchaseQty || 0;
+    groupSummaries[group].purchaseAmount += r.receiptTotalAmount || r.purchaseAmount || 0;
+    groupSummaries[group].issueQty += r.issueTotalQty || 0;
+    groupSummaries[group].issueAmount += r.issueTotalAmount || 0;
+    groupSummaries[group].endingQty += r.endingQty || 0;
+    groupSummaries[group].endingAmount += r.endingAmount || 0;
   });
+
+  const getSubItemsForGroup = (groupRecords: RawMaterialLedgerRecord[]) => {
+    const aggregated: Record<string, {
+      rawItemCode: string;
+      rawItemName: string;
+      beginningQty: number;
+      beginningAmount: number;
+      purchaseQty: number;
+      purchaseAmount: number;
+      issueQty: number;
+      issueAmount: number;
+      endingQty: number;
+      endingAmount: number;
+    }> = {};
+
+    groupRecords.forEach(r => {
+      const code = r.rawItemCode || 'UNKNOWN';
+      if (!aggregated[code]) {
+        aggregated[code] = {
+          rawItemCode: code,
+          rawItemName: r.rawItemName || r.rawMaterialName || '',
+          beginningQty: 0,
+          beginningAmount: 0,
+          purchaseQty: 0,
+          purchaseAmount: 0,
+          issueQty: 0,
+          issueAmount: 0,
+          endingQty: 0,
+          endingAmount: 0,
+        };
+      }
+      aggregated[code].beginningQty += r.beginningQty || 0;
+      aggregated[code].beginningAmount += r.beginningAmount || 0;
+      aggregated[code].purchaseQty += r.receiptTotalQty || r.purchaseQty || 0;
+      aggregated[code].purchaseAmount += r.receiptTotalAmount || r.purchaseAmount || 0;
+      aggregated[code].issueQty += r.issueTotalQty || 0;
+      aggregated[code].issueAmount += r.issueTotalAmount || 0;
+      aggregated[code].endingQty += r.endingQty || 0;
+      aggregated[code].endingAmount += r.endingAmount || 0;
+    });
+
+    return Object.values(aggregated);
+  };
 
   const summaryRows = Object.values(groupSummaries);
 
   return (
     <div className="space-y-6 animate-fade font-sans">
-      {/* Sample Banner without excessive decorators */}
-      {isSampleData && (
-        <div className="p-3 bg-zinc-50 border border-zinc-200 text-zinc-650 rounded-lg flex justify-between items-center text-xs">
-          <span className="flex items-center gap-1.5 font-sans font-semibold">
-            <Info className="w-4 h-4 text-zinc-500 shrink-0" />
-            업로드된 {activeYear}년도 원층 기록이 없습니다. 마스터 기본 시뮬레이션 데이터를 불러옵니다.
+      {/* Empty State Banner when no real ledger exists */}
+      {realMaterials.length === 0 && (
+        <div className="p-4 bg-amber-50/50 border border-amber-200 text-amber-900 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs w-full">
+          <span className="flex items-center gap-2 font-sans font-semibold">
+            <Info className="w-4 h-4 text-amber-600 shrink-0" />
+            업로드된 {activeYear}년도 원자재 수불 기록이 없습니다. 수불부 엑셀 파일을 업로드해 주십시오.
           </span>
           <button 
             onClick={() => navigate('/operation-upload')}
-            className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
+            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded-lg cursor-pointer shrink-0"
           >
-            수불부 업로드 바로가기 →
+            수불부 업로드 화면 이동 →
           </button>
         </div>
       )}
@@ -377,7 +337,7 @@ export default function RawMaterialStatus() {
               <table className="min-w-full divide-y divide-[#eef2ec] text-left text-xs">
                 <thead className="bg-[#f7f9f7] text-[9.5px] text-[#555] font-bold uppercase tracking-wider">
                   <tr className="divide-x divide-[#eef2ec]">
-                    <th className="px-3.5 py-4 text-left" rowSpan={2}>원료 구분</th>
+                    <th className="px-3.5 py-4 text-left" rowSpan={2}>원료 구분 (클릭시 세부 전개)</th>
                     <th className="px-3.5 py-2 text-center" colSpan={3}>기초재고 (Beginning)</th>
                     <th className="px-3.5 py-2 text-center text-teal-850" colSpan={3}>당기입고 (Receipts)</th>
                     <th className="px-3.5 py-2 text-center text-amber-850" colSpan={3+1}>당기출고 (Issues)</th>
@@ -413,47 +373,107 @@ export default function RawMaterialStatus() {
                     const availQty = row.beginningQty + row.purchaseQty;
                     const issueRate = availQty > 0 ? (row.issueQty / availQty) * 100 : 0;
 
+                    const isExpanded = !!expandedGroups[row.group];
+                    const subItems = getSubItemsForGroup(row.records);
+
                     return (
-                      <tr key={row.group} className="hover:bg-[#f7f9f7]/50 divide-x divide-[#eef2ec]">
-                        {/* Title with elegant tooltip on hover */}
-                        <td className="px-4 py-4 font-sans font-bold text-zinc-900 text-left bg-zinc-50/50 group relative cursor-help">
-                          <span className="underline decoration-dotted decoration-zinc-450">{row.group}</span>
-                          {/* Tooltip containing codes */}
-                          <div className="absolute left-6 bottom-full mb-1 hidden group-hover:block bg-black text-white text-[10px] p-2 rounded-lg max-w-xs z-20 shadow-lg font-sans whitespace-normal opacity-90 leading-tight">
-                            <p className="font-bold mb-1 border-b border-zinc-700 pb-1">합산 원본 품목 리스트:</p>
-                            {row.items.length > 0 ? (
-                              row.items.map((it, idx) => (
-                                <p key={idx}>• {it}</p>
-                              ))
-                            ) : (
-                              <p className="text-zinc-400">해당 년/월 데이터가 원장에 편입되지 않았습니다.</p>
-                            )}
-                          </div>
-                        </td>
+                      <React.Fragment key={row.group}>
+                        {/* Parent Group Summary Row */}
+                        <tr 
+                          onClick={() => toggleGroup(row.group)}
+                          className="hover:bg-[#f7f9f7]/70 divide-x divide-[#eef2ec] cursor-pointer transition-colors"
+                        >
+                          {/* Title with collapse state caret */}
+                          <td className="px-4 py-3.5 font-sans font-bold text-zinc-900 text-left bg-zinc-50/50 flex items-center gap-2 select-none">
+                            <span className="text-zinc-500 text-[10px] w-4 shrink-0 text-center">
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                            <span className="underline decoration-dotted decoration-zinc-450 font-extrabold text-zinc-950">
+                              {row.group}
+                            </span>
+                            <span className="text-[10px] text-indigo-650 font-semibold bg-indigo-50 px-1.5 py-0.5 rounded ml-1">
+                              {subItems.length}개 품목
+                            </span>
+                          </td>
 
-                        {/* Beginning */}
-                        <td className="px-3 py-4 text-right">{row.beginningQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                        <td className="px-3 py-4 text-right text-zinc-650">{formatFinancialValue(row.beginningAmount)}</td>
-                        <td className="px-3 py-4 text-right text-zinc-400 text-[10px]">{formatUnitPrice(begPrice)}</td>
+                          {/* Beginning */}
+                          <td className="px-3 py-3.5 text-right font-medium">{row.beginningQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                          <td className="px-3 py-3.5 text-right text-zinc-650">{formatFinancialValue(row.beginningAmount)}</td>
+                          <td className="px-3 py-3.5 text-right text-zinc-400 text-[10px]">{formatUnitPrice(begPrice)}</td>
 
-                        {/* Purchase Receipts */}
-                        <td className="px-3 py-4 text-right font-semibold text-teal-800 bg-teal-50/5">{row.purchaseQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                        <td className="px-3 py-4 text-right text-teal-700 bg-teal-50/5">{formatFinancialValue(row.purchaseAmount)}</td>
-                        <td className="px-3 py-4 text-right text-zinc-400 text-[10px] bg-teal-50/5">{formatUnitPrice(purPrice)}</td>
+                          {/* Purchase Receipts */}
+                          <td className="px-3 py-3.5 text-right font-semibold text-teal-800 bg-teal-50/5">{row.purchaseQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                          <td className="px-3 py-3.5 text-right text-teal-700 bg-teal-50/5">{formatFinancialValue(row.purchaseAmount)}</td>
+                          <td className="px-3 py-3.5 text-right text-zinc-400 text-[10px] bg-teal-50/5">{formatUnitPrice(purPrice)}</td>
 
-                        {/* Issues */}
-                        <td className="px-3 py-4 text-right font-semibold text-amber-800 bg-amber-50/5">{row.issueQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                        <td className="px-3 py-4 text-right text-amber-700 bg-amber-50/5">{formatFinancialValue(row.issueAmount)}</td>
-                        <td className="px-3 py-4 text-right text-zinc-400 text-[10px] bg-amber-50/5">{formatUnitPrice(issPrice)}</td>
-                        <td className="px-3 py-4 text-center text-zinc-450 text-[10.5px] bg-amber-50/5 font-sans">
-                          {availQty > 0 ? `${issueRate.toFixed(1)}%` : '-'}
-                        </td>
+                          {/* Issues */}
+                          <td className="px-3 py-3.5 text-right font-semibold text-amber-800 bg-amber-50/5">{row.issueQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                          <td className="px-3 py-3.5 text-right text-amber-700 bg-amber-50/5">{formatFinancialValue(row.issueAmount)}</td>
+                          <td className="px-3 py-3.5 text-right text-zinc-400 text-[10px] bg-amber-50/5">{formatUnitPrice(issPrice)}</td>
+                          <td className="px-3 py-3.5 text-center text-zinc-450 text-[10.5px] bg-amber-50/5 font-sans">
+                            {availQty > 0 ? `${issueRate.toFixed(1)}%` : '-'}
+                          </td>
 
-                        {/* Ending */}
-                        <td className="px-3 py-4 text-right font-extrabold text-[#111] bg-indigo-50/5">{row.endingQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                        <td className="px-3 py-4 text-right font-bold text-indigo-900 bg-indigo-50/5">{formatFinancialValue(row.endingAmount)}</td>
-                        <td className="px-3 py-4 text-right text-zinc-400 text-[10px] bg-indigo-50/5">{formatUnitPrice(endPrice)}</td>
-                      </tr>
+                          {/* Ending */}
+                          <td className="px-3 py-3.5 text-right font-extrabold text-[#111] bg-indigo-50/5">{row.endingQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                          <td className="px-3 py-3.5 text-right font-bold text-indigo-900 bg-indigo-50/5">{formatFinancialValue(row.endingAmount)}</td>
+                          <td className="px-3 py-3.5 text-right text-zinc-400 text-[10px] bg-indigo-50/5">{formatUnitPrice(endPrice)}</td>
+                        </tr>
+
+                        {/* Collapsible Sub Item Rows */}
+                        {isExpanded && (
+                          subItems.length > 0 ? (
+                            subItems.map((sub, sIdx) => {
+                              const subBegPrice = sub.beginningQty > 0 ? (sub.beginningAmount / sub.beginningQty) : 0;
+                              const subPurPrice = sub.purchaseQty > 0 ? (sub.purchaseAmount / sub.purchaseQty) : 0;
+                              const subIssPrice = sub.issueQty > 0 ? (sub.issueAmount / sub.issueQty) : 0;
+                              const subEndPrice = sub.endingQty > 0 ? (sub.endingAmount / sub.endingQty) : 0;
+                              const subAvailQty = sub.beginningQty + sub.purchaseQty;
+                              const subIssueRate = subAvailQty > 0 ? (sub.issueQty / subAvailQty) * 100 : 0;
+
+                              return (
+                                <tr key={`${row.group}_sub_${sub.rawItemCode}`} className="bg-zinc-50/50 hover:bg-zinc-100/80 divide-x divide-[#eef2ec] transition-colors">
+                                  {/* Sub-item Header */}
+                                  <td className="px-6 py-2.5 text-left font-sans text-[11px] text-zinc-650 max-w-[220px] truncate" title={`${sub.rawItemCode} - ${sub.rawItemName}`}>
+                                    <span className="text-zinc-400 mr-2 font-mono">└─</span>
+                                    <span className="font-bold text-zinc-900 font-mono">{sub.rawItemCode}</span>
+                                    <span className="block text-[10px] text-zinc-500 font-normal truncate pl-5 mt-0.5">{sub.rawItemName}</span>
+                                  </td>
+
+                                  {/* Beginning */}
+                                  <td className="px-3 py-2.5 text-right text-zinc-605 text-[11px]">{sub.beginningQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                  <td className="px-3 py-2.5 text-right text-zinc-500 text-[11px]">{formatFinancialValue(sub.beginningAmount)}</td>
+                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px]">{formatUnitPrice(subBegPrice)}</td>
+
+                                  {/* Purchase / Receipts */}
+                                  <td className="px-3 py-2.5 text-right text-teal-800 font-medium text-[11px] bg-teal-5/10">{sub.purchaseQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                  <td className="px-3 py-2.5 text-right text-teal-700 text-[11px] bg-teal-5/10">{formatFinancialValue(sub.purchaseAmount)}</td>
+                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-teal-5/10">{formatUnitPrice(subPurPrice)}</td>
+
+                                  {/* Issues */}
+                                  <td className="px-3 py-2.5 text-right text-amber-800 font-medium text-[11px] bg-amber-5/10">{sub.issueQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                  <td className="px-3 py-2.5 text-right text-amber-700 text-[11px] bg-amber-5/10">{formatFinancialValue(sub.issueAmount)}</td>
+                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-amber-5/10">{formatUnitPrice(subIssPrice)}</td>
+                                  <td className="px-3 py-2.5 text-center text-zinc-450 text-[10px] bg-amber-5/10 font-sans">
+                                    {subAvailQty > 0 ? `${subIssueRate.toFixed(1)}%` : '-'}
+                                  </td>
+
+                                  {/* Ending */}
+                                  <td className="px-3 py-2.5 text-right text-zinc-900 font-bold text-[11px] bg-indigo-5/10">{sub.endingQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                  <td className="px-3 py-2.5 text-right text-indigo-850 text-[11px] bg-indigo-5/10">{formatFinancialValue(sub.endingAmount)}</td>
+                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-indigo-5/10">{formatUnitPrice(subEndPrice)}</td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={13} className="px-8 py-4 text-center text-zinc-400 bg-zinc-50/30 font-sans text-xs italic">
+                                💡 해당 {row.group} 원료군에 소속되어 정산/기록된 품목이 데이터 원장에 존재하지 않습니다. 수불부를 확인하여 주십시오.
+                              </td>
+                            </tr>
+                          )
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

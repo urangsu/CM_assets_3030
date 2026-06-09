@@ -34,41 +34,44 @@ export function OperationWorldMap({
   const hqPoint = mapPoints.find((p) => p.type === 'hq' || p.countryCode === 'KR');
 
   return (
-    <div className="relative w-full bg-zinc-950 rounded-2xl border border-zinc-800 overflow-hidden shadow-2xl flex flex-col justify-between p-4 group select-none">
-      {/* Background Glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,_rgba(16,185,129,0.08),_transparent_60%)] pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,_rgba(99,102,241,0.05),_transparent_50%)] pointer-events-none" />
+    <div className="relative w-full bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm flex flex-col justify-between p-4 group select-none">
+      {/* Light Background Gradients */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,_rgba(59,130,246,0.03),_transparent_65%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,_rgba(99,102,241,0.02),_transparent_55%)] pointer-events-none" />
 
-      {/* Map Header / Status HUD */}
-      <div className="relative z-10 flex justify-between items-center mb-2">
+      {/* Map Header / Status HUD in Light Mode */}
+      <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] tracking-wider text-emerald-400 font-bold uppercase font-sans">
-            HYCM Sourcing & Sales Matrix Map (Real-time Flow)
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+          <span className="text-[10.5px] tracking-wider text-zinc-700 font-extrabold uppercase font-sans">
+            HYCM SOURCING & SALES GLOBAL FLOW MAP
           </span>
         </div>
-        <div className="flex gap-4 text-[10px] text-zinc-400 font-semibold bg-zinc-900/80 px-2.5 py-1 rounded-lg border border-zinc-800">
+        <div className="flex gap-3 text-[10px] text-zinc-600 font-bold bg-zinc-50 px-2.5 py-1.5 rounded-lg border border-zinc-200 shadow-2xs">
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00e5cf]" /> HQ 광양
+            <span className="w-2 h-2 rounded-full bg-emerald-500" /> HQ 광양/포항
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> 원자재 공급처
+            <span className="w-2 h-2 rounded-full bg-indigo-600" /> 원료 공급처
           </span>
         </div>
       </div>
 
-      {/* SVG Container - Fixed height 340px to easily fit inside 420px parent along with UI wrappers */}
-      <div className="relative h-[300px] lg:h-[340px] w-full bg-zinc-950 rounded-xl border border-zinc-900 overflow-hidden flex items-center justify-center">
-        {/* Underlay Grid Stars Animation */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.015)_1px,_transparent_1px)] bg-[size:25px_25px] opacity-75 pointer-events-none" />
+      {/* SVG Container - Light mode soft oceanic fill */}
+      <div className="relative h-[300px] lg:h-[350px] w-full bg-[#f1f6fb] rounded-xl border border-zinc-200 overflow-hidden flex items-center justify-center">
+        {/* Underlay Grid Gridline Pattern */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.035)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(59,130,246,0.035)_1px,_transparent_1px)] bg-[size:18px_18px] opacity-80 pointer-events-none" />
 
         <svg
           viewBox="0 0 1000 420"
           className="absolute inset-0 w-full h-full select-none"
           preserveAspectRatio="xMidYMid meet"
         >
-          {/* Detailed SVG World Map Path Collection for Premium Professional Aesthetic */}
-          <g className="fill-zinc-800/60 stroke-zinc-700/30 stroke-[0.8] transition-colors duration-500">
+          {/* Subtle Equatorial dashed divider for geography HUD */}
+          <line x1="0" y1="210" x2="1000" y2="210" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="5 5" opacity="0.4" />
+          
+          {/* World map Landmass collection styled with high-profile clean light theme */}
+          <g className="fill-white stroke-slate-200 stroke-[0.8] hover:fill-slate-50 transition-colors duration-300">
             {/* North America */}
             <path d="M 80,40 L 95,35 L 120,40 L 140,25 L 160,28 L 195,35 L 210,50 L 220,45 L 250,55 L 275,30 L 290,45 L 270,70 L 260,95 L 290,115 L 285,130 L 250,155 L 225,175 L 212,185 L 200,165 L 175,155 L 150,150 L 145,130 L 130,110 L 105,95 L 85,90 Z" />
             
@@ -113,13 +116,13 @@ export function OperationWorldMap({
             <path d="M 870,345 L 880,355 L 872,370 L 865,360 Z" /> {/* NZ */}
           </g>
 
-          {/* Interactive Flow Arcs radiating from Sourcing Nodes toward POSCO HQ */}
+          {/* Sourcing Arcs toward HQ with precise light-theme gradients */}
           {hqPoint && (
             <g>
               <defs>
                 <linearGradient id="arcGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.8" />
-                  <stop offset="50%" stopColor="#818cf8" stopOpacity="0.8" />
+                  <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                  <stop offset="50%" stopColor="#6366f1" stopOpacity="0.8" />
                   <stop offset="100%" stopColor="#10b981" stopOpacity="0.8" />
                 </linearGradient>
               </defs>
@@ -127,15 +130,12 @@ export function OperationWorldMap({
               {mapPoints.map((pt) => {
                 if (pt.id === 'KR' || pt.type === 'hq') return null;
 
-                // Simple path calculation: Bezier curve from pt to HQ
-                // Map screen coordinates: x refers to %, y refers to %
-                // SVG dimensions are 1000 x 420.
                 const startX = pt.coords.x * 10;
                 const startY = pt.coords.y * 4.2;
                 const endX = hqPoint.coords.x * 10;
                 const endY = hqPoint.coords.y * 4.2;
 
-                // Control points for pretty swooping arc
+                // Curved control points
                 const dx = endX - startX;
                 const dy = endY - startY;
                 const cx = (startX + endX) / 2 - dy * 0.18;
@@ -145,14 +145,14 @@ export function OperationWorldMap({
 
                 return (
                   <g key={`flow_arc_${pt.id}`}>
-                    {/* Background Static Track Shadow */}
+                    {/* Faint static light track */}
                     <path
                       d={pathString}
                       fill="none"
-                      stroke="#1e1b4b"
-                      strokeWidth={3}
+                      stroke="#dcdfe7"
+                      strokeWidth={2.5}
                       strokeLinecap="round"
-                      opacity={0.4}
+                      opacity={0.8}
                     />
 
                     {/* Gradient Arc */}
@@ -162,21 +162,20 @@ export function OperationWorldMap({
                       stroke="url(#arcGradient)"
                       strokeWidth={1.8}
                       strokeLinecap="round"
-                      className="opacity-75"
                     />
 
-                    {/* Dotted Flow Dash Animation */}
+                    {/* Blue dynamic animated traveler block */}
                     <path
                       d={pathString}
                       fill="none"
-                      stroke="#00f2fe"
+                      stroke="#2563eb"
                       strokeWidth={2}
                       strokeLinecap="round"
-                      strokeDasharray="6, 15"
-                      className="opacity-90 animate-dash"
+                      strokeDasharray="8, 18"
+                      className="animate-dash"
                       style={{
                         strokeDashoffset: 'var(--dash-offset, 0)',
-                        animation: 'dash 4s linear infinite',
+                        animation: 'dash 5.5s linear infinite',
                       }}
                     />
                   </g>
@@ -185,7 +184,7 @@ export function OperationWorldMap({
             </g>
           )}
 
-          {/* Sourcing Node Markers */}
+          {/* Sourcing Node Point Markers */}
           {mapPoints.map((pt) => {
             const isHQ = pt.type === 'hq';
             const isSelected = selectedLocation?.id === pt.id;
@@ -198,7 +197,7 @@ export function OperationWorldMap({
                 className="cursor-pointer"
                 onClick={() => onSelectLocation(pt)}
               >
-                {/* 1. Pulsing Outer Beacon Effect */}
+                {/* Outer ring pulses */}
                 {isHQ ? (
                   <>
                     <circle
@@ -206,19 +205,19 @@ export function OperationWorldMap({
                       cy={markerY}
                       r={18}
                       fill="none"
-                      stroke="#00e5cf"
-                      strokeWidth={1.2}
-                      className="opacity-30 animate-ping"
+                      stroke="#10b981"
+                      strokeWidth={1.5}
+                      className="opacity-40 animate-ping"
                       style={{ transformOrigin: `${markerX}px ${markerY}px`, animationDuration: '3s' }}
                     />
                     <circle
                       cx={markerX}
                       cy={markerY}
-                      r={10}
+                      r={9}
                       fill="none"
-                      stroke="#00e5cf"
+                      stroke="#10b981"
                       strokeWidth={1.5}
-                      className="opacity-50"
+                      className="opacity-65"
                     />
                   </>
                 ) : (
@@ -226,42 +225,42 @@ export function OperationWorldMap({
                     <circle
                       cx={markerX}
                       cy={markerY}
-                      r={14}
+                      r={13}
                       fill="none"
-                      stroke={isSelected ? '#818cf8' : '#4f46e5'}
-                      strokeWidth={1}
-                      className="opacity-40 animate-pulse"
+                      stroke={isSelected ? '#3b82f6' : '#6366f1'}
+                      strokeWidth={1.5}
+                      className="opacity-55 animate-pulse"
                     />
                   </>
                 )}
 
-                {/* 2. Anchor Point Pin Dot */}
+                {/* Inner point dot anchor */}
                 <circle
                   cx={markerX}
                   cy={markerY}
-                  r={isHQ ? 5 : 4}
-                  fill={isHQ ? '#00e5cf' : isSelected ? '#a5b4fc' : '#4f46e5'}
+                  r={isHQ ? 6 : 4.5}
+                  fill={isHQ ? '#10b981' : isSelected ? '#3b82f6' : '#6366f1'}
                   stroke="#ffffff"
-                  strokeWidth={1.5}
-                  className="transition-all duration-350"
+                  strokeWidth={2}
+                  className="transition-all duration-200"
                 />
 
-                {/* 3. Text Nameplate & Bubble Tag */}
+                {/* SVG Foreign HTML Nameplate text element */}
                 <foreignObject
-                  x={markerX - 50}
-                  y={markerY - 28}
-                  width={100}
+                  x={markerX - 55}
+                  y={markerY - 29}
+                  width={110}
                   height={24}
                   className="overflow-visible pointer-events-none"
                 >
                   <div className="flex flex-col items-center justify-end w-full h-full">
                     <span
-                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded shadow-xl border whitespace-nowrap transition-all duration-200 mt-[-5px] font-sans ${
+                      className={`px-1.5 py-0.5 text-[9px] font-bold rounded-md shadow-xs border whitespace-nowrap transition-all duration-200 font-sans ${
                         isHQ
-                          ? 'bg-emerald-950 text-[#00e5cf] border-emerald-500/55 font-semibold'
+                          ? 'bg-emerald-600 text-white border-emerald-650'
                           : isSelected
-                          ? 'bg-indigo-900 text-white border-indigo-400 font-bold scale-105'
-                          : 'bg-zinc-900/95 text-zinc-300 border-zinc-700/80 group-hover:border-zinc-500'
+                          ? 'bg-indigo-600 text-white border-indigo-700 scale-105 shadow font-bold'
+                          : 'bg-white text-zinc-700 border-zinc-200 shadow-2xs'
                       }`}
                     >
                       {pt.countryName}
@@ -273,28 +272,28 @@ export function OperationWorldMap({
           })}
         </svg>
 
-        {/* Legend Overlay at Bottom-Center */}
-        <div className="absolute bottom-3 left-3 bg-zinc-90 w-max bg-zinc-900/90 border border-zinc-800 rounded-lg p-2 flex flex-col gap-1 z-10">
-          <span className="text-[8.5px] font-bold text-zinc-550 block font-sans">망상 전송 흐름도 (Legend)</span>
-          <div className="flex items-center gap-4 text-[9px] font-mono text-zinc-300">
+        {/* Legend Overlay at Bottom-Left side */}
+        <div className="absolute bottom-3 left-3 bg-white/95 border border-zinc-200 shadow-md rounded-lg p-2.5 flex flex-col gap-1 z-10">
+          <span className="text-[8.5px] font-extrabold text-zinc-500 block font-sans">망상 전송 흐름도 (Legend)</span>
+          <div className="flex items-center gap-3.5 text-[9px] font-sans text-zinc-700">
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#00e5cf] shadow-[0_0_4px_#00e5cf]" />
-              <span>대한민국 HQ (광양공장)</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white" />
+              <span className="font-semibold">대한민국 HQ</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_4px_#3f51b5]" />
-              <span>글로벌 채굴·소싱처</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 border border-white" />
+              <span className="font-semibold">원자재 수입 거점</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-4 h-0.5 border-t border-dashed border-sky-400 inline-block" />
-              <span className="text-[8.5px]">원소재 입고경로</span>
+              <span className="w-4.5 h-0.5 border-t border-dashed border-indigo-400 inline-block" />
+              <span className="text-[8.5px] text-zinc-500 font-semibold">수송 흐름</span>
             </div>
           </div>
         </div>
 
-        {/* Floating Instruction */}
-        <div className="absolute bottom-3 right-3 text-[9px] font-bold text-zinc-500 bg-zinc-900/60 border border-zinc-800/40 px-2 py-1 rounded">
-          💡 각 국가 핀을 클릭해 조달/판매 세부 통계를 바로 조회할 수 있습니다.
+        {/* Floating instruction message on bottom-right */}
+        <div className="absolute bottom-3 right-3 text-[9px] font-bold text-zinc-600 bg-white/95 border border-zinc-250 shadow-md px-2.5 py-1.5 rounded-md hidden md:block">
+          💡 지도 상의 국가 핀을 클릭하시면 해상 거점별 요약 지표와 연계 조달 물량을 검색하실 수 있습니다.
         </div>
       </div>
 
