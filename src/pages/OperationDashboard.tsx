@@ -122,19 +122,19 @@ export default function OperationDashboard() {
   useEffect(() => {
     const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
     const currentRate = ExchangeRateStorage.getRate(activeYear, mNum);
-    setCustomRateInput(String(currentRate));
+    setCustomRateInput(currentRate !== null ? String(currentRate) : '');
   }, [activeYear, activeMonth]);
 
   // --- Currency Conversion Utility ---
   const getCurrentExchangeRate = (monthNumber?: number): number => {
     const checkMonth = monthNumber || (activeMonth === 'all' ? 5 : Number(activeMonth));
-    return ExchangeRateStorage.getRate(activeYear, checkMonth);
+    return ExchangeRateStorage.getRate(activeYear, checkMonth) || 0;
   };
 
   const convertVal = (krwVal: number, monthNumber?: number): number => {
     if (currencyMode === 'USD') {
       const rate = getCurrentExchangeRate(monthNumber);
-      return krwVal / rate;
+      return rate > 0 ? krwVal / rate : 0;
     }
     return krwVal;
   };
@@ -154,6 +154,7 @@ export default function OperationDashboard() {
   const formatCurrencyAmount = (valueKRW: number, isKPI: boolean = false) => {
     const rate = getCurrentExchangeRate();
     if (currencyMode === 'USD') {
+      if (rate === 0) return '환율 미설정';
       const usdVal = valueKRW / rate;
       if (isKPI) {
         return `$${(usdVal / 1_000_000).toFixed(1)}M`;
@@ -170,17 +171,43 @@ export default function OperationDashboard() {
     const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
     try {
       const response = await ExchangeRateStorage.fetchMonthlyAverageRate(activeYear, mNum);
-      if (response && response.rate) {
+      if (response.success && response.rate) {
         setCustomRateInput(String(response.rate));
         setSyncFeedback({
-          type: response.source === 'api' ? 'success' : 'warning',
-          text: response.message || '환율 정보를 정상 조율했습니다.'
+          type: 'success',
+          text: response.message
         });
+      } else {
+        let errText = response.message;
+        if (response.reason === 'API_KEY_MISSING') {
+          errText = `오류: EXIM_API_KEY가 서버 환경변수에 설정되지 않았습니다.`;
+        }
+
+        // Show last saved rate if available
+        const lastSaved = ExchangeRateStorage.getRateRecord(activeYear, mNum);
+        const lastSavedMsg = lastSaved 
+          ? ` (기존에 저장되어 가동중인 '마지막 저장 환율': ₩${lastSaved.averageRate}이 유지됩니다.)` 
+          : ' (기존 저장 환율 정보도 존재하지 않습니다.)';
+
+        setSyncFeedback({
+          type: response.reason === 'API_KEY_MISSING' ? 'error' : 'warning',
+          text: `${errText}${lastSavedMsg}`
+        });
+
+        if (lastSaved) {
+          setCustomRateInput(String(lastSaved.averageRate));
+        } else {
+          setCustomRateInput('');
+        }
       }
     } catch (err: any) {
+      const lastSaved = ExchangeRateStorage.getRateRecord(activeYear, mNum);
+      const lastSavedMsg = lastSaved 
+        ? ` (기존에 가동중인 '마지막 저장 환율': ₩${lastSaved.averageRate}이 유지됩니다.)` 
+        : '';
       setSyncFeedback({
         type: 'error',
-        text: '한국수출입은행 API 조회 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주십시오.'
+        text: `한국수출입은행 API 동기화 통신 중 오류가 발생했습니다. 수동 입력을 진행하십시오.${lastSavedMsg}`
       });
     } finally {
       setIsSyncingExchange(false);
@@ -608,7 +635,7 @@ export default function OperationDashboard() {
           </div>
           <button 
             onClick={() => setSyncFeedback(null)} 
-            className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-600 flex-shrink-0"
+            className="p-1 hover:bg-black/5 rounded cursor-pointer text-zinc-400 hover:text-zinc-650 flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -624,7 +651,11 @@ export default function OperationDashboard() {
               한국수출입은행 외환고시 월평균 상호 교환율
             </span>
             <span className="text-[#647067] text-[10.5px] block mt-0.5 font-sans">
-              당월 고시환율은 <strong className="font-mono text-indigo-700">{getCurrentExchangeRate().toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.
+              {getCurrentExchangeRate() > 0 ? (
+                <>당월 고시환율은 <strong className="font-mono text-indigo-700">{getCurrentExchangeRate().toLocaleString()} 원/USD</strong> 기준으로 계수 변환 적용됩니다.</>
+              ) : (
+                <strong className="text-rose-600">환율 정보 없음 (수동 환율을 입력하거나 오른쪽 자동 조회를 사용하여 동기화해 주십시오)</strong>
+              )}
             </span>
           </div>
         </div>
@@ -640,7 +671,8 @@ export default function OperationDashboard() {
                 type="text"
                 value={customRateInput}
                 onChange={(e) => setCustomRateInput(e.target.value)}
-                className="w-18 px-1.5 py-0.5 text-right font-mono border border-zinc-300 rounded text-xs font-bold"
+                placeholder="예: 1350.0"
+                className="w-20 px-1.5 py-0.5 text-right font-mono border border-zinc-300 rounded text-xs font-bold"
               />
               <span className="text-zinc-500 text-xs font-sans">원</span>
               <button 
@@ -658,12 +690,27 @@ export default function OperationDashboard() {
             </div>
           ) : (
             <div className="flex items-center gap-2 font-mono">
-              <span className="font-mono font-bold text-indigo-700">
-                {getCurrentExchangeRate().toLocaleString()} 원
-              </span>
+              {getCurrentExchangeRate() > 0 ? (
+                (() => {
+                  const checkM = activeMonth === 'all' ? 5 : Number(activeMonth);
+                  const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkM);
+                  return (
+                    <span className="font-mono font-bold text-indigo-700">
+                      {getCurrentExchangeRate().toLocaleString()} 원
+                      <span className="text-[9px] font-sans text-zinc-400 ml-1.5 font-normal">
+                        ({rateRec?.source === 'api' ? '수출입은행 API 연동' : '마지막 저장 환율/수동'})
+                      </span>
+                    </span>
+                  );
+                })()
+              ) : (
+                <span className="font-sans font-bold text-rose-600 animate-pulse text-[11px]">
+                  환율 정보 없음
+                </span>
+              )}
               <button 
                 onClick={() => {
-                  setCustomRateInput(String(getCurrentExchangeRate()));
+                  setCustomRateInput(getCurrentExchangeRate() > 0 ? String(getCurrentExchangeRate()) : '');
                   setIsEditingExchange(true);
                 }}
                 className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-zinc-700 transition-colors"
