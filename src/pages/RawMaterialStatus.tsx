@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, RawMaterialLedgerRecord } from '../lib/operation/operationStorage';
-import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
+import { ExchangeRateStorage, getSafeExchangeRate, formatExchangeRateLabel } from '../lib/operation/exchangeRateStorage';
 
 function formatKRWMillion(valueKRW: number): string {
   if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
@@ -65,16 +65,18 @@ export default function RawMaterialStatus() {
 
   const currentExchangeRate = () => {
     const m = activeMonth === 'all' ? 5 : Number(activeMonth);
-    return ExchangeRateStorage.getRate(activeYear, m);
+    return getSafeExchangeRate(activeYear, m);
   };
 
   const getExchangeRateDisplay = () => {
-    return `기준환율: 1 USD = ${currentExchangeRate().toLocaleString()} KRW`;
+    const rate = currentExchangeRate();
+    return `기준환율: ${formatExchangeRateLabel(rate)}`;
   };
 
   const formatFinancialValue = (valueKRW: number) => {
     if (currencyMode === 'USD') {
       const rate = currentExchangeRate();
+      if (!rate) return '환율 미등록';
       return formatUSDKilo(valueKRW / rate);
     }
     return formatKRWMillion(valueKRW);
@@ -83,7 +85,9 @@ export default function RawMaterialStatus() {
   const formatUnitPrice = (priceKRW: number) => {
     if (!priceKRW) return '-';
     if (currencyMode === 'USD') {
-      const usdPrice = priceKRW / currentExchangeRate();
+      const rate = currentExchangeRate();
+      if (!rate) return '환율 미등록';
+      const usdPrice = priceKRW / rate;
       return `$${Math.round(usdPrice).toLocaleString()}`;
     }
     return `₩${Math.round(priceKRW).toLocaleString()}`;
@@ -212,16 +216,37 @@ export default function RawMaterialStatus() {
     <div className="space-y-6 animate-fade font-sans">
       {/* Empty State Banner when no real ledger exists */}
       {realMaterials.length === 0 && (
-        <div className="p-4 bg-amber-50/50 border border-amber-200 text-amber-900 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs w-full">
+        <div className="p-4 bg-[#fff9db] border border-amber-250 text-amber-900 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs w-full">
           <span className="flex items-center gap-2 font-sans font-semibold">
             <Info className="w-4 h-4 text-amber-600 shrink-0" />
             업로드된 {activeYear}년도 원자재 수불 기록이 없습니다. 수불부 엑셀 파일을 업로드해 주십시오.
           </span>
           <button 
             onClick={() => navigate('/operation-upload')}
-            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded-lg cursor-pointer shrink-0"
+            className="px-3 py-1 bg-[#00786F] hover:bg-[#005f58] text-white font-bold text-[10px] rounded-lg cursor-pointer shrink-0"
           >
             수불부 업로드 화면 이동 →
+          </button>
+        </div>
+      )}
+
+      {/* Missing Exchange Rate Warning Banner */}
+      {currencyMode === 'USD' && !currentExchangeRate() && (
+        <div id="exchange-rate-warning-box" className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm animate-fade">
+          <div className="flex items-start gap-2.5">
+            <Info className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <span className="font-bold block text-sm">⚠️ 환율 미등록</span>
+              <p className="text-zinc-650 mt-1">
+                달러 보기에는 월평균환율이 필요합니다. 환율 관리에서 자동 연계하거나 수동 입력하세요.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/operation-dashboard')}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-colors cursor-pointer"
+          >
+            환율 입력
           </button>
         </div>
       )}

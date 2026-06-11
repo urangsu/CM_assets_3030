@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, ProductLedgerRecord, RawMaterialLedgerRecord } from '../lib/operation/operationStorage';
-import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
+import { ExchangeRateStorage, getSafeExchangeRate, formatExchangeRateLabel } from '../lib/operation/exchangeRateStorage';
 import { OperationWorldMap } from '../components/OperationWorldMap';
 
 const G_PER_TON = 1_000_000;
@@ -129,6 +129,162 @@ export default function OperationDashboard() {
   const [realMaterials, setRealMaterials] = useState<RawMaterialLedgerRecord[]>([]);
   const [isSampleData, setIsSampleData] = useState<boolean>(false);
   const [countryRecords, setCountryRecords] = useState<OperationCountryRecord[]>([]);
+  const [isPreviewMode, setIsPreviewMode] = useState<boolean>(false);
+
+  const getSeedProductsForPreview = (year: string): ProductLedgerRecord[] => {
+    const products = ['황산니켈', '황산코발트', '탄산리튬', '황산망간', '구리'] as const;
+    const result: any[] = [];
+    products.forEach(p => {
+      for (let m = 1; m <= 12; m++) {
+        result.push({
+          id: `preview_prod_${year}_${m}_${p}_qty`,
+          year,
+          month: m,
+          sourceType: '제품수불부',
+          sourceRowStartIndex: 0,
+          rawProductName: p,
+          productName: p,
+          metal: p === '황산니켈' ? 'Ni' : p === '황산코발트' ? 'Co' : p === '탄산리튬' ? 'Li' : p === '황산망간' ? 'Mn' : 'Cu',
+          unit: '수량',
+          beginningInventory: 100,
+          normalReceipt: 120,
+          transferReceipt: 0,
+          returnReceipt: 0,
+          otherReceipt: 0,
+          receiptTotal: 120,
+          salesQuantity: 110,
+          reInput: 0,
+          compensation: 0,
+          sample: 0,
+          transferIssue: 0,
+          disposal: 0,
+          otherIssue: 0,
+          issueTotal: 110,
+          endingInventory: 110,
+          inventoryValuationLoss: 0,
+          valuationApplied: 0,
+          revenue: 110 * 20000000,
+          costOfSales: 110 * 16000000,
+          grossProfit: 110 * 4000000,
+          uploadedAt: new Date().toISOString(),
+        });
+        result.push({
+          id: `preview_prod_${year}_${m}_${p}_amt`,
+          year,
+          month: m,
+          sourceType: '제품수불부',
+          sourceRowStartIndex: 0,
+          rawProductName: p,
+          productName: p,
+          metal: p === '황산니켈' ? 'Ni' : p === '황산코발트' ? 'Co' : p === '탄산리튬' ? 'Li' : p === '황산망간' ? 'Mn' : 'Cu',
+          unit: '금액',
+          beginningInventory: 100 * 20000000,
+          normalReceipt: 120 * 20000000,
+          transferReceipt: 0,
+          returnReceipt: 0,
+          otherReceipt: 0,
+          receiptTotal: 120 * 20000000,
+          salesQuantity: 110 * 20000000,
+          reInput: 0,
+          compensation: 0,
+          sample: 0,
+          transferIssue: 0,
+          disposal: 0,
+          otherIssue: 0,
+          issueTotal: 110 * 20000000,
+          endingInventory: 110 * 20000000,
+          inventoryValuationLoss: 0,
+          valuationApplied: 0,
+          revenue: 110 * 20000000,
+          costOfSales: 110 * 16000000,
+          grossProfit: 110 * 4000000,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+    });
+    return result as ProductLedgerRecord[];
+  };
+
+  const getSeedMaterialsForPreview = (year: string): RawMaterialLedgerRecord[] => {
+    const groups = ['BP', 'BM', 'WET', 'LCO'] as const;
+    const result: any[] = [];
+    groups.forEach(g => {
+      for (let m = 1; m <= 12; m++) {
+        result.push({
+          id: `preview_mat_${year}_${m}_${g}`,
+          year,
+          month: m,
+          sourceType: '원자재수불부',
+          materialGroup: g,
+          rawItemCode: `M-${g}-01`,
+          rawItemName: `${g} 수입원료`,
+          quantityRowLabel: '수량',
+          amountRowLabel: '금액',
+          unitPriceRowLabel: '단가',
+          beginningQty: 150,
+          beginningAmount: 150000000,
+          beginningUnitPrice: 1000,
+          purchaseQty: 200,
+          purchaseAmount: 200000000,
+          purchaseUnitPrice: 1000,
+          transferInQty: 0,
+          transferInAmount: 0,
+          transferInUnitPrice: 0,
+          receiptTotalQty: 200,
+          receiptTotalAmount: 200000000,
+          receiptTotalUnitPrice: 1000,
+          processIssueQty: 180,
+          processIssueAmount: 180000000,
+          processIssueUnitPrice: 1000,
+          salesIssueQty: 0,
+          salesIssueAmount: 0,
+          salesIssueUnitPrice: 0,
+          sampleIssueQty: 0,
+          sampleIssueAmount: 0,
+          sampleIssueUnitPrice: 0,
+          transferIssueQty: 0,
+          transferIssueAmount: 0,
+          transferIssueUnitPrice: 0,
+          disposalIssueQty: 0,
+          disposalIssueAmount: 0,
+          disposalIssueUnitPrice: 0,
+          devExpenseIssueQty: 0,
+          devExpenseIssueAmount: 0,
+          devExpenseIssueUnitPrice: 0,
+          devAssetIssueQty: 0,
+          devAssetIssueAmount: 0,
+          devAssetIssueUnitPrice: 0,
+          pilotIssueQty: 0,
+          pilotIssueAmount: 0,
+          pilotIssueUnitPrice: 0,
+          otherIssueQty: 0,
+          otherIssueAmount: 0,
+          otherIssueUnitPrice: 0,
+          issueTotalQty: 180,
+          issueTotalAmount: 180000000,
+          issueTotalUnitPrice: 1000,
+          endingQty: 170,
+          endingAmount: 170000000,
+          endingUnitPrice: 1000,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+    });
+    return result as RawMaterialLedgerRecord[];
+  };
+
+  const getSeedCountriesForPreview = (year: string): OperationCountryRecord[] => {
+    const result: OperationCountryRecord[] = [];
+    for (let m = 1; m <= 12; m++) {
+      result.push(
+        { year, month: m, countryCode: 'US', countryName: '미국', type: 'sales', productName: '황산니켈', quantityTon: 110, amountKRW: 2200000000 },
+        { year, month: m, countryCode: 'ID', countryName: '인도네시아', type: 'purchase', materialName: 'BM (Black Mass)', quantityTon: 240, amountKRW: 1680000000 },
+        { year, month: m, countryCode: 'CL', countryName: '칠레', type: 'purchase', materialName: 'LCO (리튬코발트산화물)', quantityTon: 95, amountKRW: 3610000000 },
+        { year, month: m, countryCode: 'CD', countryName: '콩고민주공화국', type: 'purchase', materialName: 'BP (Black Powder 원료)', quantityTon: 180, amountKRW: 1260000000 }
+      );
+    }
+    return result;
+  };
 
   const [selectedLocation, setSelectedLocation] = useState<OperationMapPoint | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -189,6 +345,14 @@ export default function OperationDashboard() {
 
   // 1. Data Loader
   const loadData = () => {
+    if (isPreviewMode) {
+      setRealProducts(getSeedProductsForPreview(activeYear));
+      setRealMaterials(getSeedMaterialsForPreview(activeYear));
+      setCountryRecords(getSeedCountriesForPreview(activeYear));
+      setIsSampleData(true);
+      return;
+    }
+
     const listProducts = OperationStorage.getProductRecords(activeYear) || [];
     const listMaterials = OperationStorage.getRawMaterialRecords(activeYear) || [];
 
@@ -229,7 +393,7 @@ export default function OperationDashboard() {
     return () => {
       window.removeEventListener('operation-ledger-changed', handler);
     };
-  }, [activeYear, activeMonth]);
+  }, [activeYear, activeMonth, isPreviewMode]);
 
   // Set initial rate input value
   useEffect(() => {
@@ -600,6 +764,27 @@ export default function OperationDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Sample Alert */}
+      {isPreviewMode && (
+        <div id="operation-preview-notice" className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-fade shadow-xs">
+          <div className="flex items-start gap-2.5 text-xs">
+            <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">⚠️ 샘플 데이터 화면 보기 (임시)</p>
+              <p className="text-zinc-650 mt-1">
+                현재 실전 화면 구성을 미리 보여주는 샘플 모드입니다. 이 데이터는 브라우저에 저장되지 않으며, 실제 엑셀 파일 업로드 시 정식 실적으로 영구 대체됩니다.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsPreviewMode(false)}
+            className="px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm cursor-pointer transition-colors"
+          >
+            샘플 종료
+          </button>
+        </div>
+      )}
+
       {/* Page Title */}
       <div id="dashboard-header-block" className="bg-white p-6 rounded-2xl border border-[#dde5de] shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-5">
         <div>
@@ -717,12 +902,20 @@ export default function OperationDashboard() {
           <p className="text-xs text-zinc-500 max-w-sm mt-2 font-medium leading-relaxed">
             운영 업로드에서 제품수불부 또는 원자재수불부를 등록하세요.
           </p>
-          <AppButton
-            onClick={() => navigate('/operation-upload')}
-            className="mt-6 bg-[#111111] text-white hover:bg-zinc-800 font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs border-none"
-          >
-            운영 데이터 업로드로 이동 <ChevronRight className="w-4 h-4" />
-          </AppButton>
+          <div className="flex flex-wrap gap-3 mt-6 justify-center">
+            <AppButton
+              onClick={() => navigate('/operation-upload')}
+              className="bg-[#111111] text-white hover:bg-zinc-800 font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs border-none"
+            >
+              운영 데이터 업로드로 이동 <ChevronRight className="w-4 h-4" />
+            </AppButton>
+            <AppButton
+              onClick={() => setIsPreviewMode(true)}
+              className="bg-white text-zinc-800 border border-zinc-300 hover:bg-zinc-50 font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              샘플 데이터 화면 보기
+            </AppButton>
+          </div>
         </div>
       ) : (
         <>

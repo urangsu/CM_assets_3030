@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { AppCard } from '../components/ui/AppCard';
 import { OperationStorage, ProductLedgerRecord } from '../lib/operation/operationStorage';
-import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
+import { ExchangeRateStorage, getSafeExchangeRate, formatExchangeRateLabel } from '../lib/operation/exchangeRateStorage';
 
 function formatKRWMillion(valueKRW: number): string {
   if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
@@ -169,7 +169,7 @@ export default function ProductStatus() {
   };
 
   // Map exchange rate
-  const exRate = ExchangeRateStorage.getRate(activeYear, Number(activeMonth));
+  const exRate = getSafeExchangeRate(activeYear, Number(activeMonth));
 
   const formatQuantity = (val: number) => {
     if (val === 0) return '-';
@@ -177,19 +177,24 @@ export default function ProductStatus() {
   };
 
   const formatMonetaryValue = (val: number, isUnitPrice: boolean = false) => {
-    if (val === 0) return '-';
+    if (!Number.isFinite(val) || val === 0) return '-';
+
     if (currencyMode === 'USD') {
+      if (!exRate) return '환율 미등록';
       const usdVal = val / exRate;
+
       if (isUnitPrice) {
         return `$${Math.round(usdVal).toLocaleString()}`;
       }
+
       return `$${(usdVal / 1_000_000).toFixed(2)}M`;
-    } else {
-      if (isUnitPrice) {
-        return `₩${Math.round(val).toLocaleString()}`;
-      }
-      return formatKRWMillion(val);
     }
+
+    if (isUnitPrice) {
+      return `₩${Math.round(val).toLocaleString()}`;
+    }
+
+    return formatKRWMillion(val);
   };
 
   const PRODUCTS_TO_SHOW = ['황산니켈', '황산코발트', '탄산리튬', '황산망간', '구리'];
@@ -201,11 +206,32 @@ export default function ProductStatus() {
         <div id="simulated-warning-box" className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex items-start gap-2.5 shadow-sm animate-fade">
           <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-xs">
-            <span className="font-bold">⚠️ 시뮬레이션 표기 (수불 정보 없음)</span>
-            <p className="text-zinc-600 mt-0.5">
-              현재 {activeYear}년 {activeMonth}월 제품수불 결과가 업로드되지 않았습니다. 실무 흐름을 보여주기 위해 정성 규격 샘플 데이터가 가동 중입니다.
+            <span className="font-bold">⚠️ 샘플 데이터</span>
+            <p className="text-zinc-650 mt-1">
+              아직 업로드된 제품수불부가 없어 화면 확인용 샘플 데이터를 표시합니다. 실제 데이터는 운영 업로드에서 제품수불부를 등록하면 월 단위로 교체됩니다.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Missing Exchange Rate Warning Banner */}
+      {currencyMode === 'USD' && !exRate && (
+        <div id="exchange-rate-warning-box" className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm animate-fade">
+          <div className="flex items-start gap-2.5">
+            <Info className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <span className="font-bold block text-sm">⚠️ 환율 미등록</span>
+              <p className="text-zinc-650 mt-1">
+                달러 보기에는 월평균환율이 필요합니다. 환율 관리에서 자동 연계하거나 수동 입력하세요.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => window.location.href = '/operation-dashboard'}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-colors cursor-pointer"
+          >
+            환율 입력
+          </button>
         </div>
       )}
 
@@ -281,7 +307,7 @@ export default function ProductStatus() {
             POSCO HYCM {activeYear}년 {activeMonth}월 제품수불 결과 요약대장
           </span>
           <span className="text-zinc-400 font-mono text-[10px]">
-            기준 환율: 1 USD = {exRate.toLocaleString()} KRW
+            기준 환율: {formatExchangeRateLabel(exRate)}
           </span>
         </div>
 

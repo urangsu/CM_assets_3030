@@ -171,3 +171,18 @@ export const ExchangeRateStorage = {
     }
   }
 };
+
+export function getSafeExchangeRate(year: string, month: number): number | null {
+  const rate = ExchangeRateStorage.getRate(year, month);
+  return Number.isFinite(rate) && Number(rate) > 0 ? Number(rate) : null;
+}
+
+export function formatExchangeRateLabel(rate: number | null): string {
+  if (!rate) return '환율 미등록';
+  return `1 USD = ${rate.toLocaleString()} KRW`;
+}
+
+export function convertKRWToUSD(valueKRW: number, rate: number | null): number | null {
+  if (!Number.isFinite(valueKRW) || !rate || rate <= 0) return null;
+  return valueKRW / rate;
+}

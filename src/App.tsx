@@ -26,6 +26,7 @@ import DepartmentAssignment from './pages/DepartmentAssignment';
 import OperationUpload from './pages/OperationUpload';
 import OperationDashboard from './pages/OperationDashboard';
 import ProductStatus from './pages/ProductStatus';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   return (
@@ -59,13 +60,13 @@ export default function App() {
         <Route path="/budget-lock-management" element={<Layout><BudgetLockManagement /></Layout>} />
 
         {/* 5. 비즈니스 운영 모듈 */}
-        <Route path="/operation-dashboard" element={<Layout><OperationDashboard /></Layout>} />
-        <Route path="/operation-upload" element={<Layout><OperationUpload /></Layout>} />
-        <Route path="/sales-status" element={<Layout><SalesStatus /></Layout>} />
-        <Route path="/purchase-status" element={<Layout><PurchaseStatus /></Layout>} />
-        <Route path="/product-status" element={<Layout><ProductStatus /></Layout>} />
-        <Route path="/production-status" element={<Layout><ProductionStatus /></Layout>} />
-        <Route path="/raw-material-status" element={<Layout><RawMaterialStatus /></Layout>} />
+        <Route path="/operation-dashboard" element={<Layout><ErrorBoundary title="운영 대시보드"><OperationDashboard /></ErrorBoundary></Layout>} />
+        <Route path="/operation-upload" element={<Layout><ErrorBoundary title="운영자료 업로드"><OperationUpload /></ErrorBoundary></Layout>} />
+        <Route path="/sales-status" element={<Layout><ErrorBoundary title="판매 현황"><SalesStatus /></ErrorBoundary></Layout>} />
+        <Route path="/purchase-status" element={<Layout><ErrorBoundary title="구매 현황"><PurchaseStatus /></ErrorBoundary></Layout>} />
+        <Route path="/product-status" element={<Layout><ErrorBoundary title="제품 수불 현황"><ProductStatus /></ErrorBoundary></Layout>} />
+        <Route path="/production-status" element={<Layout><ErrorBoundary title="생산 현황"><ProductionStatus /></ErrorBoundary></Layout>} />
+        <Route path="/raw-material-status" element={<Layout><ErrorBoundary title="원자재 수불 현황"><RawMaterialStatus /></ErrorBoundary></Layout>} />
 
         {/* --- Route Alias Redirects (라우트 안정화) --- */}
         <Route path="/plan-actual" element={<Navigate to="/plan-actual-upload" replace />} />
@@ -81,6 +82,9 @@ export default function App() {
         <Route path="/comparison" element={<Navigate to="/variance-comparison" replace />} />
         <Route path="/account-master" element={<Navigate to="/account-management" replace />} />
         <Route path="/department-master" element={<Navigate to="/department-management" replace />} />
+        <Route path="/products" element={<Navigate to="/product-status" replace />} />
+        <Route path="/product-ledger" element={<Navigate to="/product-status" replace />} />
+        <Route path="/product" element={<Navigate to="/product-status" replace />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

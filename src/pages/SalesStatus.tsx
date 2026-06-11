@@ -24,7 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, ProductLedgerRecord } from '../lib/operation/operationStorage';
-import { ExchangeRateStorage } from '../lib/operation/exchangeRateStorage';
+import { ExchangeRateStorage, getSafeExchangeRate, formatExchangeRateLabel } from '../lib/operation/exchangeRateStorage';
 
 function formatKRWMillion(valueKRW: number): string {
   if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
@@ -132,12 +132,14 @@ export default function SalesStatus() {
   // Convert values with currency rates
   const getExchangeRate = (mNum?: number) => {
     const month = mNum || (activeMonth === 'all' ? 5 : Number(activeMonth));
-    return ExchangeRateStorage.getRate(activeYear, month);
+    return getSafeExchangeRate(activeYear, month);
   };
 
   const convertAmount = (krwVal: number, mNum?: number) => {
     if (currencyMode === 'USD') {
-      return krwVal / getExchangeRate(mNum);
+      const rate = getExchangeRate(mNum);
+      if (!rate) return 0;
+      return krwVal / rate;
     }
     return krwVal;
   };
@@ -146,7 +148,10 @@ export default function SalesStatus() {
   const formatCurrencyValue = (val: number, isKPI: boolean = false) => {
     if (val === 0) return '-';
     if (currencyMode === 'USD') {
-      const usdVal = val / (isKPI ? 1_000_000 : 1_000);
+      const rate = getExchangeRate();
+      if (!rate) return '환율 미등록';
+      const usdTotal = val / rate;
+      const usdVal = usdTotal / (isKPI ? 1_000_000 : 1_000);
       return isKPI ? `$${usdVal.toFixed(1)}M` : `$${Math.round(usdVal).toLocaleString()}K`;
     }
     // For KRW - strictly format in millions
@@ -245,22 +250,43 @@ export default function SalesStatus() {
     <div className="space-y-6 animate-fade font-sans">
       {/* Sample Alert */}
       {isSampleData && (
-        <div id="sales-simulated-warning-box" className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div id="sales-simulated-warning-box" className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-fade">
           <div className="flex items-start gap-2.5 text-xs">
             <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold">⚠️ RUNNING SAMPLE (샘플 데이터 모드)</p>
-              <p className="text-[#647067] mt-0.5">
-                현재 업로드된 정식 제품수불 정보가 확인되지 않아 정성 수밀 세팅 샘플이 출력 중입니다. 실제 실적으로 변환하려면 [운영 업로드] 페이지에서 엑셀 수불부를 업로드해 주십시오.
+              <p className="font-bold">⚠️ 샘플 데이터</p>
+              <p className="text-zinc-650 mt-1">
+                아직 업로드된 제품수불부가 없어 화면 확인용 샘플 데이터를 표시합니다. 실제 데이터는 운영 업로드에서 제품수불부를 등록하면 월 단위로 교체됩니다.
               </p>
             </div>
           </div>
           <AppButton
             onClick={() => navigate('/operation-upload')}
-            className="text-xs bg-amber-500 text-white hover:bg-amber-600 font-bold border-none cursor-pointer"
+            className="text-xs bg-[#00786F] text-white hover:bg-[#005f58] font-bold border-none cursor-pointer px-3.5 py-1.5 rounded-lg"
           >
             운영 업로드 바로가기
           </AppButton>
+        </div>
+      )}
+
+      {/* Missing Exchange Rate Warning Banner */}
+      {currencyMode === 'USD' && !getExchangeRate() && (
+        <div id="exchange-rate-warning-box" className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm animate-fade">
+          <div className="flex items-start gap-2.5">
+            <Info className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <span className="font-bold block text-sm">⚠️ 환율 미등록</span>
+              <p className="text-zinc-650 mt-1">
+                달러 보기에는 월평균환율이 필요합니다. 환율 관리에서 자동 연계하거나 수동 입력하세요.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/operation-dashboard')}
+            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-colors cursor-pointer"
+          >
+            환율 입력
+          </button>
         </div>
       )}
 
