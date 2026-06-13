@@ -242,6 +242,24 @@ interface RecommendationRow {
   excludeReason?: string;
 }
 
+interface GroupedRecommendationRow {
+  groupId: string;
+  accountCode: string;
+  accountName: string;
+  originalDeptCode: string;
+  originalDeptName: string;
+  currentAttributedDeptCode?: string;
+  currentAttributedDeptName?: string;
+  recommendedDeptCode: string;
+  recommendedDeptName: string;
+  months: RecommendationRow[];
+  monthLabels: string;
+  totalAmount: number;
+  maxScore: number;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
+  status: '대기' | '적용됨' | '무시됨' | '수동 변경';
+}
+
 const DEFAULT_ATTRIBUTION_COL_WIDTHS = {
   select: 44,
   period: 64,
@@ -292,7 +310,12 @@ export default function DepartmentAssignment() {
   const [isManualGridOpen, setIsManualGridOpen] = useState(false);
   const [manualRowsLoaded, setManualRowsLoaded] = useState(false);
 
-  const [recommendationSort, setRecommendationSort] = useState<SortConfig<RecommendationSortKey> | null>(null);
+  const [recommendationSort, setRecommendationSort] = useState<SortConfig<RecommendationSortKey> | null>({
+    key: 'accountCode',
+    direction: 'asc',
+  });
+  const [recommendationViewMode, setRecommendationViewMode] = useState<'GROUPED' | 'ROW'>('GROUPED');
+  const [selectedRecommendationGroupIds, setSelectedRecommendationGroupIds] = useState<Set<string>>(new Set());
   const [manualSort, setManualSort] = useState<SortConfig<ManualSortKey> | null>(null);
 
   const [recommendationColumnFilters, setRecommendationColumnFilters] = useState({
@@ -416,6 +439,8 @@ export default function DepartmentAssignment() {
   // Selected Row for Details (Master-Detail)
   const [selectedRowId, setSelectedRowId] = useState<string | number | null>(null);
   const [editingAttributionRowId, setEditingAttributionRowId] = useState<string | number | null>(null);
+  const [editingGroupRowId, setEditingGroupRowId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [draftAttributedDeptCode, setDraftAttributedDeptCode] = useState('');
 
   const [columnWidths, setColumnWidths] = useState<Record<AttributionColumnKey, number>>(() => {
@@ -758,7 +783,30 @@ export default function DepartmentAssignment() {
       });
     });
 
-    return result.sort((a, b) => b.score - a.score);
+    return result.sort((a, b) => {
+      const accountCompare = String(a.accountCode || '').localeCompare(
+        String(b.accountCode || ''),
+        'ko-KR',
+        { numeric: true, sensitivity: 'base' }
+      );
+      if (accountCompare !== 0) return accountCompare;
+
+      const originalDeptCompare = String(a.originalDeptCode || '').localeCompare(
+        String(b.originalDeptCode || ''),
+        'ko-KR',
+        { numeric: true, sensitivity: 'base' }
+      );
+      if (originalDeptCompare !== 0) return originalDeptCompare;
+
+      const recommendedDeptCompare = String(a.recommendedDeptCode || '').localeCompare(
+        String(b.recommendedDeptCode || ''),
+        'ko-KR',
+        { numeric: true, sensitivity: 'base' }
+      );
+      if (recommendedDeptCompare !== 0) return recommendedDeptCompare;
+
+      return Number(a.monthIndex || 99) - Number(b.monthIndex || 99);
+    });
   }, [actualRowsList, year, allDepts, viewableDepts, recommendationPlanType, monthMode, selectedMonth, budgetRowsByDept, overrides, excludedRowIds, currentUser]);
 
   // Apply UI Filters
@@ -945,16 +993,65 @@ export default function DepartmentAssignment() {
       rows.sort((a, b) => {
         const key = recommendationSort.key;
 
+        if (key === 'accountCode') {
+          const accountCompare = String(a.accountCode || '').localeCompare(
+            String(b.accountCode || ''),
+            'ko-KR',
+            { numeric: true, sensitivity: 'base' }
+          );
+          if (accountCompare !== 0) {
+            return recommendationSort.direction === 'asc' ? accountCompare : -accountCompare;
+          }
+
+          const deptCompare = String(a.originalDeptCode || '').localeCompare(
+            String(b.originalDeptCode || ''),
+            'ko-KR',
+            { numeric: true, sensitivity: 'base' }
+          );
+          if (deptCompare !== 0) return deptCompare;
+
+          const recCompare = String(a.recommendedDeptCode || '').localeCompare(
+            String(b.recommendedDeptCode || ''),
+            'ko-KR',
+            { numeric: true, sensitivity: 'base' }
+          );
+          if (recCompare !== 0) return recCompare;
+
+          return Number(a.monthIndex || 99) - Number(b.monthIndex || 99);
+        }
+
+        if (key === 'period') {
+          const aMonth = Number(a.monthIndex || 0);
+          const bMonth = Number(b.monthIndex || 0);
+          if (aMonth !== bMonth) {
+            return recommendationSort.direction === 'asc' ? aMonth - bMonth : bMonth - aMonth;
+          }
+          return String(a.accountCode || '').localeCompare(
+            String(b.accountCode || ''),
+            'ko-KR',
+            { numeric: true, sensitivity: 'base' }
+          );
+        }
+
+        if (key === 'amount') {
+          const aAmt = Number(a.amount || 0);
+          const bAmt = Number(b.amount || 0);
+          if (aAmt !== bAmt) {
+            return recommendationSort.direction === 'asc' ? aAmt - bAmt : bAmt - aAmt;
+          }
+          const accountCompare = String(a.accountCode || '').localeCompare(
+            String(b.accountCode || ''),
+            'ko-KR',
+            { numeric: true, sensitivity: 'base' }
+          );
+          if (accountCompare !== 0) return accountCompare;
+          return Number(a.monthIndex || 99) - Number(b.monthIndex || 99);
+        }
+
         let aValue: string | number = '';
         let bValue: string | number = '';
 
-        if (key === 'period') {
-          aValue = parsePeriodValue(a.period);
-          bValue = parsePeriodValue(b.period);
-        } else if (key === 'amount') {
-          aValue = a.amount || 0;
-          bValue = b.amount || 0;
-        } else if (key === 'originalDept') {
+        if (key === 'originalDept') {
           aValue = `${a.originalDeptCode} ${a.originalDeptName}`;
           bValue = `${b.originalDeptCode} ${b.originalDeptName}`;
         } else if (key === 'currentDept') {
@@ -986,6 +1083,82 @@ export default function DepartmentAssignment() {
   const visibleRecommendationRows = useMemo(() => {
     return filteredAndSortedRecommendationRows.slice(0, recVisibleCount);
   }, [filteredAndSortedRecommendationRows, recVisibleCount]);
+
+  const getRecommendationGroupKey = (row: RecommendationRow) => {
+    return [
+      row.accountCode,
+      row.accountName,
+      row.originalDeptCode,
+      row.recommendedDeptCode || '',
+      row.status,
+    ].join('|');
+  };
+
+  const groupedRecommendationRows = useMemo(() => {
+    const map = new Map<string, GroupedRecommendationRow>();
+
+    filteredAndSortedRecommendationRows.forEach(row => {
+      const key = getRecommendationGroupKey(row);
+
+      if (!map.has(key)) {
+        map.set(key, {
+          groupId: key,
+          accountCode: row.accountCode,
+          accountName: row.accountName,
+          originalDeptCode: row.originalDeptCode,
+          originalDeptName: row.originalDeptName,
+          currentAttributedDeptCode: row.currentAttributedDeptCode,
+          currentAttributedDeptName: row.currentAttributedDeptName,
+          recommendedDeptCode: row.recommendedDeptCode,
+          recommendedDeptName: row.recommendedDeptName,
+          months: [],
+          monthLabels: '',
+          totalAmount: 0,
+          maxScore: 0,
+          confidence: row.confidence,
+          status: row.status,
+        });
+      }
+
+      const group = map.get(key)!;
+      group.months.push(row);
+      group.totalAmount += row.amount || 0;
+      group.maxScore = Math.max(group.maxScore, row.score || 0);
+
+      const confidenceRank = { NONE: 0, LOW: 1, MEDIUM: 2, HIGH: 3 };
+      if (confidenceRank[row.confidence] > confidenceRank[group.confidence]) {
+        group.confidence = row.confidence;
+      }
+    });
+
+    const formatGroupMonthLabel = (months: any[]) => {
+      const indices = months.map(m => m.monthIndex).sort((a: number, b: number) => a - b);
+      const unique = Array.from(new Set(indices));
+      if (unique.length === 12) return '전체 12개월';
+      
+      let consecutive = true;
+      for (let i = 1; i < unique.length; i++) {
+        if (unique[i] !== unique[i - 1] + 1) {
+          consecutive = false;
+          break;
+        }
+      }
+      if (consecutive && unique.length > 2) {
+        return `${unique[0]}~${unique[unique.length - 1]}월`;
+      }
+      return unique.map(m => `${m}월`).join(', ');
+    };
+
+    return Array.from(map.values()).map(group => ({
+      ...group,
+      months: group.months.sort((a, b) => a.monthIndex - b.monthIndex),
+      monthLabels: formatGroupMonthLabel(group.months),
+    }));
+  }, [filteredAndSortedRecommendationRows]);
+
+  const visibleGroupedRows = useMemo(() => {
+    return groupedRecommendationRows.slice(0, recVisibleCount);
+  }, [groupedRecommendationRows, recVisibleCount]);
 
   // Excluded Rows construction
   const excludedRecommendationRows = useMemo(() => {
@@ -1434,6 +1607,225 @@ export default function DepartmentAssignment() {
     loadData();
   };
 
+  const handleApplyRecommendationGroup = (group: GroupedRecommendationRow) => {
+    const actKey = getActualDataKey(year);
+    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const targetIds = new Set(group.months.filter(m => m.status === '대기').map(m => m.rowId));
+    if (targetIds.size === 0) return;
+
+    const newLogs: any[] = [];
+    const updated = storedActuals.map((row: any) => {
+      if (!targetIds.has(row.id)) return row;
+      
+      const reasons = group.months[0]?.reasons.map(r => r.label) || [];
+      const score = group.months[0]?.score || 0;
+
+      newLogs.push({
+        id: `${Date.now()}_grp_${Math.random().toString(36).substring(2, 7)}`,
+        time: new Date().toLocaleString(),
+        action: '집계 귀속 적용 (계정 묶음)',
+        accountCode: row.accountCode,
+        accountName: row.accountName,
+        originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+        beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
+        afterAttributedDeptName: `[${group.recommendedDeptCode}] ${group.recommendedDeptName}`,
+        user: currentUser?.name || '업무담당자',
+        reason: '계정 묶음 귀속추천 적용 (' + group.monthLabels + ')',
+      });
+
+      return {
+        ...row,
+        usageCode: row.usageCode,
+        usageDept: row.usageDept,
+        attributedDeptCode: group.recommendedDeptCode,
+        attributedDeptName: group.recommendedDeptName,
+        attributionSource: 'recommendation',
+        attributionScore: score,
+        attributionReasons: reasons,
+        attributionUpdatedAt: new Date().toISOString(),
+      };
+    });
+
+    localStorage.setItem(actKey, JSON.stringify(updated));
+    clearDataLoaderCache();
+    appendAttributionAuditLogs(newLogs);
+
+    setFeedbackMsg({
+      type: 'success',
+      text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건에 추천 귀속부서 [${group.recommendedDeptName}]를 적용하였습니다.`
+    });
+    setTimeout(() => setFeedbackMsg(null), 3000);
+    loadData();
+  };
+
+  const handleIgnoreRecommendationGroup = (group: GroupedRecommendationRow) => {
+    const nextSet = new Set<string | number>(excludedRowIds);
+    const newLogs: any[] = [];
+    
+    group.months.forEach(m => {
+      nextSet.add(m.rowId);
+      newLogs.push({
+        id: `${Date.now()}_grpig_${Math.random().toString(36).substring(2, 7)}`,
+        time: new Date().toLocaleString(),
+        action: '추천 무시 (계정 묶음)',
+        accountCode: m.accountCode,
+        accountName: m.accountName,
+        originalDeptName: `[${m.originalDeptCode}] ${m.originalDeptName}`,
+        beforeAttributedDeptName: m.currentAttributedDeptName || '원 사용처 기준',
+        afterAttributedDeptName: '추천 제외됨 (사용자 무시)',
+        user: currentUser?.name || '업무담당자',
+        reason: '계정 묶음 귀속추천 제외 설정 (' + group.monthLabels + ')',
+      });
+    });
+
+    saveExcludedRowIds(nextSet);
+    appendAttributionAuditLogs(newLogs);
+
+    setFeedbackMsg({
+      type: 'success',
+      text: `[${group.accountName}] 계정 묶음 ${group.months.length}건을 추천 무시 처리했습니다.`
+    });
+    setTimeout(() => setFeedbackMsg(null), 3000);
+    loadData();
+  };
+
+  const handleApplyManualChangeGroup = (group: GroupedRecommendationRow, selectedDeptCode: string) => {
+    if (!selectedDeptCode) return;
+    const dept = allDepts.find(d => d.code === selectedDeptCode);
+    if (!dept) return;
+
+    const actKey = getActualDataKey(year);
+    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const targetIds = new Set(group.months.map(m => m.rowId));
+
+    const newLogs: any[] = [];
+    const updated = storedActuals.map((row: any) => {
+      if (!targetIds.has(row.id)) return row;
+
+      newLogs.push({
+        id: `${Date.now()}_grpmn_${Math.random().toString(36).substring(2, 7)}`,
+        time: new Date().toLocaleString(),
+        action: '수동 보정 적용 (계정 묶음)',
+        accountCode: row.accountCode,
+        accountName: row.accountName,
+        originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+        beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
+        afterAttributedDeptName: `[${dept.code}] ${dept.name}`,
+        user: currentUser?.name || '업무담당자',
+        reason: '계정 묶음 수동 변경 지정',
+      });
+
+      return {
+        ...row,
+        usageCode: row.usageCode,
+        usageDept: row.usageDept,
+        attributedDeptCode: dept.code,
+        attributedDeptName: dept.name,
+        attributionSource: 'manual',
+        attributionScore: 0,
+        attributionReasons: ['업무담당자 수동 보정 변경 (계정 묶음)'],
+        attributionUpdatedAt: new Date().toISOString(),
+      };
+    });
+
+    localStorage.setItem(actKey, JSON.stringify(updated));
+    clearDataLoaderCache();
+    appendAttributionAuditLogs(newLogs);
+
+    setFeedbackMsg({
+      type: 'success',
+      text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 귀속부서를 [${dept.name}] (수동)으로 적용하였습니다.`
+    });
+    setTimeout(() => setFeedbackMsg(null), 3000);
+    loadData();
+  };
+
+  const handleRevertAttributionGroup = (group: GroupedRecommendationRow) => {
+    const actKey = getActualDataKey(year);
+    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const targetIds = new Set(group.months.map(m => m.rowId));
+
+    const newLogs: any[] = [];
+    const updated = storedActuals.map((row: any) => {
+      if (!targetIds.has(row.id)) return row;
+
+      newLogs.push({
+        id: `${Date.now()}_grprv_${Math.random().toString(36).substring(2, 7)}`,
+        time: new Date().toLocaleString(),
+        action: '지정 귀속 복원 (계정 묶음)',
+        accountCode: row.accountCode,
+        accountName: row.accountName,
+        originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+        beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
+        afterAttributedDeptName: '원 사용처 기준',
+        user: currentUser?.name || '업무담당자',
+        reason: '계정 묶음 원본 부서 기준으로 복원 (' + group.monthLabels + ')',
+      });
+
+      const {
+        attributedDeptCode,
+        attributedDeptName,
+        attributionSource,
+        attributionScore,
+        attributionReasons,
+        attributionUpdatedAt,
+        ...rest
+      } = row;
+      return rest;
+    });
+
+    localStorage.setItem(actKey, JSON.stringify(updated));
+    clearDataLoaderCache();
+    appendAttributionAuditLogs(newLogs);
+
+    setFeedbackMsg({
+      type: 'success',
+      text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 지정 귀속부서를 제거하고 원본 부서 기준으로 원복하였습니다.`
+    });
+    setTimeout(() => setFeedbackMsg(null), 3000);
+    loadData();
+  };
+
+  const handleUndoIgnoreGroup = (group: GroupedRecommendationRow) => {
+    const nextSet = new Set<string | number>(excludedRowIds);
+    group.months.forEach(m => {
+      nextSet.delete(m.rowId);
+    });
+    saveExcludedRowIds(nextSet);
+
+    const newLogs: any[] = [];
+    group.months.forEach(m => {
+      newLogs.push({
+        id: `${Date.now()}_grpund_${Math.random().toString(36).substring(2, 7)}`,
+        time: new Date().toLocaleString(),
+        action: '무시 조정 취소 (계정 묶음)',
+        accountCode: m.accountCode,
+        accountName: m.accountName,
+        originalDeptName: `[${m.originalDeptCode}] ${m.originalDeptName}`,
+        beforeAttributedDeptName: '추천 제외됨 (사용자 무시)',
+        afterAttributedDeptName: m.recommendedDeptCode 
+          ? `[${m.recommendedDeptCode}] ${m.recommendedDeptName}` 
+          : '원 사용처 기준',
+        user: currentUser?.name || '업무담당자',
+        reason: '계정 묶음 귀속추천 무시 제외 해제',
+      });
+    });
+
+    appendAttributionAuditLogs(newLogs);
+
+    setFeedbackMsg({
+      type: 'success',
+      text: `계정 묶음 ${group.months.length}건의 추천 제외 설정을 해제했습니다.`
+    });
+    setSelectedRecommendationGroupIds(prev => {
+      const next = new Set(prev);
+      next.delete(group.groupId);
+      return next;
+    });
+    setTimeout(() => setFeedbackMsg(null), 3000);
+    loadData();
+  };
+
   // Actions: Higher confidence bulk apply
   const handleBulkApplyHighConfidence = () => {
     const highPending = allRecommendationRows.filter(r => {
@@ -1508,6 +1900,101 @@ export default function DepartmentAssignment() {
 
   // Actions: Bulk Action Applied Selected
   const handleApplySelectedRows = () => {
+    if (recommendationViewMode === 'GROUPED') {
+      if (selectedRecommendationGroupIds.size === 0) {
+        showAlert('선택 항목 적용', '선택한 그룹 항목이 없습니다.');
+        return;
+      }
+
+      const targets = groupedRecommendationRows.filter(
+        g => selectedRecommendationGroupIds.has(g.groupId)
+      );
+
+      const actionableRowIds = new Set<string | number>();
+      targets.forEach(g => {
+        g.months.filter(m => m.status === '대기').forEach(m => {
+          actionableRowIds.add(m.rowId);
+        });
+      });
+
+      if (actionableRowIds.size === 0) {
+        showAlert('선택 항목 적용', '선택한 그룹 중 적용 가능한 대기 상태 추천 건이 없습니다.');
+        return;
+      }
+
+      showConfirm(
+        '선택 항목 적용',
+        `선택한 ${targets.length}개 그룹 (총 ${actionableRowIds.size}건의 월별 항목)을 추천 귀속부서로 적용하시겠습니까?`,
+        () => {
+          const actKey = getActualDataKey(year);
+          const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+          const opName = currentUser?.name || '기획재무담당';
+          const newLogs: any[] = [];
+          let count = 0;
+
+          const updated = storedActuals.map((row: any) => {
+            if (actionableRowIds.has(row.id)) {
+              count++;
+              let matchRow: any = null;
+              for (const g of targets) {
+                const found = g.months.find(m => m.rowId === row.id);
+                if (found) {
+                  matchRow = found;
+                  break;
+                }
+              }
+
+              const recDeptCode = matchRow?.recommendedDeptCode || '';
+              const recDeptName = matchRow?.recommendedDeptName || '';
+              const reasons = matchRow ? matchRow.reasons.map((r: any) => r.label) : [];
+
+              newLogs.push({
+                id: `${Date.now()}_sel_${Math.random().toString(36).substring(2, 7)}`,
+                time: new Date().toLocaleString(),
+                action: '추천 적용 (계정 묶음 선택)',
+                accountCode: row.accountCode,
+                accountName: row.accountName,
+                originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+                beforeAttributedDeptName: row.attributedDeptCode 
+                  ? `[${row.attributedDeptCode}] ${row.attributedDeptName}` 
+                  : '원 사용처 기준',
+                afterAttributedDeptName: `[${recDeptCode}] ${recDeptName}`,
+                user: opName,
+                reason: '계정 묶음 선택 일괄 적용 - ' + reasons.join(', '),
+              });
+
+              return {
+                ...row,
+                usageCode: row.usageCode,
+                usageDept: row.usageDept,
+                attributedDeptCode: recDeptCode,
+                attributedDeptName: recDeptName,
+                attributionSource: 'recommendation',
+                attributionScore: matchRow?.score || 0,
+                attributionReasons: reasons,
+                attributionUpdatedAt: new Date().toISOString(),
+              };
+            }
+            return row;
+          });
+
+          localStorage.setItem(actKey, JSON.stringify(updated));
+          appendAttributionAuditLogs(newLogs);
+          clearDataLoaderCache();
+
+          setFeedbackMsg({
+            type: 'success',
+            text: `선택하신 ${targets.length}개 그룹 (총 ${count}건)에 대해 실적 귀속부서를 적용했습니다.`
+          });
+          setSelectedRecommendationGroupIds(new Set());
+          setTimeout(() => setFeedbackMsg(null), 3000);
+          loadData();
+        },
+        '적용'
+      );
+      return;
+    }
+
     if (selectedRowIds.size === 0) {
       showAlert('선택 항목 적용', '선택한 항목이 없습니다.');
       return;
@@ -1586,6 +2073,71 @@ export default function DepartmentAssignment() {
 
   // Actions: Bulk Action Ignore Selected
   const handleIgnoreSelectedRows = () => {
+    if (recommendationViewMode === 'GROUPED') {
+      if (selectedRecommendationGroupIds.size === 0) {
+        showAlert('선택 항목 무시', '선택한 그룹 항목이 없습니다.');
+        return;
+      }
+
+      const targets = groupedRecommendationRows.filter(
+        g => selectedRecommendationGroupIds.has(g.groupId)
+      );
+
+      const actionableRowIds = new Set<string | number>();
+      targets.forEach(g => {
+        g.months.forEach(m => {
+          actionableRowIds.add(m.rowId);
+        });
+      });
+
+      if (actionableRowIds.size === 0) {
+        showAlert('선택 항목 무시', '선택한 그룹 중 무시 가능한 추천 건이 없습니다.');
+        return;
+      }
+
+      showConfirm(
+        '선택 항목 무시',
+        `선택한 ${targets.length}개 그룹 (총 ${actionableRowIds.size}건의 월별 항목)을 추천 귀속에서 무시하여 제외하시겠습니까?`,
+        () => {
+          const nextSet = new Set<string | number>(excludedRowIds);
+          const newLogs: any[] = [];
+
+          targets.forEach(g => {
+            g.months.forEach(item => {
+              nextSet.add(item.rowId);
+              newLogs.push({
+                id: `${Date.now()}_selig_${Math.random().toString(36).substring(2, 7)}`,
+                time: new Date().toLocaleString(),
+                action: '추천 무시 (계정 묶음 선택)',
+                accountCode: item.accountCode,
+                accountName: item.accountName,
+                originalDeptName: `[${item.originalDeptCode}] ${item.originalDeptName}`,
+                beforeAttributedDeptName: item.currentAttributedDeptCode 
+                  ? `[${item.currentAttributedDeptCode}] ${item.currentAttributedDeptName}` 
+                  : '원 사용처 기준',
+                afterAttributedDeptName: '사용자 추천 제외 처리 (숨김)',
+                user: currentUser?.name || '업무담당자',
+                reason: '계정 묶음 선택 일괄 무시 처리',
+              });
+            });
+          });
+
+          saveExcludedRowIds(nextSet);
+          appendAttributionAuditLogs(newLogs);
+
+          setFeedbackMsg({
+            type: 'success',
+            text: `선택하신 ${targets.length}개 그룹 (총 ${actionableRowIds.size}건)의 항목이 추천 무시 처리되었습니다.`
+          });
+          setSelectedRecommendationGroupIds(new Set());
+          setTimeout(() => setFeedbackMsg(null), 3000);
+          loadData();
+        },
+        '무시'
+      );
+      return;
+    }
+
     if (selectedRowIds.size === 0) {
       showAlert('선택 항목 무시', '선택한 항목이 없습니다.');
       return;
@@ -1674,6 +2226,28 @@ export default function DepartmentAssignment() {
       setSelectedRowIds(new Set());
     } else {
       setSelectedRowIds(new Set(pendingInPage.map(r => r.rowId)));
+    }
+  };
+
+  const handleToggleSelectGroup = (groupId: string) => {
+    setSelectedRecommendationGroupIds(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleAllSelectGroups = () => {
+    const actionableGroups = groupedRecommendationRows.filter(g => g.months.some(m => m.status === '대기'));
+    const allSelected = actionableGroups.length > 0 && actionableGroups.every(g => selectedRecommendationGroupIds.has(g.groupId));
+    if (allSelected) {
+      setSelectedRecommendationGroupIds(new Set());
+    } else {
+      setSelectedRecommendationGroupIds(new Set(actionableGroups.map(g => g.groupId)));
     }
   };
 
@@ -1970,22 +2544,26 @@ export default function DepartmentAssignment() {
 
             <button
               onClick={handleApplySelectedRows}
-              disabled={selectedRowIds.size === 0}
+              disabled={recommendationViewMode === 'GROUPED' ? selectedRecommendationGroupIds.size === 0 : selectedRowIds.size === 0}
               className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded font-bold border transition ${
-                selectedRowIds.size > 0 
+                (recommendationViewMode === 'GROUPED' ? selectedRecommendationGroupIds.size > 0 : selectedRowIds.size > 0)
                   ? 'border-[#008f83] text-[#008f83] bg-emerald-50/20 hover:bg-emerald-50/50 cursor-pointer'
                   : 'border-zinc-200 text-zinc-400 bg-zinc-50 cursor-not-allowed'
               }`}
             >
-              선택 항목 적용 ({selectedRowIds.size}건)
+              {recommendationViewMode === 'GROUPED'
+                ? `선택 묶음 적용 (${selectedRecommendationGroupIds.size}개 그룹)`
+                : `선택 항목 적용 (${selectedRowIds.size}건)`}
             </button>
 
             <button
               onClick={handleIgnoreSelectedRows}
-              disabled={selectedRowIds.size === 0}
+              disabled={recommendationViewMode === 'GROUPED' ? selectedRecommendationGroupIds.size === 0 : selectedRowIds.size === 0}
               className="flex items-center gap-1 px-3 py-1.5 text-xs rounded font-bold border border-zinc-200 text-zinc-500 hover:bg-zinc-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              선택 항목 무시 ({selectedRowIds.size}건)
+              {recommendationViewMode === 'GROUPED'
+                ? `선택 묶음 무시 (${selectedRecommendationGroupIds.size}개 그룹)`
+                : `선택 항목 무시 (${selectedRowIds.size}건)`}
             </button>
 
             <button
@@ -2124,9 +2702,46 @@ export default function DepartmentAssignment() {
             </div>
             <div className="flex items-center gap-2.5">
               <span className="text-[11.5px] font-mono text-zinc-500">
-                조회 결과: <strong>{filteredAndSortedRecommendationRows.length}</strong>건 / 전체 {allRecommendationRows.length}건
+                조회 결과:{' '}
+                <strong>
+                  {recommendationViewMode === 'GROUPED'
+                    ? `${groupedRecommendationRows.length}개 그룹`
+                    : `${filteredAndSortedRecommendationRows.length}건`}
+                </strong>{' '}
+                / 전체 {allRecommendationRows.length}건
               </span>
-              <span className="text-zinc-300">|</span>
+              <span className="text-zinc-350">|</span>
+              <div className="flex bg-zinc-200/60 p-0.5 rounded-lg border border-zinc-200/30">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecommendationViewMode('GROUPED');
+                    setSelectedRowId(null);
+                  }}
+                  className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition select-none ${
+                    recommendationViewMode === 'GROUPED'
+                      ? 'bg-[#008f83] text-white shadow-sm'
+                      : 'text-zinc-600 hover:bg-zinc-100'
+                  }`}
+                >
+                  계정별 묶음 보기
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecommendationViewMode('ROW');
+                    setSelectedRowId(null);
+                  }}
+                  className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition select-none ${
+                    recommendationViewMode === 'ROW'
+                      ? 'bg-[#008f83] text-white shadow-sm'
+                      : 'text-zinc-600 hover:bg-zinc-100'
+                  }`}
+                >
+                  건별 상세 보기
+                </button>
+              </div>
+              <span className="text-zinc-350">|</span>
               <button
                 type="button"
                 onClick={() => {
@@ -2189,10 +2804,17 @@ export default function DepartmentAssignment() {
                             <input 
                               type="checkbox"
                               checked={
-                                filteredAndSortedRecommendationRows.length > 0 &&
-                                filteredAndSortedRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId))
+                                recommendationViewMode === 'GROUPED'
+                                  ? (groupedRecommendationRows.filter(g => g.months.some(m => m.status === '대기')).length > 0 &&
+                                     groupedRecommendationRows.filter(g => g.months.some(m => m.status === '대기')).every(g => selectedRecommendationGroupIds.has(g.groupId)))
+                                  : (filteredAndSortedRecommendationRows.length > 0 &&
+                                     filteredAndSortedRecommendationRows.filter(r => r.status === '대기').every(r => selectedRowIds.has(r.rowId)))
                               }
-                              onChange={handleToggleAllSelect}
+                              onChange={
+                                recommendationViewMode === 'GROUPED'
+                                  ? handleToggleAllSelectGroups
+                                  : handleToggleAllSelect
+                              }
                               className="rounded accent-[#008f83] cursor-pointer"
                             />
                           </div>
@@ -2380,7 +3002,434 @@ export default function DepartmentAssignment() {
                   </tr>
                 </thead>
               <tbody className="divide-y divide-zinc-150 font-sans">
-                {filteredAndSortedRecommendationRows.length === 0 ? (
+                {recommendationViewMode === 'GROUPED' ? (
+                  groupedRecommendationRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-14 text-center text-zinc-400">
+                        지정된 조건에 부합하는 귀속 추천 그룹이 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleGroupedRows.map(group => {
+                      const isSelected = selectedGroupId === group.groupId;
+                      const isChecked = selectedRecommendationGroupIds.has(group.groupId);
+
+                      // Determine uniform or mixed status
+                      const pendingCount = group.months.filter(m => m.status === '대기').length;
+                      const appliedCount = group.months.filter(m => m.status === '적용됨').length;
+                      const manualCount = group.months.filter(m => m.status === '수동 변경').length;
+                      const ignoredCount = group.months.filter(m => m.status === '무시됨').length;
+
+                      let statusBadge = (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-800 font-bold">
+                          대기
+                        </span>
+                      );
+                      if (pendingCount === group.months.length) {
+                        statusBadge = <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-800 font-bold">대기</span>;
+                      } else if (appliedCount === group.months.length) {
+                        statusBadge = <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-800 font-bold">적용됨</span>;
+                      } else if (ignoredCount === group.months.length) {
+                        statusBadge = <span className="px-1.5 py-0.5 rounded text-[10px] bg-zinc-200 text-zinc-600 font-bold">무시됨</span>;
+                      } else if (manualCount === group.months.length) {
+                        statusBadge = <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-800 font-bold">수동 변경</span>;
+                      } else {
+                        statusBadge = (
+                          <span 
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-700 font-bold border border-indigo-100 cursor-help"
+                            title={`대기: ${pendingCount}건, 적용: ${appliedCount}건, 수정: ${manualCount}건, 무시: ${ignoredCount}건`}
+                          >
+                            혼합상태 ({group.months.length}건)
+                          </span>
+                        );
+                      }
+
+                      // Uniform current department code
+                      const uniqueCurrentCodes = Array.from(new Set(group.months.map(m => m.currentAttributedDeptCode || '')));
+                      const isUniformCurrent = uniqueCurrentCodes.length === 1;
+                      const uniformCode = uniqueCurrentCodes[0];
+                      const uniformName = group.months.find(m => m.currentAttributedDeptCode === uniformCode)?.currentAttributedDeptName || '';
+
+                      return (
+                        <React.Fragment key={group.groupId}>
+                          <tr 
+                            onClick={() => {
+                              setEditingGroupRowId(null);
+                              setDraftAttributedDeptCode('');
+                              setSelectedGroupId(prev => prev === group.groupId ? null : group.groupId);
+                            }}
+                            className={`hover:bg-zinc-50/60 transition-all cursor-pointer ${
+                              isSelected ? 'bg-emerald-50/20 border-l-2 border-[#008f83]' : ''
+                            }`}
+                          >
+                            <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              {group.months.some(m => m.status === '대기') ? (
+                                <input 
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleToggleSelectGroup(group.groupId)}
+                                  className="rounded accent-[#008f83]"
+                                />
+                              ) : (
+                                <span className="text-zinc-300 font-mono text-[10px]">-</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-2 text-center font-mono font-medium text-zinc-500">
+                              <span className="inline-block px-1.5 py-0.5 bg-zinc-100 text-zinc-700 rounded text-[10px] font-bold">
+                                {group.monthLabels}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-mono font-bold text-zinc-700">{group.accountCode}</td>
+                            <td className="py-3 px-3">
+                              <span className="block truncate font-bold text-zinc-900" title={group.accountName}>
+                                {group.accountName}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="block truncate text-zinc-650" title={`[${group.originalDeptCode}] ${group.originalDeptName}`}>
+                                {renderDeptCellContent(group.originalDeptCode, group.originalDeptName)}
+                              </span>
+                            </td>
+                            <td
+                              className="py-3 px-3"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedGroupId(null);
+                                setEditingGroupRowId(prev => {
+                                  const next = prev === group.groupId ? null : group.groupId;
+                                  if (next !== null) {
+                                    setDraftAttributedDeptCode(
+                                      uniformCode || group.originalDeptCode
+                                    );
+                                  }
+                                  return next;
+                                });
+                              }}
+                            >
+                              {editingGroupRowId === group.groupId ? (
+                                <div className="min-w-[220px] rounded-lg border border-[#008f83]/30 bg-white p-2 shadow-sm" onClick={(e) => e.stopPropagation()}>
+                                  <div className="mb-1 text-[10px] font-bold text-zinc-500">
+                                    그룹 전체 귀속부서 변경
+                                  </div>
+                                  <select
+                                    value={draftAttributedDeptCode}
+                                    onChange={(e) => setDraftAttributedDeptCode(e.target.value)}
+                                    className="w-full rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium outline-none focus:border-[#008f83]"
+                                  >
+                                    <option value={group.originalDeptCode}>
+                                      원 사용처 기준 [{group.originalDeptCode}] {group.originalDeptName}
+                                    </option>
+                                    {allDepts.map(dept => (
+                                      <option key={dept.code} value={dept.code}>
+                                        [{dept.code}] {dept.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="mt-2 flex justify-end gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingGroupRowId(null);
+                                        setDraftAttributedDeptCode('');
+                                      }}
+                                      className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] font-bold text-zinc-500 hover:bg-zinc-50 cursor-pointer"
+                                    >
+                                      취소
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!draftAttributedDeptCode) return;
+                                        if (draftAttributedDeptCode === group.originalDeptCode) {
+                                          handleRevertAttributionGroup(group);
+                                        } else {
+                                          handleApplyManualChangeGroup(group, draftAttributedDeptCode);
+                                        }
+                                        setEditingGroupRowId(null);
+                                        setDraftAttributedDeptCode('');
+                                      }}
+                                      className="rounded bg-[#008f83] px-2 py-0.5 text-[10px] font-bold text-white hover:bg-[#00746b] cursor-pointer"
+                                    >
+                                      적용
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="group flex max-w-[160px] items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-emerald-50 cursor-pointer"
+                                  title="그룹 전체 귀속부서 변경"
+                                >
+                                  {isUniformCurrent && uniformCode ? (
+                                    <span className="block truncate font-semibold text-[#008f83]">
+                                      {renderDeptCellContent(uniformCode, uniformName)}
+                                    </span>
+                                  ) : !isUniformCurrent ? (
+                                    <span className="block truncate font-bold text-indigo-600">
+                                      혼합 ({uniqueCurrentCodes.length}개 부서)
+                                    </span>
+                                  ) : (
+                                    <span className="font-medium text-zinc-400">
+                                      원 사용처 기준
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-zinc-300 group-hover:text-[#008f83] shrink-0">
+                                    변경
+                                  </span>
+                                </button>
+                              )}
+                            </td>
+                            <td className="py-3 px-3">
+                              {group.recommendedDeptCode ? (
+                                <span
+                                  className="block truncate text-left font-bold text-[#008f83]"
+                                  title="귀속 추천 정보"
+                                >
+                                  {renderDeptCellContent(group.recommendedDeptCode, group.recommendedDeptName)}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 font-mono">-</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-zinc-800" title={`${group.amount.toLocaleString()}원`}>
+                              {formatMillionWon(group.amount)}
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              {statusBadge}
+                            </td>
+                            <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex gap-1 justify-center">
+                                {pendingCount > 0 && (
+                                  <>
+                                    <button
+                                      onClick={() => handleApplyRecommendationGroup(group)}
+                                      className="px-1.5 py-0.5 bg-[#008f83] hover:bg-[#00746b] text-white rounded font-bold transition text-[10px] select-none cursor-pointer"
+                                    >
+                                      적용
+                                    </button>
+                                    <button
+                                      onClick={() => handleIgnoreRecommendationGroup(group)}
+                                      className="px-1.5 py-0.5 bg-zinc-150 border border-zinc-200 hover:bg-zinc-200 text-zinc-650 rounded font-bold transition text-[10px] select-none cursor-pointer"
+                                    >
+                                      무시
+                                    </button>
+                                  </>
+                                )}
+                                {pendingCount === 0 && (appliedCount > 0 || manualCount > 0) && (
+                                  <button
+                                    onClick={() => handleRevertAttributionGroup(group)}
+                                    className="px-1.5 py-0.5 border border-red-200 text-red-650 hover:bg-red-50 rounded font-bold transition text-[10px] select-none cursor-pointer"
+                                    title="그룹 전체 원 사용처 기준으로 귀속 원복"
+                                  >
+                                    원복
+                                  </button>
+                                )}
+                                {pendingCount === 0 && ignoredCount > 0 && (
+                                  <button
+                                    onClick={() => handleUndoIgnoreGroup(group)}
+                                    className="px-1.5 py-0.5 border border-zinc-300 text-zinc-650 hover:bg-zinc-100 rounded font-semibold transition text-[10px] select-none cursor-pointer"
+                                  >
+                                    무시취소
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {isSelected && (
+                            <tr className="bg-zinc-50 border-t border-b border-zinc-200 pointer-events-auto">
+                              <td colSpan={10} className="p-4" onClick={(e) => e.stopPropagation()}>
+                                <div className="bg-white rounded-lg border border-zinc-200 shadow-xs p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold text-zinc-700">
+                                      [계정별 세부 항목] {group.accountCode} - {group.accountName} ({group.months.length}건)
+                                    </span>
+                                    <button 
+                                      type="button"
+                                      onClick={() => setSelectedGroupId(null)}
+                                      className="text-[11px] text-[#008f83] hover:underline cursor-pointer select-none"
+                                    >
+                                      접기 ▲
+                                    </button>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs font-sans">
+                                      <thead>
+                                        <tr className="bg-zinc-50 text-zinc-500 font-bold border-b border-zinc-200">
+                                          <th className="py-2 px-2 text-center" style={{ width: '60px' }}>선택</th>
+                                          <th className="py-2 px-2 text-center" style={{ width: '80px' }}>기간</th>
+                                          <th className="py-2 px-2 text-left" style={{ width: '180px' }}>원 사용처</th>
+                                          <th className="py-2 px-2 text-left" style={{ width: '220px' }}>현재 귀속부서</th>
+                                          <th className="py-2 px-2 text-left" style={{ width: '220px' }}>귀속 추천부서</th>
+                                          <th className="py-2 px-2 text-right" style={{ width: '120px' }}>실적 금액</th>
+                                          <th className="py-2 px-2 text-center" style={{ width: '120px' }}>귀속 상태</th>
+                                          <th className="py-2 px-2 text-center" style={{ width: '120px' }}>작업</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-zinc-100">
+                                        {group.months.map(subItem => {
+                                          const isSubChecked = selectedRowIds.has(subItem.rowId);
+                                          return (
+                                            <tr key={subItem.rowId} className="hover:bg-zinc-50/50">
+                                              <td className="py-2 px-2 text-center">
+                                                {subItem.status === '대기' ? (
+                                                  <input 
+                                                    type="checkbox"
+                                                    checked={isSubChecked}
+                                                    onChange={() => handleToggleSelectRow(subItem.rowId)}
+                                                    className="rounded accent-[#008f83] cursor-pointer"
+                                                  />
+                                                ) : (
+                                                  <span className="text-zinc-300">-</span>
+                                                )}
+                                              </td>
+                                              <td className="py-2 px-2 text-center font-mono font-medium text-zinc-500">{subItem.period}</td>
+                                              <td className="py-2 px-2 text-left truncate max-w-[180px]" title={`[${subItem.originalDeptCode}] ${subItem.originalDeptName}`}>
+                                                [{subItem.originalDeptCode}] {subItem.originalDeptName}
+                                              </td>
+                                              <td className="py-2 px-2 text-left">
+                                                {editingAttributionRowId === subItem.rowId ? (
+                                                  <div className="rounded border border-[#008f83]/30 bg-white p-1 max-w-[200px]" onClick={(e) => e.stopPropagation()}>
+                                                    <select
+                                                      value={draftAttributedDeptCode}
+                                                      onChange={(e) => setDraftAttributedDeptCode(e.target.value)}
+                                                      className="w-full rounded border border-zinc-200 bg-white px-1 py-0.5 text-[10px] focus:border-[#008f83]"
+                                                    >
+                                                      <option value={subItem.originalDeptCode}>
+                                                        원 사용처 [{subItem.originalDeptCode}]
+                                                      </option>
+                                                      {allDepts.map(d => (
+                                                        <option key={d.code} value={d.code}>
+                                                          [{d.code}] {d.name}
+                                                        </option>
+                                                      ))}
+                                                    </select>
+                                                    <div className="mt-1 flex justify-end gap-1 text-[9px]">
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setEditingAttributionRowId(null);
+                                                          setDraftAttributedDeptCode('');
+                                                        }}
+                                                        className="px-1 border border-zinc-200 rounded text-zinc-500 hover:bg-zinc-50"
+                                                      >
+                                                        취소
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          if (!draftAttributedDeptCode) return;
+                                                          if (draftAttributedDeptCode === subItem.originalDeptCode) {
+                                                            handleRevertAttribution(subItem.rowId);
+                                                          } else {
+                                                            handleApplyManualChange(subItem.rowId, draftAttributedDeptCode);
+                                                          }
+                                                          setEditingAttributionRowId(null);
+                                                          setDraftAttributedDeptCode('');
+                                                        }}
+                                                        className="px-1 bg-[#008f83] text-white rounded hover:bg-[#00746b]"
+                                                      >
+                                                        적용
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setEditingAttributionRowId(subItem.rowId);
+                                                      setDraftAttributedDeptCode(subItem.currentAttributedDeptCode || subItem.originalDeptCode);
+                                                    }}
+                                                    className="text-left font-medium text-zinc-650 hover:bg-zinc-100 px-1 py-0.5 rounded flex items-center gap-1 cursor-pointer"
+                                                  >
+                                                    {subItem.currentAttributedDeptCode ? (
+                                                      <span className="text-[#008f83] font-bold">
+                                                        [{subItem.currentAttributedDeptCode}] {subItem.currentAttributedDeptName}
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-zinc-400">원 사용처 기준</span>
+                                                    )}
+                                                    <span className="text-[9px] text-[#008f83] hover:underline shrink-0">변경</span>
+                                                  </button>
+                                                )}
+                                              </td>
+                                              <td className="py-2 px-2 text-left truncate max-w-[200px]" title={`[${subItem.recommendedDeptCode}] ${subItem.recommendedDeptName}`}>
+                                                [{subItem.recommendedDeptCode}] {subItem.recommendedDeptName}
+                                              </td>
+                                              <td className="py-2 px-2 text-right font-mono text-zinc-800 font-medium">
+                                                {formatMillionWon(subItem.amount)}
+                                              </td>
+                                              <td className="py-2 px-2 text-center">
+                                                <span className={`px-1 rounded text-[9px] font-bold ${
+                                                  subItem.status === '적용됨' 
+                                                    ? 'bg-emerald-100 text-emerald-800' 
+                                                    : subItem.status === '무시됨' 
+                                                    ? 'bg-zinc-200 text-zinc-600' 
+                                                    : subItem.status === '수동 변경' 
+                                                    ? 'bg-blue-100 text-blue-800' 
+                                                    : 'bg-amber-100 text-amber-800'
+                                                }`}>
+                                                  {subItem.status}
+                                                </span>
+                                              </td>
+                                              <td className="py-2 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex gap-1 justify-center text-[9px]">
+                                                  {subItem.status === '대기' && (
+                                                    <>
+                                                      <button
+                                                        onClick={() => handleApplyRecommendation(
+                                                          subItem.rowId, 
+                                                          subItem.recommendedDeptCode, 
+                                                          subItem.recommendedDeptName, 
+                                                          subItem.reasons.map(r => r.label), 
+                                                          subItem.score
+                                                        )}
+                                                        className="px-1 py-0.5 bg-[#008f83] text-white rounded font-bold hover:bg-[#00746b] cursor-pointer"
+                                                      >
+                                                        적용
+                                                      </button>
+                                                      <button
+                                                        onClick={() => handleIgnoreRecommendation(subItem.rowId)}
+                                                        className="px-1 py-0.5 border border-zinc-200 text-zinc-600 rounded bg-zinc-50 hover:bg-zinc-100 cursor-pointer"
+                                                      >
+                                                        무시
+                                                      </button>
+                                                    </>
+                                                  )}
+                                                  {(subItem.status === '적용됨' || subItem.status === '수동 변경') && (
+                                                    <button
+                                                      onClick={() => handleRevertAttribution(subItem.rowId)}
+                                                      className="px-1 py-0.5 border border-red-200 text-red-650 hover:bg-red-50 rounded cursor-pointer"
+                                                    >
+                                                      원복
+                                                    </button>
+                                                  )}
+                                                  {subItem.status === '무시됨' && (
+                                                    <button
+                                                      onClick={() => handleUndoIgnore(subItem.rowId)}
+                                                      className="px-1 py-0.5 border border-zinc-300 text-zinc-650 hover:bg-zinc-100 rounded cursor-pointer"
+                                                    >
+                                                      무시취소
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )
+                ) : filteredAndSortedRecommendationRows.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="py-14 text-center text-zinc-400">
                       지정된 조건에 부합하는 귀속 추천 항목이 없습니다.

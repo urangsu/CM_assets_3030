@@ -24,6 +24,54 @@ import { buildMonthlyMatrix, buildAccountMonthlyCompareRows, buildDeptMonthlyCom
 let cachedPretendardBase64: string | null = null;
 let XLSX: any = null;
 
+function setFormulaCell(ws: any, rowIndex: number, colIndex: number, formula: string, numFmt?: string) {
+  const addr = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+  ws[addr] = {
+    t: 'n',
+    f: formula,
+    ...(numFmt ? { z: numFmt } : {}),
+  };
+}
+
+function cellRef(rowIndex: number, colIndex: number) {
+  return XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+}
+
+function colRef(colIndex: number) {
+  return XLSX.utils.encode_col(colIndex);
+}
+
+function rowNo(rowIndex: number) {
+  return rowIndex + 1;
+}
+
+function makeSumFormula(rowIndex: number, startCol: number, endCol: number) {
+  const start = cellRef(rowIndex, startCol);
+  const end = cellRef(rowIndex, endCol);
+  return `SUM(${start}:${end})`;
+}
+
+function makeVarianceFormula(rowIndex: number, targetTotalCol: number, baseTotalCol: number) {
+  return `${cellRef(rowIndex, targetTotalCol)}-${cellRef(rowIndex, baseTotalCol)}`;
+}
+
+function makeVarianceRateFormula(rowIndex: number, targetTotalCol: number, baseTotalCol: number) {
+  const target = cellRef(rowIndex, targetTotalCol);
+  const base = cellRef(rowIndex, baseTotalCol);
+  return `IF(${base}=0,"",(${target}-${base})/${base})`;
+}
+
+function makeAccountingTypeSumFormula(
+  accountingType: '제조' | '판관',
+  colIndex: number,
+  firstDataRow: number,
+  lastDataRow: number
+) {
+  const accountingTypeCol = '$B';
+  const col = colRef(colIndex);
+  return `SUMIF(${accountingTypeCol}$${rowNo(firstDataRow)}:${accountingTypeCol}$${rowNo(lastDataRow)},"${accountingType}",${col}$${rowNo(firstDataRow)}:${col}$${rowNo(lastDataRow)})`;
+}
+
 function getCompareRowCode(row: any, isDeptMode: boolean): string {
   return isDeptMode
     ? row.deptCode || row.code || row.key || ''
@@ -688,31 +736,41 @@ export default function VarianceComparison() {
       ['부서코드', '부서명', baseName, targetName, '차액', '증감률(%)', '상태'],
     ];
 
-    Array.from(summaryByDept.values())
-      .sort((a, b) => a.deptCode.localeCompare(b.deptCode))
-      .forEach(row => {
-        const variance = row.targetAmount - row.baseAmount;
-        const variancePercent = calcVarianceRate(row.baseAmount, row.targetAmount);
+    const summaryRows = Array.from(summaryByDept.values())
+      .sort((a, b) => a.deptCode.localeCompare(b.deptCode));
 
-        const status = getVarianceStatus({
-          baseAmount: row.baseAmount,
-          targetAmount: row.targetAmount,
-          basePlanType,
-          targetPlanType,
-        });
+    summaryRows.forEach(row => {
+      const variance = row.targetAmount - row.baseAmount;
+      const variancePercent = calcVarianceRate(row.baseAmount, row.targetAmount);
 
-        data.push([
-          row.deptCode,
-          row.deptName,
-          row.baseAmount,
-          row.targetAmount,
-          variance,
-          toExcelPercentValue(variancePercent),
-          status,
-        ]);
+      const status = getVarianceStatus({
+        baseAmount: row.baseAmount,
+        targetAmount: row.targetAmount,
+        basePlanType,
+        targetPlanType,
       });
 
+      data.push([
+        row.deptCode,
+        row.deptName,
+        row.baseAmount,
+        row.targetAmount,
+        variance,
+        toExcelPercentValue(variancePercent),
+        status,
+      ]);
+    });
+
     const ws = XLSX.utils.aoa_to_sheet(data);
+
+    const firstDataRow = 1; // Header is 1 row, data starts at row index 1 (Excel Row 2)
+    const lastDataRow = firstDataRow + summaryRows.length - 1;
+
+    for (let r = firstDataRow; r <= lastDataRow; r += 1) {
+      // Index 2 is base, Index 3 is target, Index 4 is variance, Index 5 is variance rate
+      setFormulaCell(ws, r, 4, `${cellRef(r, 3)}-${cellRef(r, 2)}`, '#,##0');
+      setFormulaCell(ws, r, 5, `IF(${cellRef(r, 2)}=0,"",(${cellRef(r, 3)}-${cellRef(r, 2)})/${cellRef(r, 2)})`, '0.00%');
+    }
 
     ws['!cols'] = [
       { wch: 12 },
@@ -843,6 +901,44 @@ export default function VarianceComparison() {
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet(data);
+
+    const firstDataRow = 2; // Data rows start at index 2 (Excel Row 3)
+    const lastDataRow = firstDataRow + rows.length - 1;
+
+    for (let r = firstDataRow; r <= lastDataRow; r += 1) {
+      setFormulaCell(ws, r, targetTotalCol, makeSumFormula(r, targetMonthStart, targetTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, baseTotalCol, makeSumFormula(r, baseMonthStart, baseTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, varianceCol, makeVarianceFormula(r, targetTotalCol, baseTotalCol), '#,##0');
+      setFormulaCell(ws, r, varianceRateCol, makeVarianceRateFormula(r, targetTotalCol, baseTotalCol), '0.00%');
+    }
+
+    // Department total row indices and formulas
+    const deptTotalRowIndex = data.length - 1;
+
+    for (let c = targetMonthStart; c <= targetTotalCol - 1; c += 1) {
+      setFormulaCell(
+        ws,
+        deptTotalRowIndex,
+        c,
+        `SUM(${cellRef(firstDataRow, c)}:${cellRef(lastDataRow, c)})`,
+        '#,##0'
+      );
+    }
+
+    for (let c = baseMonthStart; c <= baseTotalCol - 1; c += 1) {
+      setFormulaCell(
+        ws,
+        deptTotalRowIndex,
+        c,
+        `SUM(${cellRef(firstDataRow, c)}:${cellRef(lastDataRow, c)})`,
+        '#,##0'
+      );
+    }
+
+    setFormulaCell(ws, deptTotalRowIndex, targetTotalCol, makeSumFormula(deptTotalRowIndex, targetMonthStart, targetTotalCol - 1), '#,##0');
+    setFormulaCell(ws, deptTotalRowIndex, baseTotalCol, makeSumFormula(deptTotalRowIndex, baseMonthStart, baseTotalCol - 1), '#,##0');
+    setFormulaCell(ws, deptTotalRowIndex, varianceCol, makeVarianceFormula(deptTotalRowIndex, targetTotalCol, baseTotalCol), '#,##0');
+    setFormulaCell(ws, deptTotalRowIndex, varianceRateCol, makeVarianceRateFormula(deptTotalRowIndex, targetTotalCol, baseTotalCol), '0.00%');
 
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
@@ -1056,6 +1152,44 @@ export default function VarianceComparison() {
 
     const ws = XLSX.utils.aoa_to_sheet(data);
 
+    const firstDataRow = 2; // Data rows start at index 2 (Excel Row 3)
+    const lastDataRow = firstDataRow + aggregatedRows.length - 1;
+
+    for (let r = firstDataRow; r <= lastDataRow; r += 1) {
+      setFormulaCell(ws, r, targetTotalCol, makeSumFormula(r, targetMonthStart, targetTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, baseTotalCol, makeSumFormula(r, baseMonthStart, baseTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, varianceCol, makeVarianceFormula(r, targetTotalCol, baseTotalCol), '#,##0');
+      setFormulaCell(ws, r, varianceRateCol, makeVarianceRateFormula(r, targetTotalCol, baseTotalCol), '0.00%');
+    }
+
+    // Group total row indices and formulas
+    const groupTotalRowIndex = data.length - 1;
+
+    for (let c = targetMonthStart; c <= targetTotalCol - 1; c += 1) {
+      setFormulaCell(
+        ws,
+        groupTotalRowIndex,
+        c,
+        `SUM(${cellRef(firstDataRow, c)}:${cellRef(lastDataRow, c)})`,
+        '#,##0'
+      );
+    }
+
+    for (let c = baseMonthStart; c <= baseTotalCol - 1; c += 1) {
+      setFormulaCell(
+        ws,
+        groupTotalRowIndex,
+        c,
+        `SUM(${cellRef(firstDataRow, c)}:${cellRef(lastDataRow, c)})`,
+        '#,##0'
+      );
+    }
+
+    setFormulaCell(ws, groupTotalRowIndex, targetTotalCol, makeSumFormula(groupTotalRowIndex, targetMonthStart, targetTotalCol - 1), '#,##0');
+    setFormulaCell(ws, groupTotalRowIndex, baseTotalCol, makeSumFormula(groupTotalRowIndex, baseMonthStart, baseTotalCol - 1), '#,##0');
+    setFormulaCell(ws, groupTotalRowIndex, varianceCol, makeVarianceFormula(groupTotalRowIndex, targetTotalCol, baseTotalCol), '#,##0');
+    setFormulaCell(ws, groupTotalRowIndex, varianceRateCol, makeVarianceRateFormula(groupTotalRowIndex, targetTotalCol, baseTotalCol), '0.00%');
+
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
       { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
@@ -1204,6 +1338,14 @@ export default function VarianceComparison() {
         }
       });
     }
+
+    wb.Workbook = {
+      ...(wb.Workbook || {}),
+      CalcPr: {
+        fullCalcOnLoad: true,
+        forceFullCalc: true,
+      },
+    };
 
     XLSX.writeFile(wb, getReportFileName('xlsx'));
   };
@@ -1390,6 +1532,40 @@ export default function VarianceComparison() {
 
     const ws = XLSX.utils.aoa_to_sheet(excelData);
 
+    const firstDataRow = 2; // Header rows are index 0 & 1, data starts at index 2 (Excel Row 3)
+    const lastDataRow = firstDataRow + monthlyRows.length - 1;
+
+    for (let r = firstDataRow; r <= lastDataRow; r += 1) {
+      setFormulaCell(ws, r, targetTotalCol, makeSumFormula(r, targetMonthStart, targetTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, baseTotalCol, makeSumFormula(r, baseMonthStart, baseTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, varianceCol, makeVarianceFormula(r, targetTotalCol, baseTotalCol), '#,##0');
+      setFormulaCell(ws, r, varianceRateCol, makeVarianceRateFormula(r, targetTotalCol, baseTotalCol), '0.00%');
+    }
+
+    const blankRowIndex = firstDataRow + monthlyRows.length;
+    const mfgTotalRowIndex = blankRowIndex + 1;
+    const sgaTotalRowIndex = blankRowIndex + 2;
+    const grandTotalRowIndex = blankRowIndex + 3;
+
+    for (let c = targetMonthStart; c <= targetTotalCol - 1; c += 1) {
+      setFormulaCell(ws, mfgTotalRowIndex, c, makeAccountingTypeSumFormula('제조', c, firstDataRow, lastDataRow), '#,##0');
+      setFormulaCell(ws, sgaTotalRowIndex, c, makeAccountingTypeSumFormula('판관', c, firstDataRow, lastDataRow), '#,##0');
+      setFormulaCell(ws, grandTotalRowIndex, c, `SUM(${cellRef(mfgTotalRowIndex, c)}:${cellRef(sgaTotalRowIndex, c)})`, '#,##0');
+    }
+
+    for (let c = baseMonthStart; c <= baseTotalCol - 1; c += 1) {
+      setFormulaCell(ws, mfgTotalRowIndex, c, makeAccountingTypeSumFormula('제조', c, firstDataRow, lastDataRow), '#,##0');
+      setFormulaCell(ws, sgaTotalRowIndex, c, makeAccountingTypeSumFormula('판관', c, firstDataRow, lastDataRow), '#,##0');
+      setFormulaCell(ws, grandTotalRowIndex, c, `SUM(${cellRef(mfgTotalRowIndex, c)}:${cellRef(sgaTotalRowIndex, c)})`, '#,##0');
+    }
+
+    [mfgTotalRowIndex, sgaTotalRowIndex, grandTotalRowIndex].forEach(r => {
+      setFormulaCell(ws, r, targetTotalCol, makeSumFormula(r, targetMonthStart, targetTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, baseTotalCol, makeSumFormula(r, baseMonthStart, baseTotalCol - 1), '#,##0');
+      setFormulaCell(ws, r, varianceCol, makeVarianceFormula(r, targetTotalCol, baseTotalCol), '#,##0');
+      setFormulaCell(ws, r, varianceRateCol, makeVarianceRateFormula(r, targetTotalCol, baseTotalCol), '0.00%');
+    });
+
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
       { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
@@ -1446,6 +1622,15 @@ export default function VarianceComparison() {
     if (ws['!cols'][statusCol]) ws['!cols'][statusCol] = { ...ws['!cols'][statusCol], wch: 11 };
 
     appendSheetSafely(wb, ws, '비교분석');
+
+    wb.Workbook = {
+      ...(wb.Workbook || {}),
+      CalcPr: {
+        fullCalcOnLoad: true,
+        forceFullCalc: true,
+      },
+    };
+
     XLSX.writeFile(wb, getDownloadFileName('xlsx'));
   };
 
