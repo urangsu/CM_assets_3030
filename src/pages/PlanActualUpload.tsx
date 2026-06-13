@@ -9,7 +9,9 @@ import {
   parsePastedText,
   detectUploadType,
   isProbablyHeaderlessMonthlyRow,
-  buildHeaderlessMonthlyHeaders
+  buildHeaderlessMonthlyHeaders,
+  isProbablyBudgetAdjustmentRow,
+  buildBudgetAdjustmentHeaders
 } from '../lib/actualUploadParser';
 import { AppModal } from '../components/ui/AppModal';
 import { AppButton } from '../components/ui/AppButton';
@@ -156,6 +158,47 @@ function mergeUploadRows(
   target: string,
   policy: 'overwrite' | 'skip'
 ) {
+  if (target === '증액반영') {
+    const map = new Map<string, ActualData>();
+    existingRows.forEach(row => {
+      map.set(getUploadRowKey(row, target), { ...row });
+    });
+
+    let duplicateCount = 0;
+    let insertedCount = 0;
+    let overwrittenCount = 0;
+
+    incomingRows.forEach(row => {
+      const key = getUploadRowKey(row, target);
+      const exists = map.has(key);
+
+      if (exists) {
+        duplicateCount += 1;
+        const prev = map.get(key)!;
+        const newAmt = Number(prev.amount || 0) + Number(row.amount || 0);
+        map.set(key, {
+          ...prev,
+          amount: newAmt,
+          additional: newAmt,
+          balance: newAmt,
+          remarks: '증액반영 합산'
+        });
+        overwrittenCount += 1;
+      } else {
+        map.set(key, { ...row });
+        insertedCount += 1;
+      }
+    });
+
+    return {
+      rows: Array.from(map.values()),
+      duplicateCount,
+      insertedCount,
+      overwrittenCount,
+      skippedCount: 0
+    };
+  }
+
   const map = new Map<string, ActualData>();
   existingRows.forEach(row => {
     map.set(getUploadRowKey(row, target), row);
@@ -196,6 +239,27 @@ function mergeUploadRows(
 }
 
 function dedupeRowsByKey(rows: ActualData[], target: string): ActualData[] {
+  if (target === '증액반영') {
+    const map = new Map<string, ActualData>();
+    rows.forEach(row => {
+      const key = getUploadRowKey(row, target);
+      if (map.has(key)) {
+        const prev = map.get(key)!;
+        const newAmt = Number(prev.amount || 0) + Number(row.amount || 0);
+        map.set(key, {
+          ...prev,
+          amount: newAmt,
+          additional: newAmt,
+          balance: newAmt,
+          remarks: '증액반영 합산'
+        });
+      } else {
+        map.set(key, { ...row });
+      }
+    });
+    return Array.from(map.values());
+  }
+
   const map = new Map<string, ActualData>();
 
   rows.forEach(row => {
@@ -211,6 +275,74 @@ function reindexRows(rows: ActualData[]): ActualData[] {
     ...row,
     id: index + 1
   }));
+}
+
+function saveBudgetAdjustmentPlan(params: {
+  year: string;
+  adjustmentRows: ActualData[];
+  currentUser: any;
+  viewableDepts: any[];
+}) {
+  const groupedByDept = new Map<string, ActualData[]>();
+
+  params.adjustmentRows.forEach(row => {
+    const deptCode = String(row.usageCode || '').trim();
+    if (!groupedByDept.has(deptCode)) groupedByDept.set(deptCode, []);
+    groupedByDept.get(deptCode)!.push(row);
+  });
+
+  const deptsToUpdate = params.currentUser?.code === '99999'
+    ? getAllDepartments()
+    : params.viewableDepts;
+
+  deptsToUpdate.forEach(dept => {
+    if (isBudgetLocked(dept.code, params.year, '증액반영')) return;
+
+    const deptAdjustRows = groupedByDept.get(dept.code);
+    
+    const baseRaw = localStorage.getItem(getBudgetDataKey(dept.code, params.year, '경영계획'));
+    const baseRows = normalizeBudgetRows(baseRaw ? JSON.parse(baseRaw) : [], dept.code);
+
+    const adjustedRows = baseRows.map(row => ({
+      ...row,
+      id: `adj_${row.id || row.code}`,
+      values: [...row.values],
+      sourceType: 'ADJUSTED_FROM_BUSINESS_PLAN',
+    }));
+
+    if (deptAdjustRows && deptAdjustRows.length > 0) {
+      deptAdjustRows.forEach(uploadRow => {
+        const monthIndex = parsePeriodMonth(uploadRow.period);
+        if (monthIndex === null) return;
+
+        const accountCode = String(uploadRow.accountCode || '').trim();
+        const delta = Number(uploadRow.amount || 0);
+
+        let budgetRow = adjustedRows.find((r: any) =>
+          String(r.code || '').trim() === accountCode
+        );
+
+        if (!budgetRow) {
+          budgetRow = {
+            id: `adj_new_${Date.now()}_${accountCode}_${Math.random().toString(36).slice(2, 7)}`,
+            code: accountCode,
+            name: uploadRow.accountName,
+            detail: '증액반영 신규 계정',
+            calculation: '경영계획 0 + 증감액',
+            sourceType: 'ADJUSTMENT_ONLY',
+            values: Array(12).fill(0),
+            attributedDeptCode: dept.code,
+          };
+          adjustedRows.push(budgetRow);
+        }
+
+        budgetRow.values[monthIndex] = Number(budgetRow.values[monthIndex] || 0) + delta;
+        budgetRow.detail = budgetRow.detail ? `${budgetRow.detail}, 증액반영` : '증액반영';
+      });
+    }
+
+    BudgetRepository.saveRows(dept.code, params.year, '증액반영', adjustedRows);
+  });
 }
 
 const numericFields: Array<keyof ActualData> = [
@@ -277,7 +409,7 @@ export default function PlanActualUpload() {
   
   type UploadKind = "monthlyActual" | "managementPlan" | "";
   const [uploadKind, setUploadKind] = useState<UploadKind>("");
-  const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
+  const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '증액반영' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
 
   useEffect(() => {
     if (uploadTarget === '실적') {
@@ -423,39 +555,51 @@ export default function PlanActualUpload() {
         setData([]);
       }
     } else {
-      // Load budget data and flatten it
-      const allDepts = getAllDepartments();
-      const flattenedData: ActualData[] = [];
-      let idCounter = 1;
+      let loadedData: ActualData[] = [];
 
-      allDepts.forEach(dept => {
-        const key = getBudgetDataKey(dept.code, year, viewPlanType);
-        const budgetRows = JSON.parse(localStorage.getItem(key) || '[]');
-        budgetRows.forEach((row: any) => {
-          row.values.forEach((val: number, idx: number) => {
-            if (val !== 0) {
-              flattenedData.push({
-                id: idCounter++,
-                year: year,
-                period: `${idx + 1}월`,
-                accountCode: row.code,
-                accountName: row.name,
-                controlType: 'D.부서',
-                usageCode: dept.code,
-                usageDept: dept.name,
-                amount: val,
-                additional: 0,
-                transferred: 0,
-                carriedOver: 0,
-                planned: 0,
-                completed: 0,
-                balance: val,
-                remarks: row.detail || ''
-              });
-            }
+      if (viewPlanType === '증액반영') {
+        const rawAdjustmentsRaw = localStorage.getItem(`hycm_budget_adjustment_rows_${year}`);
+        if (rawAdjustmentsRaw) {
+          loadedData = JSON.parse(rawAdjustmentsRaw);
+        }
+      }
+
+      if (loadedData.length === 0) {
+        // Load budget data and flatten it
+        const allDepts = getAllDepartments();
+        const flattenedData: ActualData[] = [];
+        let idCounter = 1;
+
+        allDepts.forEach(dept => {
+          const key = getBudgetDataKey(dept.code, year, viewPlanType);
+          const budgetRows = JSON.parse(localStorage.getItem(key) || '[]');
+          budgetRows.forEach((row: any) => {
+            row.values.forEach((val: number, idx: number) => {
+              if (val !== 0) {
+                flattenedData.push({
+                  id: idCounter++,
+                  year: year,
+                  period: `${idx + 1}월`,
+                  accountCode: row.code,
+                  accountName: row.name,
+                  controlType: 'D.부서',
+                  usageCode: dept.code,
+                  usageDept: dept.name,
+                  amount: val,
+                  additional: 0,
+                  transferred: 0,
+                  carriedOver: 0,
+                  planned: 0,
+                  completed: 0,
+                  balance: val,
+                  remarks: row.detail || ''
+                });
+              }
+            });
           });
         });
-      });
+        loadedData = flattenedData;
+      }
 
       // Filter salary accounts if no permission
       const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
@@ -470,9 +614,9 @@ export default function PlanActualUpload() {
             cat.accounts.forEach((acc: any) => salaryAccountCodes.add(acc.code));
           }
         });
-        setData(flattenedData.filter(item => !salaryAccountCodes.has(item.accountCode)));
+        setData(loadedData.filter(item => !salaryAccountCodes.has(item.accountCode)));
       } else {
-        setData(flattenedData);
+        setData(loadedData);
       }
     }
     setIsSearched(false);
@@ -569,7 +713,15 @@ export default function PlanActualUpload() {
       isProbablyHeaderlessMonthlyRow(compactRows[0]) &&
       compactRows[0].length >= 4;
 
-    if (isStandardHeaderlessMonthly) {
+    const isBudgetAdjustmentHeaderless =
+      uploadTarget === '증액반영' &&
+      compactRows[0] &&
+      isProbablyBudgetAdjustmentRow(compactRows[0]);
+
+    if (isBudgetAdjustmentHeaderless) {
+      finalHeaders = buildBudgetAdjustmentHeaders();
+      finalBodyRows = compactRows;
+    } else if (isStandardHeaderlessMonthly) {
       // 회사 표준: A 부서코드, B 계정코드, C 계정명, D부터 1월
       finalHeaders = buildHeaderlessMonthlyHeaders(compactRows[0], 1);
       finalBodyRows = compactRows;
@@ -711,6 +863,66 @@ export default function PlanActualUpload() {
       } catch (e) {
         console.error('Failed to save actual upload history', e);
       }
+    } else if (uploadTarget === '증액반영') {
+      const rowsToSave = dedupeRowsByKey(data, uploadTarget);
+      
+      // Save original adjustment rows to raw key
+      localStorage.setItem(`hycm_budget_adjustment_rows_${year}`, JSON.stringify(rowsToSave));
+
+      saveBudgetAdjustmentPlan({
+        year,
+        adjustmentRows: rowsToSave,
+        currentUser,
+        viewableDepts,
+      });
+
+      clearDataLoaderCache();
+
+      setSuccessBanner({
+        isOpen: true,
+        isFinal: true,
+        message: `증액반영 계획이 저장되었습니다.\n기준: 경영계획 + 증감액\n대상 row: ${rowsToSave.length}건`,
+        location: `예산DB ${year} (증액반영)`
+      });
+
+      // Save upload history
+      const monthSummary: Record<string, number> = {};
+      rowsToSave.forEach((row: any) => {
+        const mIndex = parsePeriodMonth(row.period || row.month);
+        const mKey = mIndex !== null ? String(mIndex + 1) : '미지정';
+        monthSummary[mKey] = (monthSummary[mKey] || 0) + 1;
+      });
+
+      const uploadLogItem = {
+        id: `${Date.now()}_upload`,
+        time: new Date().toLocaleString(),
+        year,
+        target: uploadTarget,
+        rowCount: rowsToSave.length,
+        monthSummary,
+        user: currentUser?.name || '사용자'
+      };
+
+      try {
+        const existingHistoryStr = localStorage.getItem('hycm_actual_upload_history');
+        const existingHistory = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
+        existingHistory.unshift(uploadLogItem);
+        localStorage.setItem('hycm_actual_upload_history', JSON.stringify(existingHistory));
+        window.dispatchEvent(new Event('actual-upload-history-changed'));
+      } catch (e) {
+        console.error('Failed to save budget adjustment upload history', e);
+      }
+
+      // Also save to custom adjustment history key
+      try {
+        const customHistKey = 'hycm_budget_adjustment_upload_history';
+        const customHistoryStr = localStorage.getItem(customHistKey);
+        const customHistory = customHistoryStr ? JSON.parse(customHistoryStr) : [];
+        customHistory.unshift(uploadLogItem);
+        localStorage.setItem(customHistKey, JSON.stringify(customHistory));
+      } catch (e) {
+        console.error('Failed to save to custom adjustment history', e);
+      }
     } else {
       const groupedByDept = new Map<string, ActualData[]>();
       const rowsToSave = dedupeRowsByKey(data, uploadTarget);
@@ -839,6 +1051,9 @@ export default function PlanActualUpload() {
           deptsToClear.forEach(dept => {
             BudgetRepository.deleteRows(dept.code, year, viewPlanType);
           });
+          if (viewPlanType === '증액반영') {
+            localStorage.removeItem(`hycm_budget_adjustment_rows_${year}`);
+          }
           setData([]);
         }
         clearDataLoaderCache();
@@ -1532,6 +1747,7 @@ export default function PlanActualUpload() {
             >
               <option value="실적">실적</option>
               <option value="경영계획">경영계획</option>
+              <option value="증액반영">증액반영</option>
               <option value="수정경영계획">수정경영계획</option>
               <option value="1차 RP">1차 RP</option>
               <option value="2차 RP">2차 RP</option>
@@ -1605,6 +1821,7 @@ export default function PlanActualUpload() {
               <option value="">▼ 선택해주세요</option>
               <option value="실적">실적DB</option>
               <option value="경영계획">경영계획 예산DB</option>
+              <option value="증액반영">증액반영 예산DB</option>
               <option value="수정경영계획">수정경영계획 예산DB</option>
               <option value="1차 RP">1차 RP 예산DB</option>
               <option value="2차 RP">2차 RP 예산DB</option>
@@ -1612,9 +1829,10 @@ export default function PlanActualUpload() {
           </div>
           {uploadTarget && (
             <div className="flex flex-col gap-1 text-[11px] text-[#8b95a1] max-w-[280px] text-right">
-              {uploadTarget === '실적' 
-                ? <p>현재 선택: 월 실적<br/>이 파일은 실적 데이터로 업로드됩니다.</p>
-                : <p>현재 선택: 경영계획<br/>이 파일은 예산 데이터로 업로드됩니다.</p>}
+              {uploadTarget === '실적' && <p>현재 선택: 월 실적<br/>이 파일은 실적 데이터로 업로드됩니다.</p>}
+              {uploadTarget === '경영계획' && <p>현재 선택: 경영계획<br/>이 파일은 예산 데이터로 업로드됩니다.</p>}
+              {uploadTarget === '증액반영' && <p>현재 선택: 증액반영<br/>이 파일은 경영계획 대비 증감액으로 병합 저장됩니다.</p>}
+              {uploadTarget !== '실적' && uploadTarget !== '경영계획' && uploadTarget !== '증액반영' && <p>현재 선택: {uploadTarget}<br/>이 파일은 예산 데이터로 업로드됩니다.</p>}
               <p className="opacity-80">
                 {uploadTarget === '실적' 
                   ? '실적DB 저장은 예산 잠금 상태와 무관하게 저장됩니다.' 

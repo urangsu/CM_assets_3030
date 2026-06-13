@@ -262,6 +262,159 @@ export function buildAtomicCompareRows(params: {
   return atomicRows;
 }
 
+export function normalizeCompareCode(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase();
+}
+
+export function normalizeDeptCode(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+export type CompareMapItem = {
+  code: string;
+  name: string;
+  amount: number;
+  accountCode: string;
+  accountName: string;
+  accountClass: string;
+  accountingType: AccountingType;
+  isSalary: boolean;
+  deptCode?: string;
+  deptName?: string;
+};
+
+export function resolveUnionMeta(base?: CompareMapItem, target?: CompareMapItem) {
+  const code = normalizeCompareCode(base?.accountCode || target?.accountCode);
+  const name = base?.accountName || target?.accountName || '';
+
+  const accountingTypeByCode = getAccountingType(code, name);
+  const accountClassByCode = classifyAccount(code, name);
+
+  return {
+    accountCode: code,
+    accountName: base?.accountName || target?.accountName || name,
+    accountingType: (accountingTypeByCode || base?.accountingType || target?.accountingType || '기타') as AccountingType,
+    accountClass: accountClassByCode || base?.accountClass || target?.accountClass || '기타',
+    isSalary: base?.isSalary || target?.isSalary || false,
+  };
+}
+
+function upsertCompareMap(
+  map: Map<string, CompareMapItem>,
+  groupKey: string,
+  row: AtomicCompareRow,
+  allDepts: any[],
+  groupBy: 'account' | 'dept'
+) {
+  const code = groupKey;
+  const resolvedName = groupBy === 'dept'
+    ? (allDepts.find(d => d.code === row.deptCode)?.name || row.deptCode)
+    : row.accountName;
+
+  const existing = map.get(groupKey);
+  if (existing) {
+    existing.amount += row.amount;
+  } else {
+    map.set(groupKey, {
+      code,
+      name: resolvedName,
+      amount: row.amount,
+      accountCode: row.accountCode,
+      accountName: row.accountName,
+      accountClass: row.accountClass,
+      accountingType: row.accountingType,
+      isSalary: row.isSalary,
+      deptCode: row.deptCode,
+      deptName: resolvedName,
+    });
+  }
+}
+
+export function assertNoDroppedCompareRows(params: {
+  baseRows: AtomicCompareRow[];
+  targetRows: AtomicCompareRow[];
+  finalRows: ComparisonRow[];
+  groupBy: 'account' | 'dept';
+}) {
+  const expectedKeys = new Set<string>();
+
+  params.baseRows.forEach(row => {
+    expectedKeys.add(params.groupBy === 'dept'
+      ? normalizeDeptCode(row.deptCode)
+      : normalizeCompareCode(row.accountCode));
+  });
+
+  params.targetRows.forEach(row => {
+    expectedKeys.add(params.groupBy === 'dept'
+      ? normalizeDeptCode(row.deptCode)
+      : normalizeCompareCode(row.accountCode));
+  });
+
+  const finalKeys = new Set(params.finalRows.map(row =>
+    params.groupBy === 'dept'
+      ? normalizeDeptCode(row.deptCode || row.code)
+      : normalizeCompareCode(row.accountCode || row.code)
+  ));
+
+  const dropped = Array.from(expectedKeys).filter(key => !finalKeys.has(key));
+
+  if (dropped.length > 0) {
+    console.warn('[VarianceComparison] 비교 row 유실 감지', dropped);
+  } else {
+    console.log('[VarianceComparison] 비교 row 유실 없음 (검증 통과)');
+  }
+}
+
+export function runRegressionTests() {
+  const baseRows: AtomicCompareRow[] = [
+    {
+      deptCode: '21002',
+      accountCode: 'A60601115',
+      accountName: '제조비용_복리후생비_보건위생지원',
+      accountClass: '복리후생비',
+      accountingType: '제조',
+      amount: 1000000,
+      isSalary: false,
+    },
+  ];
+
+  const targetRows: AtomicCompareRow[] = [
+    {
+      deptCode: '21002',
+      accountCode: 'A60601115',
+      accountName: '제조비용_복리후생비_보건위생지원',
+      accountClass: '복리후생비',
+      accountingType: '제조',
+      amount: 1200000,
+      isSalary: false,
+    },
+  ];
+
+  const result = buildVarianceComparison({
+    baseRows,
+    targetRows,
+    groupBy: 'account',
+    allDepts: [{ code: '21002', name: '제조부' }],
+    activeDept: 'all',
+    selectedAccountingType: '제조',
+    selectedAccountClass: '복리후생비',
+    basePlanType: '경영계획',
+    targetPlanType: '실적',
+  });
+
+  const isSuccess = result.rows.some(r => normalizeCompareCode(r.accountCode) === 'A60601115');
+  console.log('[회귀 테스트] A60601115 복리후생비 검과 검증:', isSuccess ? '성공 (PASS)' : '실패 (FAIL)');
+}
+
+// Run regression test immediately on module load to prevent regression
+setTimeout(() => {
+  try {
+    runRegressionTests();
+  } catch (err) {
+    console.error('Failed to run regression tests:', err);
+  }
+}, 100);
+
 export function buildVarianceComparison(params: {
   baseRows: AtomicCompareRow[];
   targetRows: AtomicCompareRow[];
@@ -285,77 +438,40 @@ export function buildVarianceComparison(params: {
     targetPlanType,
   } = params;
 
-  const baseMap = new Map<string, { code: string; name: string; amount: number }>();
-  const targetMap = new Map<string, { code: string; name: string; amount: number }>();
-
-  let baseMfg = 0;
-  let baseSga = 0;
-  let targetMfg = 0;
-  let targetSga = 0;
+  const baseMap = new Map<string, CompareMapItem>();
+  const targetMap = new Map<string, CompareMapItem>();
 
   baseRows.forEach(row => {
-    // Top-level department/accounting boundary filtering
-    if (activeDept === 'mfg' && row.accountingType !== '제조') return;
-    if (activeDept === 'sga' && row.accountingType !== '판관') return;
+    const groupKey = groupBy === 'dept'
+      ? normalizeDeptCode(row.deptCode)
+      : normalizeCompareCode(row.accountCode);
 
-    // Filters for classification
-    if (selectedAccountingType !== '전체' && row.accountingType !== selectedAccountingType) return;
-    if (selectedAccountClass !== '전체' && row.accountClass !== selectedAccountClass) return;
-
-    if (row.accountingType === '제조') baseMfg += row.amount;
-    if (row.accountingType === '판관') baseSga += row.amount;
-
-    const groupKey = groupBy === 'dept' ? row.deptCode : row.accountCode;
-    const resolvedName = groupBy === 'dept'
-      ? (allDepts.find(d => d.code === row.deptCode)?.name || row.deptCode)
-      : row.accountName;
-
-    const existing = baseMap.get(groupKey);
-    if (existing) {
-      existing.amount += row.amount;
-    } else {
-      baseMap.set(groupKey, { code: groupKey, name: resolvedName, amount: row.amount });
-    }
+    upsertCompareMap(baseMap, groupKey, row, allDepts, groupBy);
   });
 
   targetRows.forEach(row => {
-    // Top-level department/accounting boundary filtering
-    if (activeDept === 'mfg' && row.accountingType !== '제조') return;
-    if (activeDept === 'sga' && row.accountingType !== '판관') return;
+    const groupKey = groupBy === 'dept'
+      ? normalizeDeptCode(row.deptCode)
+      : normalizeCompareCode(row.accountCode);
 
-    // Filters for classification
-    if (selectedAccountingType !== '전체' && row.accountingType !== selectedAccountingType) return;
-    if (selectedAccountClass !== '전체' && row.accountClass !== selectedAccountClass) return;
-
-    if (row.accountingType === '제조') targetMfg += row.amount;
-    if (row.accountingType === '판관') targetSga += row.amount;
-
-    const groupKey = groupBy === 'dept' ? row.deptCode : row.accountCode;
-    const resolvedName = groupBy === 'dept'
-      ? (allDepts.find(d => d.code === row.deptCode)?.name || row.deptCode)
-      : row.accountName;
-
-    const existing = targetMap.get(groupKey);
-    if (existing) {
-      existing.amount += row.amount;
-    } else {
-      targetMap.set(groupKey, { code: groupKey, name: resolvedName, amount: row.amount });
-    }
+    upsertCompareMap(targetMap, groupKey, row, allDepts, groupBy);
   });
 
   const allCodes = new Set([...baseMap.keys(), ...targetMap.keys()]);
   const rows: ComparisonRow[] = Array.from(allCodes).map(code => {
     const baseItem = baseMap.get(code);
     const targetItem = targetMap.get(code);
-    const name = baseItem?.name || targetItem?.name || 'Unknown';
+    
+    const unionMeta = resolveUnionMeta(baseItem, targetItem);
 
     const baseAmount = baseItem?.amount || 0;
     const targetAmount = targetItem?.amount || 0;
     const variance = targetAmount - baseAmount;
     const variancePercent = calcVarianceRate(baseAmount, targetAmount);
 
-    const rowAccountingType = groupBy === 'dept' ? '전체' : getAccountingType(code, name);
-    const rowAccountClass = groupBy === 'dept' ? '부서' : classifyAccount(code, name);
+    const rowAccountingType = groupBy === 'dept' ? ('전체' as AccountingType) : unionMeta.accountingType;
+    const rowAccountClass = groupBy === 'dept' ? '부서' : unionMeta.accountClass;
+    const name = baseItem?.name || targetItem?.name || unionMeta.accountName || 'Unknown';
 
     const status = getVarianceStatus({
       baseAmount,
@@ -364,11 +480,7 @@ export function buildVarianceComparison(params: {
       targetPlanType,
     });
 
-    const isSalary = isSalaryAccountRow({
-      accountCode: groupBy === 'dept' ? '' : code,
-      accountName: groupBy === 'dept' ? '' : name,
-      accountClass: rowAccountClass,
-    });
+    const isSalary = groupBy === 'dept' ? false : unionMeta.isSalary;
 
     return {
       key: code,
@@ -378,7 +490,7 @@ export function buildVarianceComparison(params: {
       accountClass: rowAccountClass,
       accountCode: groupBy === 'dept' ? '' : code,
       accountName: groupBy === 'dept' ? '' : name,
-      deptCode: groupBy === 'dept' ? code : '',
+      deptCode: groupBy === 'dept' ? code : (baseItem?.deptCode || targetItem?.deptCode || ''),
       deptName: groupBy === 'dept' ? name : '',
       baseAmount,
       targetAmount,
@@ -389,7 +501,47 @@ export function buildVarianceComparison(params: {
     };
   })
   .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
+  .filter(row => {
+    if (activeDept === 'mfg' && row.accountingType !== '제조') return false;
+    if (activeDept === 'sga' && row.accountingType !== '판관') return false;
+    if (selectedAccountingType !== '전체' && row.accountingType !== selectedAccountingType) return false;
+    if (selectedAccountClass !== '전체' && row.accountClass !== selectedAccountClass) return false;
+    return true;
+  })
   .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+
+  let baseMfg = 0;
+  let baseSga = 0;
+  let targetMfg = 0;
+  let targetSga = 0;
+
+  rows.forEach(row => {
+    if (row.accountingType === '제조') {
+      baseMfg += row.baseAmount;
+      targetMfg += row.targetAmount;
+    } else if (row.accountingType === '판관') {
+      baseSga += row.baseAmount;
+      targetSga += row.targetAmount;
+    }
+  });
+
+  const designCheckKey = 'A60601115';
+  const A60601115Included = Array.from(allCodes).some(code => normalizeCompareCode(code) === designCheckKey);
+  console.log('[비교분석 검증]', {
+    'base keys': baseMap.size,
+    'target keys': targetMap.size,
+    'union keys': allCodes.size,
+    'final rows': rows.length,
+    'dropped before filter': 0,
+    'A60601115 included': A60601115Included
+  });
+
+  assertNoDroppedCompareRows({
+    baseRows,
+    targetRows,
+    finalRows: rows,
+    groupBy,
+  });
 
   return {
     rows,

@@ -4,7 +4,7 @@ import { loadActualRows, loadBudgetRowsByDept } from './varianceDataLoader';
 import { getEffectiveDeptCodeForActual } from './storageKeys';
 import { classifyAccount, getAccountingType } from './accountClassification';
 import { calcVarianceRate } from './varianceMath';
-import { getVarianceStatus } from './varianceEngine';
+import { getVarianceStatus, normalizeCompareCode, normalizeDeptCode, resolveUnionMeta } from './varianceEngine';
 
 export interface MonthlyMatrixItem {
   deptCode: string;
@@ -107,13 +107,15 @@ export function buildMonthlyMatrix(params: {
       const accountingType = meta?.accountingType || getAccountingType(item.accountCode, name);
       const amount = Number(item.completed || 0);
 
-      const mapKey = `${effectiveDeptCode}|${item.accountCode}`;
+      const accountCode = normalizeCompareCode(item.accountCode);
+      const deptCode = normalizeDeptCode(effectiveDeptCode);
+      const mapKey = `${deptCode}|${accountCode}`;
       let itemInMap = matrix.get(mapKey);
       if (!itemInMap) {
         itemInMap = {
-          deptCode: effectiveDeptCode,
-          deptName: getDeptName(effectiveDeptCode),
-          accountCode: item.accountCode,
+          deptCode: deptCode,
+          deptName: getDeptName(deptCode),
+          accountCode: accountCode,
           accountName: name,
           accountClass,
           accountingType,
@@ -149,13 +151,15 @@ export function buildMonthlyMatrix(params: {
 
         const accountingType = meta?.accountingType || getAccountingType(row.code, name);
 
-        const mapKey = `${rowDeptCode}|${row.code}`;
+        const accountCode = normalizeCompareCode(row.code);
+        const rowDeptCodeNormalized = normalizeDeptCode(rowDeptCode);
+        const mapKey = `${rowDeptCodeNormalized}|${accountCode}`;
         let itemInMap = matrix.get(mapKey);
         if (!itemInMap) {
           itemInMap = {
-            deptCode: rowDeptCode,
-            deptName: getDeptName(rowDeptCode),
-            accountCode: row.code,
+            deptCode: rowDeptCodeNormalized,
+            deptName: getDeptName(rowDeptCodeNormalized),
+            accountCode: accountCode,
             accountName: name,
             accountClass,
             accountingType,
@@ -202,66 +206,48 @@ export function buildAccountMonthlyCompareRows(params: {
     selectedAccountClass,
   } = params;
 
-  const baseAccountMap = new Map<string, {
-    accountClass: string;
-    accountingType: string;
-    accountCode: string;
-    accountName: string;
-    isSalary: boolean;
-    monthly: number[];
-  }>();
+  const baseAccountMap = new Map<string, any>();
 
   baseMatrix.forEach(item => {
-    if (activeDept === 'mfg' && item.accountingType !== '제조') return;
-    if (activeDept === 'sga' && item.accountingType !== '판관') return;
-
-    if (selectedAccountingType !== '전체' && item.accountingType !== selectedAccountingType) return;
-    if (selectedAccountClass !== '전체' && item.accountClass !== selectedAccountClass) return;
-
-    let existing = baseAccountMap.get(item.accountCode);
+    const code = normalizeCompareCode(item.accountCode);
+    let existing = baseAccountMap.get(code);
     if (!existing) {
       existing = {
+        code,
+        name: item.accountName,
+        amount: 0,
+        accountCode: code,
+        accountName: item.accountName,
         accountClass: item.accountClass,
         accountingType: item.accountingType,
-        accountCode: item.accountCode,
-        accountName: item.accountName,
         isSalary: item.isSalary,
         monthly: Array(12).fill(0),
       };
-      baseAccountMap.set(item.accountCode, existing);
+      baseAccountMap.set(code, existing);
     }
     for (let m = 0; m < 12; m++) {
       existing.monthly[m] += item.monthly[m];
     }
   });
 
-  const targetAccountMap = new Map<string, {
-    accountClass: string;
-    accountingType: string;
-    accountCode: string;
-    accountName: string;
-    isSalary: boolean;
-    monthly: number[];
-  }>();
+  const targetAccountMap = new Map<string, any>();
 
   targetMatrix.forEach(item => {
-    if (activeDept === 'mfg' && item.accountingType !== '제조') return;
-    if (activeDept === 'sga' && item.accountingType !== '판관') return;
-
-    if (selectedAccountingType !== '전체' && item.accountingType !== selectedAccountingType) return;
-    if (selectedAccountClass !== '전체' && item.accountClass !== selectedAccountClass) return;
-
-    let existing = targetAccountMap.get(item.accountCode);
+    const code = normalizeCompareCode(item.accountCode);
+    let existing = targetAccountMap.get(code);
     if (!existing) {
       existing = {
+        code,
+        name: item.accountName,
+        amount: 0,
+        accountCode: code,
+        accountName: item.accountName,
         accountClass: item.accountClass,
         accountingType: item.accountingType,
-        accountCode: item.accountCode,
-        accountName: item.accountName,
         isSalary: item.isSalary,
         monthly: Array(12).fill(0),
       };
-      targetAccountMap.set(item.accountCode, existing);
+      targetAccountMap.set(code, existing);
     }
     for (let m = 0; m < 12; m++) {
       existing.monthly[m] += item.monthly[m];
@@ -273,7 +259,9 @@ export function buildAccountMonthlyCompareRows(params: {
   const rows: MonthlyCompareMatrixRow[] = Array.from(allAccountCodes).map(code => {
     const base = baseAccountMap.get(code);
     const target = targetAccountMap.get(code);
-    const ref = base || target!;
+    
+    // Resolve unified canonical meta
+    const unionMeta = resolveUnionMeta(base, target);
 
     const baseMonthly = exportMonths.map(m => base ? base.monthly[m - 1] : 0);
     const targetMonthly = exportMonths.map(m => target ? target.monthly[m - 1] : 0);
@@ -291,10 +279,10 @@ export function buildAccountMonthlyCompareRows(params: {
     });
 
     return {
-      accountClass: ref.accountClass,
-      accountingType: ref.accountingType,
-      accountCode: ref.accountCode,
-      accountName: ref.accountName,
+      accountClass: unionMeta.accountClass,
+      accountingType: unionMeta.accountingType,
+      accountCode: unionMeta.accountCode,
+      accountName: unionMeta.accountName,
       targetMonthly,
       baseMonthly,
       targetTotal,
@@ -302,8 +290,16 @@ export function buildAccountMonthlyCompareRows(params: {
       variance,
       varianceRate,
       status,
-      isSalary: ref.isSalary,
+      isSalary: unionMeta.isSalary,
     };
+  })
+  .filter(row => row.baseTotal !== 0 || row.targetTotal !== 0)
+  .filter(row => {
+    if (activeDept === 'mfg' && row.accountingType !== '제조') return false;
+    if (activeDept === 'sga' && row.accountingType !== '판관') return false;
+    if (selectedAccountingType !== '전체' && row.accountingType !== selectedAccountingType) return false;
+    if (selectedAccountClass !== '전체' && row.accountClass !== selectedAccountClass) return false;
+    return true;
   });
 
   return rows;

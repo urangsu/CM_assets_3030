@@ -43,6 +43,7 @@ export interface ActualUploadValidationResult {
 export type UploadFormat =
   | 'MONTHLY_WIDE'
   | 'FLAT'
+  | 'BUDGET_ADJUSTMENT_FLAT'
   | 'UNKNOWN';
 
 export function toHalfWidth(str: string): string {
@@ -118,7 +119,10 @@ export function detectUploadType(headers: string[]): UploadFormat {
   const hasCompletedOrAmount = hasAny(normalized, HEADER_ALIASES.completed) || hasAny(normalized, HEADER_ALIASES.amount);
   const monthCount = countMonthlyActualHeaders(normalized);
 
+  const hasAdjustmentHeader = hasAny(normalized, ['증감액', '증액', '조정액', '조정금액', '금액', 'amount']);
+
   if (hasDeptCode && hasAccountCode && monthCount >= 1) return 'MONTHLY_WIDE';
+  if (hasPeriod && hasDeptCode && hasAccountCode && hasAdjustmentHeader) return 'BUDGET_ADJUSTMENT_FLAT';
   if (hasPeriod && hasDeptCode && hasAccountCode && hasCompletedOrAmount) return 'FLAT';
 
   return 'UNKNOWN';
@@ -364,6 +368,77 @@ export function parseFlatRows(params: {
     return { format: 'FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows, errorRows };
 }
 
+export function parseBudgetAdjustmentRows(params: {
+  records: Record<string, unknown>[];
+  year: string;
+  existingCount: number;
+}): UploadParseResult {
+  const actualRows: ActualData[] = [];
+  const errorRows: ValidationIssue[] = [];
+  const warningRows: ValidationIssue[] = [];
+
+  params.records.forEach((record, index) => {
+    const rowNum = index + 2;
+
+    const rowYear = String(getRecordValue(record, ['연도', 'year']) || params.year).trim();
+    const period = String(getRecordValue(record, ['월', '기간', 'period']) || '').trim();
+    const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '').trim();
+    const accountName = String(getRecordValue(record, HEADER_ALIASES.accountName) || '').trim();
+    const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '').trim();
+    const usageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '').trim();
+    const amount = parseAmount(getRecordValue(record, ['증감액', '증액', '조정액', '금액', 'amount']));
+
+    const monthIndex = parsePeriodMonth(period);
+
+    if (!rowYear || monthIndex === null || !accountCode || !usageCode) {
+      errorRows.push({
+        rowNum,
+        message: '연도, 월, 계정코드, 부서코드, 증감액 중 필수 항목이 누락되었습니다.',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const resolvedDept = resolveDepartmentName(usageCode, usageDept);
+    const resolvedAccount = resolveAccountByCode({
+      accountCode,
+      uploadedName: accountName,
+      year: rowYear,
+    });
+
+    actualRows.push({
+      id: params.existingCount + actualRows.length + 1,
+      sourceRowId: `src_adjustment_${rowNum}`,
+      year: rowYear,
+      period: `${monthIndex + 1}월`,
+      periodMonth: monthIndex + 1,
+      accountCode: resolvedAccount.code,
+      accountName: resolvedAccount.name,
+      controlType: 'D.부서',
+      usageCode,
+      usageDept: resolvedDept.name || usageDept || usageCode,
+      amount,
+      additional: amount,
+      transferred: 0,
+      carriedOver: 0,
+      planned: 0,
+      completed: 0,
+      balance: amount,
+      remarks: '증액반영 업로드',
+    });
+  });
+
+  return {
+    format: 'BUDGET_ADJUSTMENT_FLAT',
+    sourceRowCount: params.records.length,
+    generatedRowCount: actualRows.length,
+    actualRows,
+    budgetRows: [],
+    warningRows,
+    errorRows,
+  };
+}
+
 export function parseUploadRecords(params: {
   headers: string[];
   records: Record<string, unknown>[];
@@ -378,6 +453,13 @@ export function parseUploadRecords(params: {
     // However, detectUploadType is used here to see if it's wide or flat.
     const format = detectUploadType(params.headers);
     
+    if (params.planType === '증액반영') {
+      if (format === 'MONTHLY_WIDE') {
+        return parseWideMonthlyRows(params);
+      }
+      return parseBudgetAdjustmentRows(params);
+    }
+
     // We shouldn't let detectUploadType override the uploadKind saving behavior.
     // For wide format: it behaves according to uploadKind or planType properly.
     if (format === 'MONTHLY_WIDE') return parseWideMonthlyRows(params);
@@ -413,6 +495,29 @@ export function isProbablyHeaderlessMonthlyRow(row: any[]): boolean {
   });
 
   return looksLikeDeptCode && looksLikeAccountCode && hasAmountColumns;
+}
+
+export function isProbablyBudgetAdjustmentRow(row: any[]): boolean {
+  if (row.length < 5) return false;
+  const year = String(row[0] ?? '').trim();
+  const period = String(row[1] ?? '').trim();
+  const accountCode = String(row[2] ?? '').trim();
+  const accountName = String(row[3] ?? '').trim();
+  const deptCode = String(row[4] ?? '').trim();
+  const deptName = String(row[5] ?? '').trim();
+  const amount = String(row[6] ?? '').trim();
+
+  const looksYear = /^20\d{2}$/.test(year);
+  const looksMonth = /^(0?[1-9]|1[0-2])월?$/.test(period);
+  const looksAccount = /^[A-Z]?\d{5,}/i.test(accountCode);
+  const looksDept = /^[0-9A-Za-z_-]{2,20}$/.test(deptCode);
+  const normalizedAmount = amount.replace(/,/g, '').replace(/₩/g, '').replace(/원/g, '').replace(/\s/g, '');
+
+  return looksYear && looksMonth && looksAccount && !!accountName && looksDept && !!deptName && normalizedAmount !== '' && !Number.isNaN(Number(normalizedAmount));
+}
+
+export function buildBudgetAdjustmentHeaders(): string[] {
+  return ['연도', '월', '계정코드', '계정명', '부서코드', '부서명', '증감액'];
 }
 
 export function buildHeaderlessMonthlyHeaders(row: any[], startMonth: number): string[] {

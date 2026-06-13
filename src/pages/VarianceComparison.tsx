@@ -2275,6 +2275,7 @@ export default function VarianceComparison() {
             >
               <option value="실적">실적</option>
               <option value="경영계획">경영계획</option>
+              <option value="증액반영">증액반영</option>
               <option value="수정경영계획">수정경영계획</option>
               <option value="1차 RP">1차 RP</option>
               <option value="2차 RP">2차 RP</option>
@@ -2317,6 +2318,7 @@ export default function VarianceComparison() {
             >
               <option value="실적">실적</option>
               <option value="경영계획">경영계획</option>
+              <option value="증액반영">증액반영</option>
               <option value="수정경영계획">수정경영계획</option>
               <option value="1차 RP">1차 RP</option>
               <option value="2차 RP">2차 RP</option>

@@ -1,12 +1,14 @@
 export type PlanType =
   | '실적'
   | '경영계획'
+  | '증액반영'
   | '수정경영계획'
   | '1차 RP'
   | '2차 RP';
 
 export type BudgetPlanType =
   | '경영계획'
+  | '증액반영'
   | '수정경영계획'
   | '1차 RP'
   | '2차 RP';
@@ -14,6 +16,7 @@ export type BudgetPlanType =
 export const PLAN_TYPE_OPTIONS: PlanType[] = [
   '실적',
   '경영계획',
+  '증액반영',
   '수정경영계획',
   '1차 RP',
   '2차 RP',
@@ -21,6 +24,7 @@ export const PLAN_TYPE_OPTIONS: PlanType[] = [
 
 export const BUDGET_PLAN_TYPE_OPTIONS: BudgetPlanType[] = [
   '경영계획',
+  '증액반영',
   '수정경영계획',
   '1차 RP',
   '2차 RP',
@@ -38,6 +42,14 @@ export function normalizePlanType(value: unknown): PlanType {
     계획: '경영계획',
     businessplan: '경영계획',
     BusinessPlan: '경영계획',
+
+    증액반영: '증액반영',
+    예산증액반영: '증액반영',
+    증액계획: '증액반영',
+    adjustedplan: '증액반영',
+    AdjustedPlan: '증액반영',
+    budgetincrease: '증액반영',
+    BudgetIncrease: '증액반영',
 
     수정경영계획: '수정경영계획',
     수정계획: '수정경영계획',
