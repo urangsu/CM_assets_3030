@@ -95,6 +95,52 @@ function getCompareRowName(row: any, isDeptMode: boolean): string {
     : row.accountName || row.name || '';
 }
 
+function getMultiPlanDeptDisplay(row: any, selectedDept: string, allDepts: any[], effectiveViewMode: string) {
+  if (effectiveViewMode === 'BY_DEPT') {
+    return {
+      writerDeptCode: row.writerDeptCode || '',
+      writerDeptName: row.writerDeptName || '',
+      attributedDeptCode: row.attributedDeptCode || '',
+      attributedDeptName: row.attributedDeptName || '',
+    };
+  }
+
+  if (selectedDept === 'all' || selectedDept === 'viewable') {
+    return {
+      writerDeptCode: '',
+      writerDeptName: '전체',
+      attributedDeptCode: '',
+      attributedDeptName: '전체',
+    };
+  }
+
+  if (selectedDept === 'mfg') {
+    return {
+      writerDeptCode: '',
+      writerDeptName: '제조 전체',
+      attributedDeptCode: '',
+      attributedDeptName: '제조 전체',
+    };
+  }
+
+  if (selectedDept === 'sga') {
+    return {
+      writerDeptCode: '',
+      writerDeptName: '판관 전체',
+      attributedDeptCode: '',
+      attributedDeptName: '판관 전체',
+    };
+  }
+
+  const dept = allDepts.find(d => d.code === selectedDept);
+  return {
+    writerDeptCode: selectedDept,
+    writerDeptName: dept?.name || selectedDept,
+    attributedDeptCode: selectedDept,
+    attributedDeptName: dept?.name || selectedDept,
+  };
+}
+
 const getStatusBadgeStyle = (status: VarianceStatus) => {
   switch (status) {
     case '미계획':
@@ -1407,14 +1453,15 @@ export default function VarianceComparison() {
     const sheet1Data: any[][] = [sheet1Headers];
 
     filteredMultiPlanRows.forEach(row => {
+      const deptDisp = getMultiPlanDeptDisplay(row, selectedDept, allDepts, effectiveMultiPlanViewMode);
       const rowArr: any[] = [
         row.accountingType,
         row.accountCode,
         row.accountName,
-        row.writerDeptCode || '',
-        row.writerDeptName || '',
-        row.attributedDeptCode || '',
-        row.attributedDeptName || '',
+        deptDisp.writerDeptCode || '',
+        deptDisp.writerDeptName || '',
+        deptDisp.attributedDeptCode || '',
+        deptDisp.attributedDeptName || '',
       ];
 
       selectedPlanTypes.forEach(p => {
@@ -1495,13 +1542,42 @@ export default function VarianceComparison() {
     );
     applyWorksheetStyle(ws1, {
       amountColumnIndexes: numericCols1,
-      leftAlignColumnIndexes: [2, 4, 6],
+      leftAlignColumnIndexes: [1, 2, 4, 6],
       headerRowCount: 1,
     });
     applyWorksheetView(ws1, {
       headerRowCount: 1,
       freezeColCount: 3,
     });
+
+    ws1['!cols'] = [];
+    for (let i = 0; i < sheet1Headers.length; i++) {
+      if (i === 1) {
+        ws1['!cols'][i] = { wch: 18 };
+      } else if (i === 2) {
+        ws1['!cols'][i] = { wch: 42 };
+      } else if (i === 0 || i === 3 || i === 5) {
+        ws1['!cols'][i] = { wch: 13 };
+      } else if (i === 4 || i === 6) {
+        ws1['!cols'][i] = { wch: 22 };
+      } else {
+        ws1['!cols'][i] = { wch: 16 };
+      }
+    }
+    // D~G hidden default
+    for (let c = 3; c <= 6; c++) {
+      ws1['!cols'][c] = {
+        ...(ws1['!cols'][c] || {}),
+        hidden: true,
+        level: 1,
+        wch: c === 3 || c === 5 ? 13 : 22,
+      };
+    }
+    ws1['!outline'] = {
+      left: false,
+      symbols: true,
+    };
+
     appendSheetSafely(wb, ws1, '요약');
 
     const blocks: {
@@ -1557,14 +1633,15 @@ export default function VarianceComparison() {
     const sheet2Data: any[][] = [sheet2HeaderRow1, sheet2HeaderRow2];
 
     filteredMultiPlanRows.forEach(row => {
+      const deptDisp = getMultiPlanDeptDisplay(row, selectedDept, allDepts, effectiveMultiPlanViewMode);
       const rowArr: any[] = [
         row.accountingType,
         row.accountCode,
         row.accountName,
-        row.writerDeptCode || '',
-        row.writerDeptName || '',
-        row.attributedDeptCode || '',
-        row.attributedDeptName || '',
+        deptDisp.writerDeptCode || '',
+        deptDisp.writerDeptName || '',
+        deptDisp.attributedDeptCode || '',
+        deptDisp.attributedDeptName || '',
       ];
 
       blocks.forEach(block => {
@@ -1673,7 +1750,7 @@ export default function VarianceComparison() {
 
     applyWorksheetStyle(ws2, {
       amountColumnIndexes: numericColsList,
-      leftAlignColumnIndexes: [2, 4, 6],
+      leftAlignColumnIndexes: [1, 2, 4, 6],
       headerRowCount: 2,
     });
 
@@ -1687,13 +1764,27 @@ export default function VarianceComparison() {
 
       // Initialize columns width
       for (let i = 0; i < finalColCount; i++) {
-        if (i === 0 || i === 1 || i === 3 || i === 5) {
+        if (i === 1) {
+          wsIdx['!cols'][i] = { wch: 18 };
+        } else if (i === 2) {
+          wsIdx['!cols'][i] = { wch: 42 };
+        } else if (i === 0 || i === 3 || i === 5) {
           wsIdx['!cols'][i] = { wch: 13 };
-        } else if (i === 2 || i === 4 || i === 6) {
-          wsIdx['!cols'][i] = { wch: 24 };
+        } else if (i === 4 || i === 6) {
+          wsIdx['!cols'][i] = { wch: 22 };
         } else {
           wsIdx['!cols'][i] = { wch: 9 };
         }
+      }
+
+      // Hide D~G 작성부서/귀속부서
+      for (let c = 3; c <= 6; c++) {
+        wsIdx['!cols'][c] = {
+          ...(wsIdx['!cols'][c] || {}),
+          hidden: true,
+          level: 1,
+          wch: c === 3 || c === 5 ? 13 : 22,
+        };
       }
 
       blks.forEach(block => {
@@ -2325,13 +2416,17 @@ export default function VarianceComparison() {
     }
   }, [actualEndMonth, tab]);
 
+  const effectiveMultiPlanViewMode = useMemo(() => {
+    return selectedDept === 'by_dept' ? 'BY_DEPT' : multiPlanViewMode;
+  }, [selectedDept, multiPlanViewMode]);
+
   // multi_plan calculations
   const { columns: multiPlanColumns, rows: multiPlanRows } = useMemo(() => {
     if (tab !== 'multi_plan') {
       return { columns: [], rows: [] };
     }
     const currentActiveDeptCodes = resolveSelectedDeptCodes({
-      selectedDept: 'by_dept', // we want all available codes for the union
+      selectedDept,
       viewableDepts,
       isAdmin,
       isPlanningTeam,
@@ -2341,7 +2436,7 @@ export default function VarianceComparison() {
       selectedPlanTypes,
       planEndMonth,
       actualEndMonth,
-      viewMode: multiPlanViewMode,
+      viewMode: effectiveMultiPlanViewMode,
       deptCodes: currentActiveDeptCodes,
       accountMetaMap,
       hasSalaryAccess,
@@ -2356,7 +2451,8 @@ export default function VarianceComparison() {
     selectedPlanTypes,
     planEndMonth,
     actualEndMonth,
-    multiPlanViewMode,
+    selectedDept,
+    effectiveMultiPlanViewMode,
     viewableDepts,
     isAdmin,
     isPlanningTeam,
@@ -2376,6 +2472,16 @@ export default function VarianceComparison() {
       result = result.filter(r => r.accountingType === '제조');
     } else if (selectedDept === 'sga') {
       result = result.filter(r => r.accountingType === '판관');
+    }
+
+    const selectedDeptCodeSet = new Set(selectedDeptCodes);
+    if (
+      !['all', 'viewable', 'by_dept', 'mfg', 'sga'].includes(selectedDept)
+    ) {
+      result = result.filter(row =>
+        selectedDeptCodeSet.has(row.attributedDeptCode) ||
+        selectedDeptCodeSet.has(row.writerDeptCode)
+      );
     }
     
     if (selectedAccountingType !== '전체') {
@@ -2412,7 +2518,7 @@ export default function VarianceComparison() {
     result.sort((a, b) => Math.abs(b.requiredIncreaseAmount) - Math.abs(a.requiredIncreaseAmount));
 
     return result;
-  }, [multiPlanRows, selectedDept, selectedAccountingType, selectedAccountClass, detailFilters]);
+  }, [multiPlanRows, selectedDept, selectedDeptCodes, selectedAccountingType, selectedAccountClass, detailFilters]);
 
   const pagedMultiPlanRows = useMemo(() => {
     return filteredMultiPlanRows.slice(0, visibleDetailCount);
@@ -4190,7 +4296,7 @@ export default function VarianceComparison() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {selectedPlanTypes.map(p => (
               <div key={p} className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
-                <p className="text-sm font-medium text-text-secondary font-sans">
+                <p className="text-sm font-medium text-text-secondary font-sans font-sans">
                   {p === '증액반영' ? '경영계획(증액반영)' : p} 합계
                 </p>
                 <p className="text-[20px] font-black text-eco-black mt-2 text-right">
@@ -4361,6 +4467,7 @@ export default function VarianceComparison() {
                       const basisVal = r.totalByColumnId[increaseBasisCol] || 0;
                       const targetVal = r.totalByColumnId[increaseTargetCol] || 0;
                       const diffVal = targetVal - basisVal;
+                      const deptDisp = getMultiPlanDeptDisplay(r, selectedDept, allDepts, effectiveMultiPlanViewMode);
                       
                       return (
                         <tr key={r.rowKey || r.accountCode || rIdx} className="hover:bg-lithium-50/40 transition-colors">
@@ -4370,10 +4477,10 @@ export default function VarianceComparison() {
                             {r.accountName}
                           </td>
                           <td className="px-5 py-3 text-xs text-text-secondary border-r border-lithium-100">
-                            {r.writerDeptName || '-'}
+                            {deptDisp.writerDeptName || '-'}
                           </td>
                           <td className="px-5 py-3 text-xs text-text-secondary border-r border-lithium-100">
-                            {r.attributedDeptName || '-'}
+                            {deptDisp.attributedDeptName || '-'}
                           </td>
                           
                           {selectedPlanTypes.map(p => (
