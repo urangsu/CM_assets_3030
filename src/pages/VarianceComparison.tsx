@@ -229,6 +229,8 @@ export default function VarianceComparison() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!currentUser) return;
+
     if (queryBaseYear) setBaseYear(queryBaseYear);
     if (queryBasePlanType) setBasePlanType(normalizePlanType(queryBasePlanType));
     if (queryBaseMonthMode === 'MONTH' || queryBaseMonthMode === 'YTD') {
@@ -278,9 +280,10 @@ export default function VarianceComparison() {
       setSelectedAccountingType('전체');
       setSelectedAccountClass('전체');
     } else if (tab === 'multi_plan') {
-      setSelectedDept('all');
-      setSelectedAccountingType('전체');
-      setSelectedAccountClass('전체');
+      // 사용자가 이미 고른 부서를 유지한다.
+      // selectedDept가 없거나 권한 밖일 때만 기본값으로 보정한다.
+      setSelectedAccountingType(prev => prev || '전체');
+      setSelectedAccountClass(prev => prev || '전체');
     } else if (tab === 'default') {
       const initDept = getUserInitDept();
       setSelectedDept(initDept);
@@ -288,7 +291,7 @@ export default function VarianceComparison() {
       setTargetPlanType('실적');
     }
     setSelectedDepartment(null);
-  }, [location.search, currentUser]);
+  }, [location.search, currentUser?.code]);
 
   useEffect(() => {
     if (selectedDept !== 'by_dept') {
@@ -2416,6 +2419,15 @@ export default function VarianceComparison() {
     }
   }, [actualEndMonth, tab]);
 
+  const currentActiveDeptCodes = useMemo(() => {
+    return resolveSelectedDeptCodes({
+      selectedDept,
+      viewableDepts,
+      isAdmin,
+      isPlanningTeam,
+    });
+  }, [selectedDept, viewableDepts, isAdmin, isPlanningTeam]);
+
   const effectiveMultiPlanViewMode = useMemo(() => {
     return selectedDept === 'by_dept' ? 'BY_DEPT' : multiPlanViewMode;
   }, [selectedDept, multiPlanViewMode]);
@@ -2425,12 +2437,12 @@ export default function VarianceComparison() {
     if (tab !== 'multi_plan') {
       return { columns: [], rows: [] };
     }
-    const currentActiveDeptCodes = resolveSelectedDeptCodes({
-      selectedDept,
-      viewableDepts,
-      isAdmin,
-      isPlanningTeam,
-    });
+    if (currentActiveDeptCodes.length === 0) {
+      return {
+        columns: [],
+        rows: [],
+      };
+    }
     return buildMultiPlanComparisonRows({
       year: baseYear,
       selectedPlanTypes,
@@ -2453,9 +2465,7 @@ export default function VarianceComparison() {
     actualEndMonth,
     selectedDept,
     effectiveMultiPlanViewMode,
-    viewableDepts,
-    isAdmin,
-    isPlanningTeam,
+    currentActiveDeptCodes,
     accountMetaMap,
     hasSalaryAccess,
     includeSalaryRows,
@@ -2523,6 +2533,19 @@ export default function VarianceComparison() {
   const pagedMultiPlanRows = useMemo(() => {
     return filteredMultiPlanRows.slice(0, visibleDetailCount);
   }, [filteredMultiPlanRows, visibleDetailCount]);
+
+  useEffect(() => {
+    if (tab === 'multi_plan') {
+      console.log('[multi_plan debug]', {
+        selectedDept,
+        selectedDeptCodes,
+        currentActiveDeptCodes,
+        effectiveMultiPlanViewMode,
+        multiPlanRows: multiPlanRows.length,
+        filteredMultiPlanRows: filteredMultiPlanRows.length,
+      });
+    }
+  }, [tab, selectedDept, selectedDeptCodes, currentActiveDeptCodes, effectiveMultiPlanViewMode, multiPlanRows, filteredMultiPlanRows]);
 
   const multiPlanTotals = useMemo(() => {
     const listToSum = filteredMultiPlanRows;
@@ -4456,7 +4479,13 @@ export default function VarianceComparison() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-lithium-100 bg-white">
-                  {pagedMultiPlanRows.length === 0 ? (
+                  {currentActiveDeptCodes.length === 0 ? (
+                    <tr>
+                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm font-bold text-rose-600 bg-white">
+                        조회 가능한 부서가 없습니다. 로그인 상태 또는 부서 권한을 확인하세요.
+                      </td>
+                    </tr>
+                  ) : pagedMultiPlanRows.length === 0 ? (
                     <tr>
                       <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white">
                         다중계획 조건에 해당하는 계정과목 데이터가 없습니다. 상위 소분류나 필터 조건을 변경해 보세요.
