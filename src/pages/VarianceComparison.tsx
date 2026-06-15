@@ -20,6 +20,17 @@ import { loadActualRows, loadBudgetRowsByDept } from '../lib/varianceDataLoader'
 import { buildAtomicCompareRows, buildVarianceComparison, resolveSelectedDeptCodes, AtomicCompareRow as EngineAtomicCompareRow, getVarianceStatus, VarianceStatus, resolveUnionMeta, normalizeCompareCode } from '../lib/varianceEngine';
 import { calcVarianceRate, formatVarianceRate, toExcelPercentValue } from '../lib/varianceMath';
 import { buildMonthlyMatrix, buildAccountMonthlyCompareRows, buildDeptMonthlyCompareRows, MonthlyCompareMatrixRow } from '../lib/varianceMonthlyExport';
+import { BudgetPlanType } from '../lib/planTypes';
+import { AppButton } from '../components/ui/AppButton';
+import {
+  MultiPlanDeptViewMode,
+  MultiPlanCompareRow,
+  MultiPlanColumnConfig,
+  buildMultiPlanComparisonRows,
+  resolveWriterDeptForMultiPlan,
+  resolveAttributedDeptForMultiPlan,
+  getRowKey
+} from '../lib/multiPlanComparison';
 
 let cachedPretendardBase64: string | null = null;
 let XLSX: any = null;
@@ -145,9 +156,17 @@ export default function VarianceComparison() {
   const queryParams = new URLSearchParams(location.search);
   const tab = queryParams.get('tab') || 'default';
   const isDeptComparisonMode = tab === 'dept' || selectedDept === 'by_dept';
-  const [expandMonthlyDetails, setExpandMonthlyDetails] = useState<boolean>(false);
-  const [increaseBasisCol, setIncreaseBasisCol] = useState('adjusted');
-  const [increaseTargetCol, setIncreaseTargetCol] = useState('rp2');
+  const [increaseBasisCol, setIncreaseBasisCol] = useState('plan_증액반영');
+  const [increaseTargetCol, setIncreaseTargetCol] = useState('plan_2차 RP');
+
+  const [selectedPlanTypes, setSelectedPlanTypes] = useState<BudgetPlanType[]>([
+    '증액반영',
+    '1차 RP',
+    '2차 RP',
+  ]);
+  const [planEndMonth, setPlanEndMonth] = useState<number>(12);
+  const [actualEndMonth, setActualEndMonth] = useState<number>(5);
+  const [multiPlanViewMode, setMultiPlanViewMode] = useState<MultiPlanDeptViewMode>('ACCOUNT_TOTAL');
 
   const queryDeptCode = queryParams.get('deptCode');
   const queryBaseYear = queryParams.get('baseYear');
@@ -1375,149 +1394,165 @@ export default function VarianceComparison() {
     const sheet1Headers = [
       '계정구분',
       '계정코드',
-      '계정',
-      '경영계획(증액반영)',
-      '1차RP',
-      '2차RP',
-      `실적(~${baseSelectedMonth}월)`,
+      '계정과목',
+      '작성부서코드',
+      '작성부서',
+      '귀속부서코드',
+      '귀속부서',
+      ...selectedPlanTypes.map(p => p === '증액반영' ? '경영계획(증액반영)' : p),
+      `실적(~${actualEndMonth}월)`,
       '증액필요예산'
     ];
 
     const sheet1Data: any[][] = [sheet1Headers];
 
     filteredMultiPlanRows.forEach(row => {
-      sheet1Data.push([
+      const rowArr: any[] = [
         row.accountingType,
         row.accountCode,
         row.accountName,
-        row.valuesByColumnId['adjusted'] || 0,
-        row.valuesByColumnId['rp1'] || 0,
-        row.valuesByColumnId['rp2'] || 0,
-        row.valuesByColumnId['actual'] || 0,
-        0, // Formula will be set
-      ]);
+        row.writerDeptCode || '',
+        row.writerDeptName || '',
+        row.attributedDeptCode || '',
+        row.attributedDeptName || '',
+      ];
+
+      selectedPlanTypes.forEach(p => {
+        rowArr.push(row.totalByColumnId[`plan_${p}`] || 0);
+      });
+
+      rowArr.push(row.totalByColumnId['actual'] || 0);
+      rowArr.push(0); // Formula will be set later
+
+      sheet1Data.push(rowArr);
     });
 
-    // Add empty row
     const emptyRowOffset = sheet1Data.length;
-    sheet1Data.push(['', '', '', '', '', '', '', '']);
+    sheet1Data.push(Array(sheet1Headers.length).fill(''));
 
-    // Add total rows
-    sheet1Data.push(['제조 합계', '', '', 0, 0, 0, 0, 0]);
-    sheet1Data.push(['판관 합계', '', '', 0, 0, 0, 0, 0]);
-    sheet1Data.push(['합계', '', '', 0, 0, 0, 0, 0]);
+    // totals placeholders
+    const mfgTotRowArr: (string | number)[] = ['제조 합계', '', '', '', '', '', ''];
+    const sgaTotRowArr: (string | number)[] = ['판관 합계', '', '', '', '', '', ''];
+    const grandTotRowArr: (string | number)[] = ['총합계', '', '', '', '', '', ''];
+    while (mfgTotRowArr.length < sheet1Headers.length) {
+      mfgTotRowArr.push(0);
+      sgaTotRowArr.push(0);
+      grandTotRowArr.push(0);
+    }
+    sheet1Data.push(mfgTotRowArr);
+    sheet1Data.push(sgaTotRowArr);
+    sheet1Data.push(grandTotRowArr);
 
     const ws1 = XLSX.utils.aoa_to_sheet(sheet1Data);
 
-    const firstDataRow = 1; // 0-based index of row 2
-    const lastDataRow = filteredMultiPlanRows.length; // 0-based index of last active row
-    
-    // Set formula for each data row in sheet 1
-    // Col index 7 is '증액필요예산' = Col 5 (rp2) - Col 3 (adjusted) as formula
-    // (We also honor custom basis/target cols by resolving their indexes dynamically)
-    const getColIndexFromId = (id: string): number => {
-      if (id === 'adjusted') return 3;
-      if (id === 'rp1') return 4;
-      if (id === 'rp2') return 5;
-      return 6; // 'actual'
+    const getS1ColIndexFromId = (id: string): number => {
+      const normalizedId = id.startsWith('plan_') ? id : `plan_${id}`;
+      if (id === 'actual') {
+        return 7 + selectedPlanTypes.length;
+      }
+      const planName = normalizedId.replace('plan_', '');
+      const idx = selectedPlanTypes.indexOf(planName as any);
+      if (idx !== -1) {
+        return 7 + idx;
+      }
+      return -1;
     };
 
-    const basisColIdx = getColIndexFromId(increaseBasisCol);
-    const targetColIdx = getColIndexFromId(increaseTargetCol);
+    const s1BasisColIdx = getS1ColIndexFromId(increaseBasisCol);
+    const s1TargetColIdx = getS1ColIndexFromId(increaseTargetCol);
+    const s1IncreaseColIdx = 7 + selectedPlanTypes.length + 1;
 
-    for (let r = firstDataRow; r <= lastDataRow; r++) {
-      const targetCell = cellRef(r, targetColIdx);
-      const basisCell = cellRef(r, basisColIdx);
-      setFormulaCell(ws1, r, 7, `${targetCell}-${basisCell}`, '#,##0');
+    // Set Sheet 1 Formulas for each data row
+    for (let r = 1; r < emptyRowOffset; r++) {
+      if (s1BasisColIdx !== -1 && s1TargetColIdx !== -1) {
+        const basisCell = cellRef(r, s1BasisColIdx);
+        const targetCell = cellRef(r, s1TargetColIdx);
+        setFormulaCell(ws1, r, s1IncreaseColIdx, `${targetCell}-${basisCell}`, '#,##0');
+      }
     }
 
-    // Set formulas for totals
-    const mfgRow = emptyRowOffset + 1;
-    const sgaRow = emptyRowOffset + 2;
-    const grandRow = emptyRowOffset + 3;
+    // Set Sheet 1 Formulas for bottom totals rows
+    const mfgRowIdx = emptyRowOffset + 1;
+    const sgaRowIdx = emptyRowOffset + 2;
+    const grandRowIdx = emptyRowOffset + 3;
 
-    // Col 3..6 are numeric columns
-    for (let c = 3; c <= 6; c++) {
+    for (let c = 7; c <= 7 + selectedPlanTypes.length; c++) {
       const letter = getExcelColumnLetter(c);
-      setFormulaCell(ws1, mfgRow, c, `SUMIF(A2:A${lastDataRow + 1},"제조",${letter}2:${letter}${lastDataRow + 1})`, '#,##0');
-      setFormulaCell(ws1, sgaRow, c, `SUMIF(A2:A${lastDataRow + 1},"판관",${letter}2:${letter}${lastDataRow + 1})`, '#,##0');
-      setFormulaCell(ws1, grandRow, c, `SUM(${letter}2:${letter}${lastDataRow + 1})`, '#,##0');
+      setFormulaCell(ws1, mfgRowIdx, c, `SUMIF(A2:A${emptyRowOffset},"제조",${letter}2:${letter}${emptyRowOffset})`, '#,##0');
+      setFormulaCell(ws1, sgaRowIdx, c, `SUMIF(A2:A${emptyRowOffset},"판관",${letter}2:${letter}${emptyRowOffset})`, '#,##0');
+      setFormulaCell(ws1, grandRowIdx, c, `SUM(${letter}2:${letter}${emptyRowOffset})`, '#,##0');
     }
 
-    // 증액필요예산 합계 (Col 7) formulas
-    setFormulaCell(ws1, mfgRow, 7, `${cellRef(mfgRow, targetColIdx)}-${cellRef(mfgRow, basisColIdx)}`, '#,##0');
-    setFormulaCell(ws1, sgaRow, 7, `${cellRef(sgaRow, targetColIdx)}-${cellRef(sgaRow, basisColIdx)}`, '#,##0');
-    setFormulaCell(ws1, grandRow, 7, `${cellRef(grandRow, targetColIdx)}-${cellRef(grandRow, basisColIdx)}`, '#,##0');
+    if (s1BasisColIdx !== -1 && s1TargetColIdx !== -1) {
+      setFormulaCell(ws1, mfgRowIdx, s1IncreaseColIdx, `${cellRef(mfgRowIdx, s1TargetColIdx)}-${cellRef(mfgRowIdx, s1BasisColIdx)}`, '#,##0');
+      setFormulaCell(ws1, sgaRowIdx, s1IncreaseColIdx, `${cellRef(sgaRowIdx, s1TargetColIdx)}-${cellRef(sgaRowIdx, s1BasisColIdx)}`, '#,##0');
+      setFormulaCell(ws1, grandRowIdx, s1IncreaseColIdx, `${cellRef(grandRowIdx, s1TargetColIdx)}-${cellRef(grandRowIdx, s1BasisColIdx)}`, '#,##0');
+    }
 
-    // Apply styles to 요약 sheet
+    const numericCols1 = Array.from(
+      { length: selectedPlanTypes.length + 2 },
+      (_, i) => 7 + i
+    );
     applyWorksheetStyle(ws1, {
-      amountColumnIndexes: [3, 4, 5, 6, 7],
-      leftAlignColumnIndexes: [2],
+      amountColumnIndexes: numericCols1,
+      leftAlignColumnIndexes: [2, 4, 6],
       headerRowCount: 1,
     });
-
     applyWorksheetView(ws1, {
       headerRowCount: 1,
       freezeColCount: 3,
     });
-
-    ws1['!cols'] = [
-      { wch: 12 }, // 계정구분
-      { wch: 12 }, // 계정코드
-      { wch: 30 }, // 계정
-      { wch: 20 }, // 경영계획
-      { wch: 16 }, // 1차RP
-      { wch: 16 }, // 2차RP
-      { wch: 16 }, // 실적
-      { wch: 20 }, // 증액필요예산
-    ];
-
     appendSheetSafely(wb, ws1, '요약');
 
-    // Sheet 2: 월별 상세
-    const actualMonthCount = baseSelectedMonth;
-    
-    // Total cols: 3 + 13 + 13 + 13 + (actualMonthCount + 1) + 1
-    const finalColCount = 3 + 13 + 13 + 13 + (actualMonthCount + 1) + 1;
+    const blocks: {
+      id: string;
+      name: string;
+      monthStartCol: number;
+      monthEndCol: number;
+      totalCol: number;
+      sumEndMonth: number;
+    }[] = [];
 
-    const sheet2HeaderRow1: string[] = ['비용 성격', '회계 구분', '계정코드', '계정명'];
-    const sheet2HeaderRow2: string[] = ['비용 성격', '회계 구분', '계정코드', '계정명'];
+    let currentOffset = 7;
+    selectedPlanTypes.forEach(p => {
+      blocks.push({
+        id: `plan_${p}`,
+        name: p === '증액반영' ? '경영계획(증액반영)' : p,
+        monthStartCol: currentOffset,
+        monthEndCol: currentOffset + 11,
+        totalCol: currentOffset + 12,
+        sumEndMonth: planEndMonth,
+      });
+      currentOffset += 13;
+    });
 
-    // Adjusted: 12 months + 합계 (13 cols)
-    for (let m = 1; m <= 12; m++) {
-      sheet2HeaderRow1.push('경영계획(증액반영)');
-      sheet2HeaderRow2.push(`${m}월`);
-    }
-    sheet2HeaderRow1.push('경영계획(증액반영)');
-    sheet2HeaderRow2.push('합계');
+    blocks.push({
+      id: 'actual',
+      name: `실적(~${actualEndMonth}월)`,
+      monthStartCol: currentOffset,
+      monthEndCol: currentOffset + 11,
+      totalCol: currentOffset + 12,
+      sumEndMonth: actualEndMonth,
+    });
+    currentOffset += 13;
 
-    // 1차RP: 12 months + 합계 (13 cols)
-    for (let m = 1; m <= 12; m++) {
-      sheet2HeaderRow1.push('1차RP');
-      sheet2HeaderRow2.push(`${m}월`);
-    }
-    sheet2HeaderRow1.push('1차RP');
-    sheet2HeaderRow2.push('합계');
+    const s2IncreaseCol = currentOffset;
+    const finalColCount = s2IncreaseCol + 1;
 
-    // 2차RP: 12 months + 합계 (13 cols)
-    for (let m = 1; m <= 12; m++) {
-      sheet2HeaderRow1.push('2차RP');
-      sheet2HeaderRow2.push(`${m}월`);
-    }
-    sheet2HeaderRow1.push('2차RP');
-    sheet2HeaderRow2.push('합계');
+    const sheet2HeaderRow1: string[] = ['계정구분', '계정코드', '계정과목', '작성부서코드', '작성부서', '귀속부서코드', '귀속부서'];
+    const sheet2HeaderRow2: string[] = ['계정구분', '계정코드', '계정과목', '작성부서코드', '작성부서', '귀속부서코드', '귀속부서'];
 
-    // Actual: actualMonthCount months + 합계
-    for (let m = 1; m <= actualMonthCount; m++) {
-      sheet2HeaderRow1.push(`실적(~${actualMonthCount}월)`);
-      sheet2HeaderRow2.push(`${m}월`);
-    }
-    sheet2HeaderRow1.push(`실적(~${actualMonthCount}월)`);
-    sheet2HeaderRow2.push('합계');
+    blocks.forEach(block => {
+      for (let m = 1; m <= 12; m++) {
+        sheet2HeaderRow1.push(block.name);
+        sheet2HeaderRow2.push(`${m}월`);
+      }
+      sheet2HeaderRow1.push(block.name);
+      sheet2HeaderRow2.push('합계');
+    });
 
-    // 분석: 증액필요예산
     sheet2HeaderRow1.push('증액필요예산');
-    sheet2HeaderRow2.push('기본식: 2차RP-경영계획');
+    sheet2HeaderRow2.push('증액필요예산');
 
     const sheet2Data: any[][] = [sheet2HeaderRow1, sheet2HeaderRow2];
 
@@ -1526,31 +1561,21 @@ export default function VarianceComparison() {
         row.accountingType,
         row.accountCode,
         row.accountName,
+        row.writerDeptCode || '',
+        row.writerDeptName || '',
+        row.attributedDeptCode || '',
+        row.attributedDeptName || '',
       ];
 
-      // Adjusted (id: 'adjusted')
-      const adjMonthly = row.monthlyValuesByColumnId['adjusted'] || Array(12).fill(0);
-      for (let m = 0; m < 12; m++) rowArr.push(adjMonthly[m]);
-      rowArr.push(0); // SUM formula place
+      blocks.forEach(block => {
+        const colMonthly = row.monthlyByColumnId[block.id] || Array(12).fill(0);
+        for (let m = 0; m < 12; m++) {
+          rowArr.push(colMonthly[m]);
+        }
+        rowArr.push(0); // SUM formula place
+      });
 
-      // 1차RP (id: 'rp1')
-      const rp1Monthly = row.monthlyValuesByColumnId['rp1'] || Array(12).fill(0);
-      for (let m = 0; m < 12; m++) rowArr.push(rp1Monthly[m]);
-      rowArr.push(0); // SUM formula place
-
-      // 2차RP (id: 'rp2')
-      const rp2Monthly = row.monthlyValuesByColumnId['rp2'] || Array(12).fill(0);
-      for (let m = 0; m < 12; m++) rowArr.push(rp2Monthly[m]);
-      rowArr.push(0); // SUM formula place
-
-      // Actual (id: 'actual')
-      const actMonthly = row.monthlyValuesByColumnId['actual'] || Array(12).fill(0);
-      for (let m = 0; m < actualMonthCount; m++) rowArr.push(actMonthly[m] || 0);
-      rowArr.push(0); // SUM formula place
-
-      // 증액필요예산 formula place
-      rowArr.push(0);
-
+      rowArr.push(0); // required increase formula place
       sheet2Data.push(rowArr);
     });
 
@@ -1558,103 +1583,97 @@ export default function VarianceComparison() {
     sheet2Data.push(Array(finalColCount).fill(''));
 
     // Add totals rows
-    const mfgTotRowArr: (string | number)[] = ['제조 합계', '', ''];
-    const sgaTotRowArr: (string | number)[] = ['판관 합계', '', ''];
-    const grandTotRowArr: (string | number)[] = ['합계', '', ''];
-    while (mfgTotRowArr.length < finalColCount) {
-      mfgTotRowArr.push(0);
-      sgaTotRowArr.push(0);
-      grandTotRowArr.push(0);
+    const mfgTotRowArr2: (string | number)[] = ['제조 합계', '', '', '', '', '', ''];
+    const sgaTotRowArr2: (string | number)[] = ['판관 합계', '', '', '', '', '', ''];
+    const grandTotRowArr2: (string | number)[] = ['총합계', '', '', '', '', '', ''];
+    while (mfgTotRowArr2.length < finalColCount) {
+      mfgTotRowArr2.push(0);
+      sgaTotRowArr2.push(0);
+      grandTotRowArr2.push(0);
     }
-    sheet2Data.push(mfgTotRowArr);
-    sheet2Data.push(sgaTotRowArr);
-    sheet2Data.push(grandTotRowArr);
+    sheet2Data.push(mfgTotRowArr2);
+    sheet2Data.push(sgaTotRowArr2);
+    sheet2Data.push(grandTotRowArr2);
 
     const ws2 = XLSX.utils.aoa_to_sheet(sheet2Data);
 
-    const sheet2FirstDataRow = 2; // Data rows start at index 2 (Row 3)
+    const getS2TotalColIdx = (id: string): number => {
+      const normalizedId = id.startsWith('plan_') ? id : `plan_${id}`;
+      const found = blocks.find(b => b.id === id || b.id === normalizedId || `plan_${b.id}` === id || `plan_${b.id}` === normalizedId);
+      return found ? found.totalCol : -1;
+    };
+    const s2BasisColIdx = getS2TotalColIdx(increaseBasisCol);
+    const s2TargetColIdx = getS2TotalColIdx(increaseTargetCol);
+
+    const sheet2FirstDataRow = 2; // Rows 0 & 1 are headers
     const sheet2LastDataRow = sheet2FirstDataRow + filteredMultiPlanRows.length - 1;
 
-    // Dynamic column indexes:
-    const adjMonthsStart = 3;
-    const adjTotalCol = 15;
-    const rp1MonthsStart = 16;
-    const rp1TotalCol = 28;
-    const rp2MonthsStart = 29;
-    const rp2TotalCol = 41;
-    const actMonthsStart = 42;
-    const actTotalCol = 42 + actualMonthCount;
-    const s2IncreaseCol = actTotalCol + 1;
-
-    // Set SUM formulas for monthly totals & required increase in Sheet 2
     for (let r = sheet2FirstDataRow; r <= sheet2LastDataRow; r++) {
-      setFormulaCell(ws2, r, adjTotalCol, `SUM(${cellRef(r, adjMonthsStart)}:${cellRef(r, adjTotalCol - 1)})`, '#,##0');
-      setFormulaCell(ws2, r, rp1TotalCol, `SUM(${cellRef(r, rp1MonthsStart)}:${cellRef(r, rp1TotalCol - 1)})`, '#,##0');
-      setFormulaCell(ws2, r, rp2TotalCol, `SUM(${cellRef(r, rp2MonthsStart)}:${cellRef(r, rp2TotalCol - 1)})`, '#,##0');
-      setFormulaCell(ws2, r, actTotalCol, `SUM(${cellRef(r, actMonthsStart)}:${cellRef(r, actTotalCol - 1)})`, '#,##0');
+      // 1. Calculate Block Totals
+      blocks.forEach(block => {
+        const startCell = cellRef(r, block.monthStartCol);
+        const endCell = cellRef(r, block.monthStartCol + block.sumEndMonth - 1);
+        setFormulaCell(ws2, r, block.totalCol, `SUM(${startCell}:${endCell})`, '#,##0');
+      });
 
-      // Resolved basis/target total column reference dynamically
-      const getS2TotalColIdx = (id: string): number => {
-        if (id === 'adjusted') return adjTotalCol;
-        if (id === 'rp1') return rp1TotalCol;
-        if (id === 'rp2') return rp2TotalCol;
-        return actTotalCol;
-      };
-      const s2BasisColIdx = getS2TotalColIdx(increaseBasisCol);
-      const s2TargetColIdx = getS2TotalColIdx(increaseTargetCol);
-
-      setFormulaCell(ws2, r, s2IncreaseCol, `${cellRef(r, s2TargetColIdx)}-${cellRef(r, s2BasisColIdx)}`, '#,##0');
+      // 2. Calculate Required Increase
+      if (s2BasisColIdx !== -1 && s2TargetColIdx !== -1) {
+        setFormulaCell(ws2, r, s2IncreaseCol, `${cellRef(r, s2TargetColIdx)}-${cellRef(r, s2BasisColIdx)}`, '#,##0');
+      }
     }
 
-    // Set SUM/SUMIF formulas for Bottom totals rows
     const s2MfgRow = sheet2EmptyOffset + 1;
     const s2SgaRow = sheet2EmptyOffset + 2;
     const s2GrandRow = sheet2EmptyOffset + 3;
 
+    // Collect all numeric columns to apply sum/sumif
     const numericColsList: number[] = [];
-    for (let c = adjMonthsStart; c <= adjTotalCol; c++) numericColsList.push(c);
-    for (let c = rp1MonthsStart; c <= rp1TotalCol; c++) numericColsList.push(c);
-    for (let c = rp2MonthsStart; c <= rp2TotalCol; c++) numericColsList.push(c);
-    for (let c = actMonthsStart; c <= actTotalCol; c++) numericColsList.push(c);
+    blocks.forEach(block => {
+      for (let c = block.monthStartCol; c <= block.totalCol; c++) {
+        numericColsList.push(c);
+      }
+    });
     numericColsList.push(s2IncreaseCol);
 
+    const sheet2DataLastRowExcel = sheet2FirstDataRow + filteredMultiPlanRows.length; // 1-indexed representation of last data row
     numericColsList.forEach(c => {
       const letter = getExcelColumnLetter(c);
-      const rangeStr = `A${sheet2FirstDataRow + 1}:A${sheet2LastDataRow + 1}`;
-      const sumRangeStr = `${letter}${sheet2FirstDataRow + 1}:${letter}${sheet2LastDataRow + 1}`;
+      const rangeStr = `A3:A${sheet2DataLastRowExcel}`;
+      const sumRangeStr = `${letter}3:${letter}${sheet2DataLastRowExcel}`;
       
       setFormulaCell(ws2, s2MfgRow, c, `SUMIF(${rangeStr},"제조",${sumRangeStr})`, '#,##0');
       setFormulaCell(ws2, s2SgaRow, c, `SUMIF(${rangeStr},"판관",${sumRangeStr})`, '#,##0');
-      setFormulaCell(ws2, s2GrandRow, c, `SUM(${letter}${sheet2FirstDataRow + 1}:${letter}${sheet2LastDataRow + 1})`, '#,##0');
+      setFormulaCell(ws2, s2GrandRow, c, `SUM(${letter}3:${letter}${sheet2DataLastRowExcel})`, '#,##0');
     });
 
-    // Custom formulas for Required Increase summary targets directly using the multi-plan totals
-    const getS2TotalRowColRef = (rowIdx: number, colId: string): string => {
-      if (colId === 'adjusted') return cellRef(rowIdx, adjTotalCol);
-      if (colId === 'rp1') return cellRef(rowIdx, rp1TotalCol);
-      if (colId === 'rp2') return cellRef(rowIdx, rp2TotalCol);
-      return cellRef(rowIdx, actTotalCol);
-    };
-
-    setFormulaCell(ws2, s2MfgRow, s2IncreaseCol, `${getS2TotalRowColRef(s2MfgRow, increaseTargetCol)}-${getS2TotalRowColRef(s2MfgRow, increaseBasisCol)}`, '#,##0');
-    setFormulaCell(ws2, s2SgaRow, s2IncreaseCol, `${getS2TotalRowColRef(s2SgaRow, increaseTargetCol)}-${getS2TotalRowColRef(s2SgaRow, increaseBasisCol)}`, '#,##0');
-    setFormulaCell(ws2, s2GrandRow, s2IncreaseCol, `${getS2TotalRowColRef(s2GrandRow, increaseTargetCol)}-${getS2TotalRowColRef(s2GrandRow, increaseBasisCol)}`, '#,##0');
+    if (s2BasisColIdx !== -1 && s2TargetColIdx !== -1) {
+      setFormulaCell(ws2, s2MfgRow, s2IncreaseCol, `${cellRef(s2MfgRow, s2TargetColIdx)}-${cellRef(s2MfgRow, s2BasisColIdx)}`, '#,##0');
+      setFormulaCell(ws2, s2SgaRow, s2IncreaseCol, `${cellRef(s2SgaRow, s2TargetColIdx)}-${cellRef(s2SgaRow, s2BasisColIdx)}`, '#,##0');
+      setFormulaCell(ws2, s2GrandRow, s2IncreaseCol, `${cellRef(s2GrandRow, s2TargetColIdx)}-${cellRef(s2GrandRow, s2BasisColIdx)}`, '#,##0');
+    }
 
     // Merge group category headers on Row 1 for Sheet 2
-    ws2['!merges'] = [
+    const merges: any[] = [
       { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // 계정구분
       { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, // 계정코드
-      { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } }, // 계정
-      { s: { r: 0, c: 3 }, e: { r: 0, c: 15 } }, // 경영계획 span
-      { s: { r: 0, c: 16 }, e: { r: 0, c: 28 } }, // 1차RP span
-      { s: { r: 0, c: 29 }, e: { r: 0, c: 41 } }, // 2차RP span
-      { s: { r: 0, c: 42 }, e: { r: 0, c: 42 + actualMonthCount } }, // Actual span
-      { s: { r: 0, c: s2IncreaseCol }, e: { r: 1, c: s2IncreaseCol } }, // Increase span
+      { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } }, // 계정과목
+      { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } }, // 작성부서코드
+      { s: { r: 0, c: 4 }, e: { r: 1, c: 4 } }, // 작성부서
+      { s: { r: 0, c: 5 }, e: { r: 1, c: 5 } }, // 귀속부서코드
+      { s: { r: 0, c: 6 }, e: { r: 1, c: 6 } }, // 귀속부서
     ];
+
+    blocks.forEach(block => {
+      merges.push({ s: { r: 0, c: block.monthStartCol }, e: { r: 0, c: block.totalCol } });
+    });
+
+    merges.push({ s: { r: 0, c: s2IncreaseCol }, e: { r: 1, c: s2IncreaseCol } });
+
+    ws2['!merges'] = merges;
 
     applyWorksheetStyle(ws2, {
       amountColumnIndexes: numericColsList,
-      leftAlignColumnIndexes: [2],
+      leftAlignColumnIndexes: [2, 4, 6],
       headerRowCount: 2,
     });
 
@@ -1663,15 +1682,54 @@ export default function VarianceComparison() {
       freezeColCount: 3,
     });
 
-    ws2['!cols'] = ws2['!cols'] || [];
-    for (let c = 0; c < finalColCount; c++) {
-      if (c === 0) ws2['!cols'][c] = { wch: 12 };
-      else if (c === 1) ws2['!cols'][c] = { wch: 12 };
-      else if (c === 2) ws2['!cols'][c] = { wch: 30 };
-      else ws2['!cols'][c] = { wch: 12 };
-    }
+    const hideMonthlyColumns = (wsIdx: any, blks: any[]) => {
+      wsIdx['!cols'] = wsIdx['!cols'] || [];
 
-    appendSheetSafely(wb, ws2, '월별 상세');
+      // Initialize columns width
+      for (let i = 0; i < finalColCount; i++) {
+        if (i === 0 || i === 1 || i === 3 || i === 5) {
+          wsIdx['!cols'][i] = { wch: 13 };
+        } else if (i === 2 || i === 4 || i === 6) {
+          wsIdx['!cols'][i] = { wch: 24 };
+        } else {
+          wsIdx['!cols'][i] = { wch: 9 };
+        }
+      }
+
+      blks.forEach(block => {
+        for (let c = block.monthStartCol; c <= block.monthEndCol; c++) {
+          wsIdx['!cols'][c] = {
+            ...(wsIdx['!cols'][c] || {}),
+            hidden: true,
+            level: 1,
+            wch: 10,
+          };
+        }
+
+        wsIdx['!cols'][block.totalCol] = {
+          ...(wsIdx['!cols'][block.totalCol] || {}),
+          hidden: false,
+          level: 0,
+          wch: 16,
+        };
+      });
+
+      wsIdx['!cols'][s2IncreaseCol] = {
+        ...(wsIdx['!cols'][s2IncreaseCol] || {}),
+        hidden: false,
+        level: 0,
+        wch: 18,
+      };
+
+      wsIdx['!outline'] = {
+        left: false,
+        symbols: true,
+      };
+    };
+
+    hideMonthlyColumns(ws2, blocks);
+
+    appendSheetSafely(wb, ws2, '월별상세');
 
     wb.Workbook = {
       ...(wb.Workbook || {}),
@@ -1681,7 +1739,7 @@ export default function VarianceComparison() {
       },
     };
 
-    XLSX.writeFile(wb, `다중계획비교_${baseYear}년_실적~${baseSelectedMonth}월_집계.xlsx`);
+    XLSX.writeFile(wb, `다중계획비교_${baseYear}_계획${planEndMonth}월_실적${actualEndMonth}월.xlsx`);
   };
 
   const handleDownloadExcel = async () => {
@@ -2260,200 +2318,73 @@ export default function VarianceComparison() {
     return varianceResult.summary;
   }, [varianceResult]);
 
+  // Keep baseSelectedMonth synchronized in multi-plan
+  useEffect(() => {
+    if (tab === 'multi_plan') {
+      setBaseSelectedMonth(actualEndMonth);
+    }
+  }, [actualEndMonth, tab]);
+
   // multi_plan calculations
-  const multiPlanColumns = useMemo(() => {
-    return [
-      {
-        id: 'adjusted',
-        label: '경영계획(증액반영)',
-        type: 'PLAN',
-        planType: '증액반영',
-        monthMode: 'YTD' as MonthMode,
-        selectedMonth: 12,
-      },
-      {
-        id: 'rp1',
-        label: '1차RP',
-        type: 'PLAN',
-        planType: '1차 RP',
-        monthMode: 'YTD' as MonthMode,
-        selectedMonth: 12,
-      },
-      {
-        id: 'rp2',
-        label: '2차RP',
-        type: 'PLAN',
-        planType: '2차 RP',
-        monthMode: 'YTD' as MonthMode,
-        selectedMonth: 12,
-      },
-      {
-        id: 'actual',
-        label: `실적(~${baseSelectedMonth}월)`,
-        type: 'ACTUAL',
-        planType: '실적',
-        monthMode: 'YTD' as MonthMode,
-        selectedMonth: baseSelectedMonth,
-      },
-    ];
-  }, [baseSelectedMonth]);
-
-  const multiPlanMatrices = useMemo(() => {
-    if (tab !== 'multi_plan') return {};
-    
-    const matrices: Record<string, Map<string, any>> = {};
-    
-    multiPlanColumns.forEach(col => {
-      matrices[col.id] = buildMonthlyMatrix({
-        year: baseYear,
-        planType: col.planType,
-        monthMode: col.monthMode,
-        selectedMonth: col.selectedMonth,
-        deptCodes: selectedDeptCodes,
-        accountMetaMap,
-        hasSalaryAccess,
-        includeSalaryRows,
-        allDepts,
-      });
+  const { columns: multiPlanColumns, rows: multiPlanRows } = useMemo(() => {
+    if (tab !== 'multi_plan') {
+      return { columns: [], rows: [] };
+    }
+    const currentActiveDeptCodes = resolveSelectedDeptCodes({
+      selectedDept: 'by_dept', // we want all available codes for the union
+      viewableDepts,
+      isAdmin,
+      isPlanningTeam,
     });
-    
-    return matrices;
-  }, [tab, baseYear, multiPlanColumns, selectedDeptCodes, accountMetaMap, hasSalaryAccess, includeSalaryRows, allDepts]);
-
-  const multiPlanAccountMaps = useMemo(() => {
-    if (tab !== 'multi_plan') return {};
-    
-    const aggregated: Record<string, Map<string, {
-      accountClass: string;
-      accountingType: string;
-      accountCode: string;
-      accountName: string;
-      isSalary: boolean;
-      monthly: number[];
-      total: number;
-    }>> = {};
-    
-    Object.keys(multiPlanMatrices).forEach(colId => {
-      const matrixMap = multiPlanMatrices[colId];
-      const accMap = new Map<string, any>();
-      
-      matrixMap.forEach((item) => {
-        const code = normalizeCompareCode(item.accountCode);
-        let existing = accMap.get(code);
-        if (!existing) {
-          existing = {
-            accountClass: item.accountClass,
-            accountingType: item.accountingType,
-            accountCode: code,
-            accountName: item.accountName,
-            isSalary: item.isSalary,
-            monthly: Array(12).fill(0),
-            total: 0,
-          };
-          accMap.set(code, existing);
-        }
-        for (let m = 0; m < 12; m++) {
-          existing.monthly[m] += item.monthly[m];
-        }
-      });
-      
-      // Calculate total
-      accMap.forEach((item) => {
-        const limitMonth = multiPlanColumns.find(c => c.id === colId)?.selectedMonth || 12;
-        let sum = 0;
-        for (let m = 0; m < limitMonth; m++) {
-          sum += item.monthly[m];
-        }
-        item.total = sum;
-      });
-      
-      aggregated[colId] = accMap;
+    return buildMultiPlanComparisonRows({
+      year: baseYear,
+      selectedPlanTypes,
+      planEndMonth,
+      actualEndMonth,
+      viewMode: multiPlanViewMode,
+      deptCodes: currentActiveDeptCodes,
+      accountMetaMap,
+      hasSalaryAccess,
+      includeSalaryRows,
+      allDepts,
+      increaseBasisCol: increaseBasisCol.startsWith('plan_') ? increaseBasisCol : `plan_${increaseBasisCol}`,
+      increaseTargetCol: increaseTargetCol.startsWith('plan_') ? increaseTargetCol : `plan_${increaseTargetCol}`,
     });
-    
-    return aggregated;
-  }, [multiPlanMatrices, tab, multiPlanColumns]);
-
-  const multiPlanRows = useMemo(() => {
-    if (tab !== 'multi_plan') return [];
-    
-    // 1. Collect all unique account codes
-    const allAccountCodes = new Set<string>();
-    Object.keys(multiPlanAccountMaps).forEach(colId => {
-      multiPlanAccountMaps[colId].forEach((_, code) => {
-        allAccountCodes.add(code);
-      });
-    });
-    
-    const rows: any[] = Array.from(allAccountCodes).map(code => {
-      // Find sample base/target entries to resolve names and metadata
-      const itemsByCol: Record<string, any> = {};
-      let metaResolverInput: any[] = [];
-      
-      multiPlanColumns.forEach(col => {
-        const map = multiPlanAccountMaps[col.id];
-        const item = map ? map.get(code) : undefined;
-        if (item) {
-          itemsByCol[col.id] = item;
-          metaResolverInput.push({
-            accountCode: item.accountCode,
-            accountName: item.accountName,
-            accountClass: item.accountClass,
-            accountingType: item.accountingType as any,
-            isSalary: item.isSalary,
-          });
-        }
-      });
-      
-      // Resolve canonical meta from entries
-      const firstOccur = metaResolverInput[0];
-      const unionMeta = resolveUnionMeta(firstOccur, metaResolverInput[1]);
-      
-      const valuesByColumnId: Record<string, number> = {};
-      const monthlyValuesByColumnId: Record<string, number[]> = {};
-      
-      multiPlanColumns.forEach(col => {
-        const item = itemsByCol[col.id];
-        valuesByColumnId[col.id] = item ? item.total : 0;
-        monthlyValuesByColumnId[col.id] = item ? item.monthly : Array(12).fill(0);
-      });
-      
-      const basisVal = valuesByColumnId[increaseBasisCol] || 0;
-      const targetVal = valuesByColumnId[increaseTargetCol] || 0;
-      const requiredIncreaseAmount = targetVal - basisVal;
-      
-      return {
-        key: code,
-        accountCode: code,
-        accountName: unionMeta.accountName,
-        accountClass: unionMeta.accountClass,
-        accountingType: unionMeta.accountingType,
-        isSalary: unionMeta.isSalary,
-        valuesByColumnId,
-        monthlyValuesByColumnId,
-        requiredIncreaseAmount,
-      };
-    });
-    
-    // Sort or filter by amounts first, make sure at least one column is non-zero
-    const filteredAndNonZero = rows.filter(r => {
-      const hasAnyNonZero = Object.values(r.valuesByColumnId).some(v => v !== 0);
-      if (!hasAnyNonZero) return false;
-      
-      // Filter by activeDept / accountingType
-      if (selectedDept === 'mfg' && r.accountingType !== '제조') return false;
-      if (selectedDept === 'sga' && r.accountingType !== '판관') return false;
-      if (selectedAccountingType !== '전체' && r.accountingType !== selectedAccountingType) return false;
-      if (selectedAccountClass !== '전체' && r.accountClass !== selectedAccountClass) return false;
-      
-      return true;
-    });
-    
-    return filteredAndNonZero;
-  }, [tab, multiPlanAccountMaps, multiPlanColumns, increaseBasisCol, increaseTargetCol, selectedDept, selectedAccountingType, selectedAccountClass]);
+  }, [
+    tab,
+    baseYear,
+    selectedPlanTypes,
+    planEndMonth,
+    actualEndMonth,
+    multiPlanViewMode,
+    viewableDepts,
+    isAdmin,
+    isPlanningTeam,
+    accountMetaMap,
+    hasSalaryAccess,
+    includeSalaryRows,
+    allDepts,
+    increaseBasisCol,
+    increaseTargetCol,
+  ]);
 
   const filteredMultiPlanRows = useMemo(() => {
     let result = [...multiPlanRows];
+
+    // Filter by activeDept / accountingType (Mfg vs SGA / Account type / Account Class)
+    if (selectedDept === 'mfg') {
+      result = result.filter(r => r.accountingType === '제조');
+    } else if (selectedDept === 'sga') {
+      result = result.filter(r => r.accountingType === '판관');
+    }
     
+    if (selectedAccountingType !== '전체') {
+      result = result.filter(r => r.accountingType === selectedAccountingType);
+    }
+    if (selectedAccountClass !== '전체') {
+      result = result.filter(r => r.accountClass === selectedAccountClass);
+    }
+
     if (detailFilters.accountCode) {
       const q = detailFilters.accountCode.toLowerCase();
       result = result.filter(r => r.accountCode.toLowerCase().includes(q));
@@ -2472,16 +2403,16 @@ export default function VarianceComparison() {
       const minVal = Number(detailFilters.minAmount) * 1000000;
       if (!isNaN(minVal)) {
         result = result.filter(r => {
-          return Object.values(r.valuesByColumnId).some(valByCol => Math.abs(valByCol as number) >= minVal) || Math.abs(r.requiredIncreaseAmount) >= minVal;
+          return Object.values(r.totalByColumnId).some(val => Math.abs(val as number) >= minVal) || Math.abs(r.requiredIncreaseAmount) >= minVal;
         });
       }
     }
-    
+
     // Sort by largest requiredIncreaseAmount descending
     result.sort((a, b) => Math.abs(b.requiredIncreaseAmount) - Math.abs(a.requiredIncreaseAmount));
-    
+
     return result;
-  }, [multiPlanRows, detailFilters]);
+  }, [multiPlanRows, selectedDept, selectedAccountingType, selectedAccountClass, detailFilters]);
 
   const pagedMultiPlanRows = useMemo(() => {
     return filteredMultiPlanRows.slice(0, visibleDetailCount);
@@ -2489,29 +2420,31 @@ export default function VarianceComparison() {
 
   const multiPlanTotals = useMemo(() => {
     const listToSum = filteredMultiPlanRows;
-    
+
     const mfgRows = listToSum.filter(r => r.accountingType === '제조');
     const sgaRows = listToSum.filter(r => r.accountingType === '판관');
-    
+
     const buildTotalRow = (label: string, rows: any[]) => {
       const valuesByColumnId: Record<string, number> = {};
       const monthlyValuesByColumnId: Record<string, number[]> = {};
-      
+
       multiPlanColumns.forEach(col => {
-        valuesByColumnId[col.id] = rows.reduce((sum, r) => sum + (r.valuesByColumnId[col.id] || 0), 0);
-        
+        valuesByColumnId[col.id] = rows.reduce((sum, r) => sum + (r.totalByColumnId[col.id] || 0), 0);
+
         const monthlySum = Array(12).fill(0);
         rows.forEach(r => {
-          const colMonthly = r.monthlyValuesByColumnId[col.id] || Array(12).fill(0);
+          const colMonthly = r.monthlyByColumnId[col.id] || Array(12).fill(0);
           for (let m = 0; m < 12; m++) {
             monthlySum[m] += colMonthly[m];
           }
         });
         monthlyValuesByColumnId[col.id] = monthlySum;
       });
-      
-      const requiredIncreaseAmount = rows.reduce((sum, r) => sum + (r.requiredIncreaseAmount || 0), 0);
-      
+
+      const basisVal = valuesByColumnId[increaseBasisCol] || 0;
+      const targetVal = valuesByColumnId[increaseTargetCol] || 0;
+      const requiredIncreaseAmount = targetVal - basisVal;
+
       return {
         label,
         valuesByColumnId,
@@ -2519,13 +2452,13 @@ export default function VarianceComparison() {
         requiredIncreaseAmount,
       };
     };
-    
+
     return {
       mfg: buildTotalRow('제조 합계', mfgRows),
       sga: buildTotalRow('판관 합계', sgaRows),
-      grand: buildTotalRow('합계', listToSum),
+      grand: buildTotalRow('총합계', listToSum),
     };
-  }, [filteredMultiPlanRows, multiPlanColumns]);
+  }, [filteredMultiPlanRows, multiPlanColumns, increaseBasisCol, increaseTargetCol]);
 
   const chartData = useMemo(() => {
     return salaryFilteredComparisonRows.map(row => ({
@@ -2874,35 +2807,153 @@ export default function VarianceComparison() {
       {/* Filters */}
       <div className="bg-white p-5 rounded-2xl border border-lithium-200 shadow-sm flex flex-col gap-4">
         {tab === 'multi_plan' ? (
-          <div className="flex flex-wrap items-center gap-6">
-            <div className="flex gap-2 items-center">
-              <span className="text-sm font-bold text-text-secondary w-16">조회 연도</span>
-              <select 
-                value={baseYear} 
-                onChange={(e) => setBaseYear(e.target.value)}
-                className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none w-32 outline-none transition-all"
-              >
-                <option value="2024">2024년</option>
-                <option value="2025">2025년</option>
-                <option value="2026">2026년</option>
-                <option value="2027">2027년</option>
-              </select>
+          <div className="flex flex-col gap-5 w-full">
+            {/* Top row: Year & Months & Dynamic Comparer */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 pb-4 border-b border-lithium-100">
+              {/* Year Select */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-text-secondary">조회 연도</span>
+                <select 
+                  value={baseYear} 
+                  onChange={(e) => setBaseYear(e.target.value)}
+                  className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium outline-none transition-all w-full cursor-pointer"
+                >
+                  <option value="2024">2024년</option>
+                  <option value="2025">2025년</option>
+                  <option value="2026">2026년</option>
+                  <option value="2027">2027년</option>
+                </select>
+              </div>
+
+              {/* Plan Cumulative Month */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-text-secondary">계획 누계 월</span>
+                <select 
+                  value={planEndMonth} 
+                  onChange={(e) => setPlanEndMonth(Number(e.target.value))}
+                  className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium outline-none transition-all w-full cursor-pointer"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                    <option key={m} value={m}>~{m}월 누계</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Actual Cumulative Month */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-text-secondary">실적 누계 월</span>
+                <select 
+                  value={actualEndMonth} 
+                  onChange={(e) => {
+                    const m = Number(e.target.value);
+                    setActualEndMonth(m);
+                    setBaseSelectedMonth(m); // Keep base sync for alignment
+                  }}
+                  className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium outline-none transition-all w-full cursor-pointer"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                    <option key={m} value={m}>~{m}월 누계</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* View Mode (All / Dept Only / Writer Only) */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-text-secondary">조회 단위</span>
+                <select 
+                  value={multiPlanViewMode} 
+                  onChange={(e) => setMultiPlanViewMode(e.target.value as MultiPlanDeptViewMode)}
+                  className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium outline-none transition-all w-full cursor-pointer"
+                >
+                  <option value="ACCOUNT_TOTAL">계정과목별 집계</option>
+                  <option value="BY_DEPT">부서별 보기</option>
+                </select>
+                <span className="text-[10px] text-text-secondary font-medium leading-normal mt-0.5">
+                  {multiPlanViewMode === 'ACCOUNT_TOTAL' 
+                    ? '계정과목별 집계: 부서 구분 없이 계정별 합산' 
+                    : '부서별 보기: 작성부서/귀속부서/계정별 분리'}
+                </span>
+              </div>
             </div>
-            <div className="flex gap-2 items-center">
-              <span className="text-sm font-bold text-text-secondary w-20">실적 누계 월</span>
-              <select 
-                value={baseSelectedMonth} 
-                onChange={(e) => setBaseSelectedMonth(Number(e.target.value))}
-                className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none w-24 outline-none transition-all"
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
-                  <option key={m} value={m}>{m}월</option>
-                ))}
-              </select>
+
+            {/* Middle row: Plan Types selection check-boxes */}
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold text-text-secondary">대상 계획 선택 (다중 선택 가능)</span>
+              <div className="flex flex-wrap gap-2">
+                {(['경영계획', '증액반영', '수정경영계획', '1차 RP', '2차 RP'] as BudgetPlanType[]).map(type => {
+                  const isChecked = selectedPlanTypes.includes(type);
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => {
+                        if (isChecked) {
+                          if (selectedPlanTypes.length > 1) {
+                            setSelectedPlanTypes(selectedPlanTypes.filter(p => p !== type));
+                          }
+                        } else {
+                          setSelectedPlanTypes([...selectedPlanTypes, type]);
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs flex items-center gap-2 border transition-all cursor-pointer ${
+                        isChecked 
+                          ? 'bg-[#E6F4F2] border-[#008F83] text-[#006B62] font-semibold'
+                          : 'bg-white border-zinc-200 text-zinc-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        readOnly
+                        className="rounded border-zinc-300 text-[#008F83] focus:ring-[#00a395] pointer-events-none w-3.5 h-3.5"
+                      />
+                      <span>{type === '증액반영' ? '경영계획(증액반영)' : type}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="text-xs text-nickel-600 bg-nickel-50/70 py-1.5 px-3 rounded-xl border border-nickel-100 flex items-center gap-1.5 ml-auto">
-              <span className="w-1.5 h-1.5 bg-nickel-500 rounded-full animate-pulse"></span>
-              <span>다중계획 모드: 계획(1~12월 연간) vs 실적(1~{baseSelectedMonth}월 누계)</span>
+
+            {/* Bottom Row: Dynamic Variance Formula configuration */}
+            <div className="flex flex-wrap gap-4 items-center pt-2 border-t border-lithium-50">
+              <div className="flex flex-wrap items-center gap-2 text-stone-700">
+                <span className="text-xs font-bold text-text-secondary">증액필요예산 비교식 설정:</span>
+                
+                {/* Basis Selection */}
+                <select
+                  value={increaseBasisCol}
+                  onChange={(e) => setIncreaseBasisCol(e.target.value)}
+                  className="bg-lithium-100 border-none text-stone-900 text-xs rounded-lg p-1.5 font-medium outline-none cursor-pointer"
+                >
+                  {selectedPlanTypes.map(p => (
+                    <option key={p} value={`plan_${p}`}>{p === '증액반영' ? '경영계획(증액반영)' : p}</option>
+                  ))}
+                  <option value="actual">실적</option>
+                </select>
+
+                <span className="text-xs font-medium text-stone-400">대비</span>
+
+                {/* Target Selection */}
+                <select
+                  value={increaseTargetCol}
+                  onChange={(e) => setIncreaseTargetCol(e.target.value)}
+                  className="bg-lithium-100 border-none text-stone-900 text-xs rounded-lg p-1.5 font-medium outline-none cursor-pointer"
+                >
+                  {selectedPlanTypes.map(p => (
+                    <option key={p} value={`plan_${p}`}>{p === '증액반영' ? '경영계획(증액반영)' : p}</option>
+                  ))}
+                  <option value="actual">실적</option>
+                </select>
+
+                <span className="text-xs font-semibold text-nickel-700 bg-nickel-50/70 border border-nickel-100 rounded-lg px-2 py-1 ml-2">
+                  (증액필요예산 = 대상 - 기준)
+                </span>
+              </div>
+              
+              <div className="text-xs text-nickel-600 bg-nickel-50/70 py-1.5 px-3 rounded-xl border border-nickel-100 flex items-center gap-1.5 ml-auto">
+                <span className="w-1.5 h-1.5 bg-nickel-500 rounded-full animate-pulse"></span>
+                <span>다중계획 모드: 계획(~{planEndMonth}월 누계) vs 실적(~{actualEndMonth}월 누계)</span>
+              </div>
             </div>
           </div>
         ) : (
@@ -3055,7 +3106,23 @@ export default function VarianceComparison() {
             </button>
             {showDownloadMenu && (
               <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-lithium-200 overflow-hidden z-20">
-                {isDeptComparisonMode ? (
+                {tab === 'multi_plan' ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setShowDownloadMenu(false);
+                        handleDownloadMultiPlanExcel();
+                      }}
+                      className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex flex-col justify-start gap-0.5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="w-5 h-5 text-green-600 flex-shrink-0" />
+                        <span className="font-bold">다중계획 엑셀 다운로드</span>
+                      </div>
+                      <span className="text-[10px] text-text-tertiary ml-8 leading-tight">요약 및 월별상세 시트 통합 다운로드</span>
+                    </button>
+                  </>
+                ) : isDeptComparisonMode ? (
                   <>
                     <button
                       onClick={() => {
@@ -4121,94 +4188,42 @@ export default function VarianceComparison() {
         <div className="space-y-6">
           {/* 1. Summary Cards for Multi-Plan */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
-              <p className="text-sm font-medium text-text-secondary font-sans">경영계획(증액반영) 총합계</p>
-              <p className="text-[22px] font-black text-eco-black mt-2 text-right">
-                {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['adjusted'] || 0))} <span className="text-xs font-normal text-text-tertiary">백만원</span>
-              </p>
-            </div>
-            
-            <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
-              <p className="text-sm font-medium text-text-secondary font-sans">1차 RP 총합계</p>
-              <p className="text-[22px] font-black text-eco-black mt-2 text-right">
-                {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['rp1'] || 0))} <span className="text-xs font-normal text-text-tertiary">백만원</span>
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
-              <p className="text-sm font-medium text-text-secondary font-sans">2차 RP 총합계</p>
-              <p className="text-[22px] font-black text-eco-black mt-2 text-right">
-                {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['rp2'] || 0))} <span className="text-xs font-normal text-text-tertiary">백만원</span>
-              </p>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
-              <p className="text-sm font-medium text-text-secondary font-sans">실적 누계(~{baseSelectedMonth}월) 총합계</p>
-              <p className="text-[22px] font-black text-eco-black mt-2 text-right font-sans">
-                {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['actual'] || 0))} <span className="text-xs font-normal text-text-tertiary font-sans">백만원</span>
-              </p>
-            </div>
-          </div>
-
-          {/* 2. Formula & Option controls */}
-          <div className="bg-[#f8faf9] p-4.5 rounded-2xl border border-zinc-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-black text-[#008f83] bg-white border border-teal-150 py-1 px-2.5 rounded-lg font-sans">증액필요예산 산식 설정</span>
-              <div className="flex items-center gap-2">
-                <select
-                  value={increaseBasisCol}
-                  onChange={(e) => setIncreaseBasisCol(e.target.value)}
-                  className="bg-white border border-zinc-250 text-eco-black text-xs rounded-lg px-2.5 py-1.5 font-bold outline-none cursor-pointer"
-                >
-                  <option value="adjusted">경영계획(증액반영)</option>
-                  <option value="rp1">1차 RP</option>
-                  <option value="rp2">2차 RP</option>
-                  <option value="actual">실적(~{baseSelectedMonth}월)</option>
-                </select>
-                <span className="text-xs font-bold text-zinc-400">을(를) 기준으로</span>
-                <select
-                  value={increaseTargetCol}
-                  onChange={(e) => setIncreaseTargetCol(e.target.value)}
-                  className="bg-white border border-zinc-250 text-eco-black text-xs rounded-lg px-2.5 py-1.5 font-bold outline-none cursor-pointer"
-                >
-                  <option value="adjusted">경영계획(증액반영)</option>
-                  <option value="rp1">1차 RP</option>
-                  <option value="rp2">2차 RP</option>
-                  <option value="actual">실적(~{baseSelectedMonth}월)</option>
-                </select>
-                <span className="text-xs font-bold text-zinc-400">대비 필요액 산출 (우측-좌측)</span>
+            {selectedPlanTypes.map(p => (
+              <div key={p} className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
+                <p className="text-sm font-medium text-text-secondary font-sans">
+                  {p === '증액반영' ? '경영계획(증액반영)' : p} 합계
+                </p>
+                <p className="text-[20px] font-black text-eco-black mt-2 text-right">
+                  {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId[`plan_${p}`] || 0))}{' '}
+                  <span className="text-xs font-normal text-text-tertiary">백만원</span>
+                </p>
               </div>
-            </div>
+            ))}
             
-            <label className="flex items-center gap-2 text-xs font-bold text-zinc-700 cursor-pointer select-none bg-white py-1.5 px-3 rounded-lg border border-zinc-200 shadow-3xs font-sans">
-              <input
-                type="checkbox"
-                checked={expandMonthlyDetails}
-                onChange={(e) => setExpandMonthlyDetails(e.target.checked)}
-                className="rounded border-zinc-300 text-teal-600 focus:ring-teal-500 w-3.5 h-3.5"
-              />
-              <span>화면 월별 상세 펼쳐보기 (1~12월 상세)</span>
-            </label>
+            <div className="bg-white p-6 rounded-2xl border border-lithium-200 shadow-sm hover:shadow-md transition-all">
+              <p className="text-sm font-medium text-text-secondary font-sans">실적(~{actualEndMonth}월) 합계</p>
+              <p className="text-[20px] font-black text-eco-black mt-2 text-right font-sans">
+                {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['actual'] || 0))}{' '}
+                <span className="text-xs font-normal text-text-tertiary font-sans">백만원</span>
+              </p>
+            </div>
           </div>
 
-          {/* 3. Main Multi-Plan Comparison Table Container */}
+          {/* 2. Main Multi-Plan Comparison Table Container */}
           <div className="bg-white rounded-2xl border border-lithium-200 shadow-sm overflow-hidden">
             <div className="px-6 py-5 border-b border-lithium-200 bg-lithium-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <h3 className="text-base sm:text-lg font-bold text-eco-black tracking-tight flex items-center gap-2.5 font-sans">
                   <span>다중 계획 대비 분석표</span>
-                  {expandMonthlyDetails ? (
-                    <span className="text-xs bg-cobalt-50 text-cobalt-700 font-bold px-2 py-0.5 rounded-full border border-cobalt-100 animate-pulse font-sans">월별 상세 모드</span>
-                  ) : (
-                    <span className="text-xs bg-zinc-100 text-zinc-650 font-bold px-2 py-0.5 rounded-full border border-zinc-200 font-sans">요약 모드</span>
-                  )}
+                  <span className="text-xs bg-zinc-100 text-zinc-650 font-bold px-2 py-0.5 rounded-full border border-zinc-200 font-sans">요약 모드</span>
                 </h3>
                 <p className="text-xs text-text-secondary mt-1 font-sans">
-                  경영계획(증액반영), 1~2차 RP 예산 및 실적을 통합 비교합니다. 마이너스 값은 해당 계획 내 실적 발생 여부를 의미합니다.
+                  선택한 예산 계획과 실적을 통합 비교합니다. 마이너스(-) 편차는 예산 잔여 또는 감소를 의미합니다.
                 </p>
               </div>
             </div>
 
+            {/* Dynamic filter bar */}
             <div className="bg-zinc-50/50 border-b border-zinc-200 px-6 py-3.5 flex flex-wrap gap-3 items-center text-xs">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-zinc-400">비용성격:</span>
@@ -4312,113 +4327,64 @@ export default function VarianceComparison() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm min-w-max">
                 <thead>
-                  {!expandMonthlyDetails ? (
-                    <tr className="bg-lithium-100/50 border-b border-lithium-200">
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary">비용성격</th>
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary">회계구분</th>
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary">계정코드</th>
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary">계정과목명</th>
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary text-right">경영계획(증액반영)</th>
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary text-right">1차 RP</th>
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary text-right">2차 RP</th>
-                      <th className="px-5 py-3 text-xs font-black text-text-secondary text-right">실적(~{baseSelectedMonth}월)</th>
-                      <th className="px-5 py-3 text-xs font-black text-teal-850 text-right bg-teal-50">
-                        증액필요예산
-                        <div className="text-[9px] font-medium text-teal-600">
-                          {multiPlanColumns.find(c => c.id === increaseTargetCol)?.label} - {multiPlanColumns.find(c => c.id === increaseBasisCol)?.label}
-                        </div>
+                  <tr className="bg-lithium-100/50 border-b border-lithium-200">
+                    <th className="px-5 py-3 text-xs font-black text-text-secondary">계정구분</th>
+                    <th className="px-5 py-3 text-xs font-black text-text-secondary">계정코드</th>
+                    <th className="px-5 py-3 text-xs font-black text-text-secondary">계정과목</th>
+                    <th className="px-5 py-3 text-xs font-black text-text-secondary">작성부서</th>
+                    <th className="px-5 py-3 text-xs font-black text-text-secondary">귀속부서</th>
+                    {selectedPlanTypes.map(p => (
+                      <th key={p} className="px-5 py-3 text-xs font-black text-text-secondary text-right">
+                        {p === '증액반영' ? '경영계획(증액반영)' : p}
                       </th>
-                    </tr>
-                  ) : (
-                    <>
-                      <tr className="bg-lithium-100/50 border-b border-lithium-150">
-                        <th rowSpan={2} className="px-5 py-3 text-xs font-black text-text-secondary border-r border-lithium-200">비용성격</th>
-                        <th rowSpan={2} className="px-5 py-3 text-xs font-black text-text-secondary border-r border-lithium-200">회계구분</th>
-                        <th rowSpan={2} className="px-5 py-3 text-xs font-black text-text-secondary border-r border-lithium-200">계정코드</th>
-                        <th rowSpan={2} className="px-5 py-3 text-xs font-black text-text-secondary border-r border-lithium-200">계정과목명</th>
-                        {multiPlanColumns.map(col => (
-                          <th key={col.id} colSpan={col.selectedMonth + 1} className="px-3 py-1.5 text-xs font-black text-text-secondary text-center border-r border-lithium-200 border-b border-lithium-150">
-                            {col.label}
-                          </th>
-                        ))}
-                        <th rowSpan={2} className="px-5 py-3 text-xs font-black text-teal-850 text-right bg-teal-50">
-                          증액필요예산
-                          <div className="text-[10px] font-bold text-teal-650">
-                            {multiPlanColumns.find(c => c.id === increaseTargetCol)?.label} - {multiPlanColumns.find(c => c.id === increaseBasisCol)?.label}
-                          </div>
-                        </th>
-                      </tr>
-                      <tr className="bg-lithium-50/70 border-b border-lithium-200">
-                        {multiPlanColumns.map(col => (
-                          <React.Fragment key={`sub-${col.id}`}>
-                            {Array.from({ length: col.selectedMonth }, (_, m) => (
-                              <th key={`m-${col.id}-${m}`} className="px-2 py-1 text-[10px] font-bold text-text-tertiary text-right border-r border-lithium-100 last-of-type:border-r-2 last-of-type:border-lithium-250 font-sans">
-                                {m + 1}월
-                              </th>
-                            ))}
-                            <th className="px-2 py-1 text-[10px] font-black text-eco-black text-right border-r border-lithium-200 bg-lithium-100/30">
-                              합계
-                            </th>
-                          </React.Fragment>
-                        ))}
-                      </tr>
-                    </>
-                  )}
+                    ))}
+                    <th className="px-5 py-3 text-xs font-black text-text-secondary text-right">
+                      실적(~{actualEndMonth}월)
+                    </th>
+                    <th className="px-5 py-3 text-xs font-black text-teal-850 text-right bg-teal-50">
+                      증액필요예산
+                      <div className="text-[9px] font-medium text-teal-600">
+                        {increaseTargetCol === 'actual' ? '실적' : increaseTargetCol.replace('plan_', '')} - {increaseBasisCol === 'actual' ? '실적' : increaseBasisCol.replace('plan_', '')}
+                      </div>
+                    </th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-lithium-100 bg-white">
                   {pagedMultiPlanRows.length === 0 ? (
                     <tr>
-                      <td colSpan={expandMonthlyDetails ? 50 : 9} className="px-6 py-16 text-center text-sm text-text-secondary bg-white">
+                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white">
                         다중계획 조건에 해당하는 계정과목 데이터가 없습니다. 상위 소분류나 필터 조건을 변경해 보세요.
                       </td>
                     </tr>
                   ) : (
                     pagedMultiPlanRows.map((r, rIdx) => {
-                      const basisVal = r.valuesByColumnId[increaseBasisCol] || 0;
-                      const targetVal = r.valuesByColumnId[increaseTargetCol] || 0;
+                      const basisVal = r.totalByColumnId[increaseBasisCol] || 0;
+                      const targetVal = r.totalByColumnId[increaseTargetCol] || 0;
                       const diffVal = targetVal - basisVal;
                       
                       return (
-                        <tr key={r.accountCode || r.key || rIdx} className="hover:bg-lithium-50/40 transition-colors">
-                          <td className="px-5 py-3 text-xs font-semibold text-zinc-700 border-r border-lithium-100">{r.accountClass}</td>
-                          <td className="px-5 py-3 text-xs text-text-secondary border-r border-lithium-100">{r.accountingType}</td>
+                        <tr key={r.rowKey || r.accountCode || rIdx} className="hover:bg-lithium-50/40 transition-colors">
+                          <td className="px-5 py-3 text-xs font-semibold text-zinc-700 border-r border-lithium-100">{r.accountingType}</td>
                           <td className="px-5 py-3 text-xs font-mono text-text-tertiary border-r border-lithium-100">{r.accountCode}</td>
                           <td className="px-5 py-3 text-xs font-bold text-eco-black border-r border-lithium-150 max-w-xs truncate" title={r.accountName}>
                             {r.accountName}
                           </td>
+                          <td className="px-5 py-3 text-xs text-text-secondary border-r border-lithium-100">
+                            {r.writerDeptName || '-'}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-text-secondary border-r border-lithium-100">
+                            {r.attributedDeptName || '-'}
+                          </td>
                           
-                          {!expandMonthlyDetails ? (
-                            <>
-                              <td className="px-5 py-3 text-sm text-right font-mono text-zinc-600 border-r border-lithium-100">
-                                {formatCurrency(toMillions(r.valuesByColumnId['adjusted']))}
-                              </td>
-                              <td className="px-5 py-3 text-sm text-right font-mono text-zinc-650 border-r border-lithium-100">
-                                {formatCurrency(toMillions(r.valuesByColumnId['rp1']))}
-                              </td>
-                              <td className="px-5 py-3 text-sm text-right font-mono text-zinc-650 border-r border-lithium-100">
-                                {formatCurrency(toMillions(r.valuesByColumnId['rp2']))}
-                              </td>
-                              <td className="px-5 py-3 text-sm text-right font-mono text-eco-black font-bold border-r border-lithium-150">
-                                {formatCurrency(toMillions(r.valuesByColumnId['actual']))}
-                              </td>
-                            </>
-                          ) : (
-                            multiPlanColumns.map(col => {
-                              const colMonthly = r.monthlyValuesByColumnId[col.id] || Array(12).fill(0);
-                              return (
-                                <React.Fragment key={`td-group-${col.id}-${r.accountCode}`}>
-                                  {Array.from({ length: col.selectedMonth }, (_, m) => (
-                                    <td key={`m-val-${col.id}-${m}-${r.accountCode}`} className="px-2 py-2 text-xs text-right font-mono text-zinc-500 border-r border-lithium-100 last-of-type:border-r-2 last-of-type:border-lithium-250">
-                                      {colMonthly[m] === 0 ? '-' : formatCurrency(toMillions(colMonthly[m]))}
-                                    </td>
-                                  ))}
-                                  <td className="px-2 py-2 text-xs text-right font-bold font-mono text-eco-black bg-lithium-100/10 border-r border-lithium-200">
-                                    {formatCurrency(toMillions(r.valuesByColumnId[col.id]))}
-                                  </td>
-                                </React.Fragment>
-                              );
-                            })
-                          )}
+                          {selectedPlanTypes.map(p => (
+                            <td key={p} className="px-5 py-3 text-sm text-right font-mono text-zinc-650 border-r border-lithium-100">
+                              {formatCurrency(toMillions(r.totalByColumnId[`plan_${p}`] || 0))}
+                            </td>
+                          ))}
+
+                          <td className="px-5 py-3 text-sm text-right font-mono text-eco-black font-bold border-r border-lithium-150">
+                            {formatCurrency(toMillions(r.totalByColumnId['actual'] || 0))}
+                          </td>
                           
                           <td className={`px-5 py-3 text-sm text-right font-black font-mono bg-teal-50/20 ${diffVal > 0 ? 'text-cobalt-600' : diffVal < 0 ? 'text-nickel-600' : 'text-text-tertiary'}`}>
                             {diffVal > 0 ? '+' : ''}{formatCurrency(toMillions(diffVal))}
@@ -4431,126 +4397,57 @@ export default function VarianceComparison() {
                 
                 {filteredMultiPlanRows.length > 0 && (
                   <tfoot className="border-t-2 border-lithium-300 bg-zinc-50 font-sans">
+                    {/* 1. 제조비용 합계 */}
                     <tr className="bg-[#fcfdfd] hover:bg-[#f6f9f9] border-b border-lithium-200 text-[#253f3e] font-semibold">
-                      <td colSpan={4} className="px-5 py-3.5 text-xs font-black text-stone-800 text-center border-r border-lithium-150">
-                        제조비용 합계
+                      <td colSpan={5} className="px-5 py-3.5 text-xs font-black text-stone-800 text-center border-r border-lithium-150">
+                        제조 합계
                       </td>
-                      {!expandMonthlyDetails ? (
-                        <>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
-                            {formatCurrency(toMillions(multiPlanTotals.mfg.valuesByColumnId['adjusted'] || 0))}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
-                            {formatCurrency(toMillions(multiPlanTotals.mfg.valuesByColumnId['rp1'] || 0))}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
-                            {formatCurrency(toMillions(multiPlanTotals.mfg.valuesByColumnId['rp2'] || 0))}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono text-eco-black border-r border-lithium-150">
-                            {formatCurrency(toMillions(multiPlanTotals.mfg.valuesByColumnId['actual'] || 0))}
-                          </td>
-                        </>
-                      ) : (
-                        multiPlanColumns.map(col => {
-                          const colMonthly = multiPlanTotals.mfg.monthlyValuesByColumnId[col.id] || Array(12).fill(0);
-                          return (
-                            <React.Fragment key={`foot-mfg-${col.id}`}>
-                              {Array.from({ length: col.selectedMonth }, (_, m) => (
-                                <td key={`m-val-mfg-${col.id}-${m}`} className="px-2 py-2 text-xs text-right font-bold font-mono text-zinc-650 border-r border-lithium-100 last-of-type:border-r-2 last-of-type:border-lithium-250">
-                                  {colMonthly[m] === 0 ? '-' : formatCurrency(toMillions(colMonthly[m]))}
-                                </td>
-                              ))}
-                              <td className="px-2 py-2 text-xs text-right font-black font-mono text-[#253f3e] bg-lithium-100/40 border-r border-lithium-200">
-                                {formatCurrency(toMillions(multiPlanTotals.mfg.valuesByColumnId[col.id]))}
-                              </td>
-                            </React.Fragment>
-                          );
-                        })
-                      )}
+                      {selectedPlanTypes.map(p => (
+                        <td key={p} className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
+                          {formatCurrency(toMillions(multiPlanTotals.mfg.valuesByColumnId[`plan_${p}`] || 0))}
+                        </td>
+                      ))}
+                      <td className="px-5 py-3.5 text-sm text-right font-bold font-mono text-eco-black border-r border-lithium-150">
+                        {formatCurrency(toMillions(multiPlanTotals.mfg.valuesByColumnId['actual'] || 0))}
+                      </td>
                       <td className="px-5 py-3.5 text-sm text-right font-black font-mono bg-teal-50 text-[#154a48]">
                         {multiPlanTotals.mfg.requiredIncreaseAmount > 0 ? '+' : ''}
                         {formatCurrency(toMillions(multiPlanTotals.mfg.requiredIncreaseAmount))}
                       </td>
                     </tr>
 
+                    {/* 2. 판매관리비 합계 */}
                     <tr className="bg-[#fbfcfc] hover:bg-[#f6f9f9] border-b border-lithium-200 text-[#253f3e] font-semibold">
-                      <td colSpan={4} className="px-5 py-3.5 text-xs font-black text-stone-800 text-center border-r border-lithium-150">
-                        판매관리비 합계
+                      <td colSpan={5} className="px-5 py-3.5 text-xs font-black text-stone-800 text-center border-r border-lithium-150">
+                        판관 합계
                       </td>
-                      {!expandMonthlyDetails ? (
-                        <>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
-                            {formatCurrency(toMillions(multiPlanTotals.sga.valuesByColumnId['adjusted'] || 0))}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
-                            {formatCurrency(toMillions(multiPlanTotals.sga.valuesByColumnId['rp1'] || 0))}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
-                            {formatCurrency(toMillions(multiPlanTotals.sga.valuesByColumnId['rp2'] || 0))}
-                          </td>
-                          <td className="px-5 py-3.5 text-sm text-right font-bold font-mono text-eco-black border-r border-lithium-150">
-                            {formatCurrency(toMillions(multiPlanTotals.sga.valuesByColumnId['actual'] || 0))}
-                          </td>
-                        </>
-                      ) : (
-                        multiPlanColumns.map(col => {
-                          const colMonthly = multiPlanTotals.sga.monthlyValuesByColumnId[col.id] || Array(12).fill(0);
-                          return (
-                            <React.Fragment key={`foot-sga-${col.id}`}>
-                              {Array.from({ length: col.selectedMonth }, (_, m) => (
-                                <td key={`m-val-sga-${col.id}-${m}`} className="px-2 py-2 text-xs text-right font-bold font-mono text-zinc-650 border-r border-lithium-100 last-of-type:border-r-2 last-of-type:border-lithium-250 font-sans">
-                                  {colMonthly[m] === 0 ? '-' : formatCurrency(toMillions(colMonthly[m]))}
-                                </td>
-                              ))}
-                              <td className="px-2 py-2 text-xs text-right font-black font-mono text-[#253f3e] bg-lithium-100/40 border-r border-lithium-200">
-                                {formatCurrency(toMillions(multiPlanTotals.sga.valuesByColumnId[col.id]))}
-                              </td>
-                            </React.Fragment>
-                          );
-                        })
-                      )}
+                      {selectedPlanTypes.map(p => (
+                        <td key={p} className="px-5 py-3.5 text-sm text-right font-bold font-mono border-r border-lithium-100">
+                          {formatCurrency(toMillions(multiPlanTotals.sga.valuesByColumnId[`plan_${p}`] || 0))}
+                        </td>
+                      ))}
+                      <td className="px-5 py-3.5 text-sm text-right font-bold font-mono text-eco-black border-r border-lithium-150">
+                        {formatCurrency(toMillions(multiPlanTotals.sga.valuesByColumnId['actual'] || 0))}
+                      </td>
                       <td className="px-5 py-3.5 text-sm text-right font-black font-mono bg-teal-50 text-[#154a48]">
                         {multiPlanTotals.sga.requiredIncreaseAmount > 0 ? '+' : ''}
                         {formatCurrency(toMillions(multiPlanTotals.sga.requiredIncreaseAmount))}
                       </td>
                     </tr>
 
+                    {/* 3. 총합계 */}
                     <tr className="bg-teal-50/40 hover:bg-teal-50/60 text-teal-950 font-black">
-                      <td colSpan={4} className="px-5 py-4 text-xs font-black text-teal-950 text-center border-r border-lithium-150">
-                        총합계 (지정 부서)
+                      <td colSpan={5} className="px-5 py-4 text-xs font-black text-teal-950 text-center border-r border-lithium-150">
+                        총합계
                       </td>
-                      {!expandMonthlyDetails ? (
-                        <>
-                          <td className="px-5 py-4 text-sm text-right font-black font-mono border-r border-lithium-100 text-teal-950">
-                            {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['adjusted'] || 0))}
-                          </td>
-                          <td className="px-5 py-4 text-sm text-right font-black font-mono border-r border-lithium-100 text-teal-950">
-                            {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['rp1'] || 0))}
-                          </td>
-                          <td className="px-5 py-4 text-sm text-right font-black font-mono border-r border-lithium-100 text-teal-950">
-                            {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['rp2'] || 0))}
-                          </td>
-                          <td className="px-5 py-4 text-sm text-right font-black font-mono text-teal-950 border-r border-lithium-150">
-                            {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['actual'] || 0))}
-                          </td>
-                        </>
-                      ) : (
-                        multiPlanColumns.map(col => {
-                          const colMonthly = multiPlanTotals.grand.monthlyValuesByColumnId[col.id] || Array(12).fill(0);
-                          return (
-                            <React.Fragment key={`foot-grand-${col.id}`}>
-                              {Array.from({ length: col.selectedMonth }, (_, m) => (
-                                <td key={`m-val-grand-${col.id}-${m}`} className="px-2 py-2 text-xs text-right font-black font-mono text-teal-900 border-r border-lithium-100 last-of-type:border-r-2 last-of-type:border-lithium-250 font-sans">
-                                  {colMonthly[m] === 0 ? '-' : formatCurrency(toMillions(colMonthly[m]))}
-                                </td>
-                              ))}
-                              <td className="px-2 py-2 text-xs text-right font-black font-mono text-teal-950 bg-teal-100/30 border-r border-lithium-200">
-                                {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId[col.id]))}
-                              </td>
-                            </React.Fragment>
-                          );
-                        })
-                      )}
+                      {selectedPlanTypes.map(p => (
+                        <td key={p} className="px-5 py-4 text-sm text-right font-black font-mono border-r border-lithium-100 text-teal-950">
+                          {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId[`plan_${p}`] || 0))}
+                        </td>
+                      ))}
+                      <td className="px-5 py-4 text-sm text-right font-black font-mono text-teal-950 border-r border-lithium-150">
+                        {formatCurrency(toMillions(multiPlanTotals.grand.valuesByColumnId['actual'] || 0))}
+                      </td>
                       <td className="px-5 py-4 text-base text-right font-black font-mono bg-teal-100 text-teal-950">
                         {multiPlanTotals.grand.requiredIncreaseAmount > 0 ? '+' : ''}
                         {formatCurrency(toMillions(multiPlanTotals.grand.requiredIncreaseAmount))}

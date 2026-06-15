@@ -196,7 +196,8 @@ const NAV_GROUPS_DEF: NavGroup[] = [
       { id: 'variance', label: '비교분석', icon: 'trend', href: '/variance-comparison' },
       { id: 'compare-time', label: '시점 vs 시점 비교', icon: 'compare', href: '/variance-comparison?tab=time' },
       { id: 'compare-dept', label: '부서별 비교', icon: 'org', href: '/variance-comparison?tab=dept' },
-      { id: 'compare-account', label: '계정별 비교', icon: 'tag', href: '/variance-comparison?tab=account' }
+      { id: 'compare-account', label: '계정별 비교', icon: 'tag', href: '/variance-comparison?tab=account' },
+      { id: 'compare-multi', label: '다중계획 비교', icon: 'list', href: '/variance-comparison?tab=multi_plan' }
     ]
   },
   {
