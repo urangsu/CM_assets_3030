@@ -26,8 +26,13 @@ export function usePermission() {
 
   useEffect(() => {
     const user = safeLocalStorageGet<any | null>('current_user', null);
-    if (user) {
+    if (user && typeof user === 'object' && user.code) {
       setPermission({ ...getPermissionContext(user), currentUser: user, viewableDepts: getViewableDepts(user.code) });
+    } else if (user) {
+      // If user is stored but corrupt (e.g. not an object, or missing code), clean up to prevent crash loops
+      try {
+        localStorage.removeItem('current_user');
+      } catch {}
     }
   }, []);
 

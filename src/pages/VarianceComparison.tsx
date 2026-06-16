@@ -1575,12 +1575,11 @@ export default function VarianceComparison() {
         ws1['!cols'][i] = { wch: 16 };
       }
     }
-    // D~G hidden default: Only hide if not BY_DEPT view mode
-    const isMultiPlanDeptMode = effectiveMultiPlanViewMode === 'BY_DEPT';
+    // D~G hidden default: Set to hidden always
     for (let c = 3; c <= 6; c++) {
       ws1['!cols'][c] = {
         ...(ws1['!cols'][c] || {}),
-        hidden: !isMultiPlanDeptMode,
+        hidden: true,
         level: 1,
         wch: c === 3 || c === 5 ? 13 : 22,
       };
@@ -1789,12 +1788,11 @@ export default function VarianceComparison() {
         }
       }
 
-      // Hide D~G 작성부서/귀속부서: Only hide if not BY_DEPT view mode
-      const isMultiPlanDeptModeIdx = effectiveMultiPlanViewMode === 'BY_DEPT';
+      // Hide D~G 작성부서/귀속부서: Set to hidden always
       for (let c = 3; c <= 6; c++) {
         wsIdx['!cols'][c] = {
           ...(wsIdx['!cols'][c] || {}),
-          hidden: !isMultiPlanDeptModeIdx,
+          hidden: true,
           level: 1,
           wch: c === 3 || c === 5 ? 13 : 22,
         };
@@ -2459,13 +2457,14 @@ export default function VarianceComparison() {
       planEndMonth,
       actualEndMonth,
       viewMode: effectiveMultiPlanViewMode,
-      deptCodes: currentActiveDeptCodes,
+      deptCodes: viewableDepts.map(d => d.code),
       accountMetaMap,
       hasSalaryAccess,
       includeSalaryRows,
       allDepts,
       increaseBasisCol: increaseBasisCol.startsWith('plan_') ? increaseBasisCol : `plan_${increaseBasisCol}`,
       increaseTargetCol: increaseTargetCol.startsWith('plan_') ? increaseTargetCol : `plan_${increaseTargetCol}`,
+      selectedDept,
     });
   }, [
     tab,

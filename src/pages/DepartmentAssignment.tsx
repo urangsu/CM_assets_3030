@@ -25,6 +25,7 @@ import { getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { usePermission } from '../lib/permissions';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
+import { safeLocalStorageGet, safeJsonParse } from '../lib/safeStorage';
 import { 
   recommendAttributionForRow, 
   getAttributionExcludeResult,
@@ -411,23 +412,13 @@ export default function DepartmentAssignment() {
   const [historyModalTab, setHistoryModalTab] = useState<'ATTRIBUTION' | 'UPLOAD'>('ATTRIBUTION');
 
   const reloadAuditLogs = () => {
-    try {
-      const storedLogs = localStorage.getItem('hycm_attribution_audit_log');
-      setAuditLogs(storedLogs ? JSON.parse(storedLogs) : []);
-    } catch {
-      setAuditLogs([]);
-    }
-    try {
-      const storedUploads = localStorage.getItem('hycm_actual_upload_history');
-      setUploadHistory(storedUploads ? JSON.parse(storedUploads) : []);
-    } catch {
-      setUploadHistory([]);
-    }
+    setAuditLogs(safeLocalStorageGet<any[]>('hycm_attribution_audit_log', []));
+    setUploadHistory(safeLocalStorageGet<any[]>('hycm_actual_upload_history', []));
   };
 
   const appendAttributionAuditLogs = (newLogs: any[]) => {
     try {
-      const currentLogs = JSON.parse(localStorage.getItem('hycm_attribution_audit_log') || '[]');
+      const currentLogs = safeLocalStorageGet<any[]>('hycm_attribution_audit_log', []);
       const nextLogs = [...newLogs, ...currentLogs];
       localStorage.setItem('hycm_attribution_audit_log', JSON.stringify(nextLogs));
       setAuditLogs(nextLogs);
@@ -444,14 +435,8 @@ export default function DepartmentAssignment() {
   const [draftAttributedDeptCode, setDraftAttributedDeptCode] = useState('');
 
   const [columnWidths, setColumnWidths] = useState<Record<AttributionColumnKey, number>>(() => {
-    try {
-      const saved = localStorage.getItem(ATTRIBUTION_COL_WIDTHS_KEY);
-      return saved
-        ? { ...DEFAULT_ATTRIBUTION_COL_WIDTHS, ...JSON.parse(saved) }
-        : DEFAULT_ATTRIBUTION_COL_WIDTHS;
-    } catch {
-      return DEFAULT_ATTRIBUTION_COL_WIDTHS;
-    }
+    const saved = safeLocalStorageGet<Record<string, any> | null>(ATTRIBUTION_COL_WIDTHS_KEY, null);
+    return saved ? { ...DEFAULT_ATTRIBUTION_COL_WIDTHS, ...saved } : DEFAULT_ATTRIBUTION_COL_WIDTHS;
   });
 
   useEffect(() => {
@@ -501,12 +486,8 @@ export default function DepartmentAssignment() {
 
   // Hidden/Excluded Recommendation Row IDs (Ignored)
   const [excludedRowIds, setExcludedRowIds] = useState<Set<string | number>>(() => {
-    try {
-      const stored = localStorage.getItem('cleanmetal_excluded_attribution_ids');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
+    const stored = safeLocalStorageGet<any[]>('cleanmetal_excluded_attribution_ids', []);
+    return new Set(stored);
   });
 
   const [deptMasterVersion, setDeptMasterVersion] = useState(0);
@@ -579,13 +560,9 @@ export default function DepartmentAssignment() {
     const map = new Map<string, any[]>();
     allDepts.forEach(d => {
       const bKey = getBudgetDataKey(d.code, year, recommendationPlanType);
-      const savedData = localStorage.getItem(bKey);
+      const savedData = safeLocalStorageGet<any[] | null>(bKey, null);
       if (savedData) {
-        try {
-          map.set(d.code, JSON.parse(savedData));
-        } catch (e) {
-          console.error(e);
-        }
+        map.set(d.code, savedData);
       }
     });
     return map;
@@ -622,19 +599,14 @@ export default function DepartmentAssignment() {
   // Load Initial Storage Data
   const loadData = () => {
     // 1. Overrides
-    try {
-      const stored = localStorage.getItem('hycm_department_assignment_overrides');
-      if (stored) setOverrides(JSON.parse(stored));
-    } catch (e) {
-      console.error(e);
-    }
+    const storedOverrides = safeLocalStorageGet<Record<string, any>>('hycm_department_assignment_overrides', {});
+    setOverrides(storedOverrides);
 
     // 2. Actuals
     const actKey = getActualDataKey(year);
-    const savedActuals = localStorage.getItem(actKey);
-    if (savedActuals) {
+    const parsed = safeLocalStorageGet<any[]>(actKey, []);
+    if (parsed.length > 0) {
       try {
-        const parsed = JSON.parse(savedActuals);
         const normalizedRows = parsed.map((row: any) => {
           return {
             ...row,
@@ -653,6 +625,7 @@ export default function DepartmentAssignment() {
         localStorage.setItem(actKey, JSON.stringify(normalizedRows));
       } catch (e) {
         console.error(e);
+        setActualRowsList([]);
       }
     } else {
       setActualRowsList([]);
@@ -1393,7 +1366,7 @@ export default function DepartmentAssignment() {
   // Actions: Apply recommended department attribution
   const handleApplyRecommendation = (rowId: string | number, recDeptCode: string, recDeptName: string, reasons: string[], score: number) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
     let targetRow: any = null;
 
     const updated = storedActuals.map((row: any) => {
@@ -1446,7 +1419,7 @@ export default function DepartmentAssignment() {
     if (!dept) return;
 
     const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
     let targetRow: any = null;
 
     const updated = storedActuals.map((row: any) => {
@@ -1495,7 +1468,7 @@ export default function DepartmentAssignment() {
   // Actions: Revert to original attribution
   const handleRevertAttribution = (rowId: string | number) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
     let targetRow: any = null;
 
     const updated = storedActuals.map((row: any) => {
@@ -1609,7 +1582,7 @@ export default function DepartmentAssignment() {
 
   const handleApplyRecommendationGroup = (group: GroupedRecommendationRow) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
     const targetIds = new Set(group.months.filter(m => m.status === '대기').map(m => m.rowId));
     if (targetIds.size === 0) return;
 
@@ -1695,7 +1668,7 @@ export default function DepartmentAssignment() {
     if (!dept) return;
 
     const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
     const targetIds = new Set(group.months.map(m => m.rowId));
 
     const newLogs: any[] = [];
@@ -1742,7 +1715,7 @@ export default function DepartmentAssignment() {
 
   const handleRevertAttributionGroup = (group: GroupedRecommendationRow) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
     const targetIds = new Set(group.months.map(m => m.rowId));
 
     const newLogs: any[] = [];
@@ -1842,7 +1815,7 @@ export default function DepartmentAssignment() {
       `권장 항목 ${highPending.length}건을 추천 귀속부서로 적용하시겠습니까?`,
       () => {
         const actKey = getActualDataKey(year);
-        const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+        const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
         const opName = currentUser?.name || '기획재무담당';
         let updateCount = 0;
         const newLogs: any[] = [];
@@ -1927,7 +1900,7 @@ export default function DepartmentAssignment() {
         `선택한 ${targets.length}개 그룹 (총 ${actionableRowIds.size}건의 월별 항목)을 추천 귀속부서로 적용하시겠습니까?`,
         () => {
           const actKey = getActualDataKey(year);
-          const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+          const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
           const opName = currentUser?.name || '기획재무담당';
           const newLogs: any[] = [];
           let count = 0;
@@ -2014,7 +1987,7 @@ export default function DepartmentAssignment() {
       `선택한 ${targets.length}건을 추천 귀속부서로 적용하시겠습니까?`,
       () => {
         const actKey = getActualDataKey(year);
-        const storedActuals = JSON.parse(localStorage.getItem(actKey) || '[]');
+        const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
         const opName = currentUser?.name || '기획재무담당';
         const newLogs: any[] = [];
         let count = 0;

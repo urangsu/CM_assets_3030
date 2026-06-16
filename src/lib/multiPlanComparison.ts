@@ -110,6 +110,7 @@ interface BuildMultiPlanRowsParams {
   allDepts: any[];
   increaseBasisCol: string;
   increaseTargetCol: string;
+  selectedDept?: string;
 }
 
 export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): {
@@ -129,6 +130,7 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
     allDepts,
     increaseBasisCol,
     increaseTargetCol,
+    selectedDept,
   } = params;
 
   const deptCodesSet = new Set(deptCodes.map(c => normalizeDeptCode(c)));
@@ -359,6 +361,17 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
       const basisVal = row.totalByColumnId[increaseBasisCol] || 0;
       const targetVal = row.totalByColumnId[increaseTargetCol] || 0;
       row.requiredIncreaseAmount = targetVal - basisVal;
+
+      // Filter by user-selected department code if specific
+      if (selectedDept && selectedDept !== 'all' && selectedDept !== 'by_dept') {
+        const targetNorm = normalizeDeptCode(selectedDept);
+        const writerNorm = normalizeDeptCode(row.writerDeptCode);
+        const attribNorm = normalizeDeptCode(row.attributedDeptCode);
+
+        if (writerNorm !== targetNorm && attribNorm !== targetNorm) {
+          return; // Skip row if it matches neither
+        }
+      }
 
       finalRows.push(row);
     }
