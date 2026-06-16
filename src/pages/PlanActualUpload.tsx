@@ -37,7 +37,7 @@ import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
-import { safeLocalStorageGet } from '../lib/safeStorage';
+import { safeLocalStorageGet, safeJsonParse } from '../lib/safeStorage';
 
 // Sort logic
 type SortDirection = 'asc' | 'desc';
@@ -373,14 +373,7 @@ function loadExistingRowsForUploadTarget(params: {
 
   deptsToLoad.forEach(dept => {
     const rawText = readBudgetData(dept.code, params.year, params.uploadTarget);
-    let raw: any[] = [];
-    if (rawText) {
-      try {
-        raw = JSON.parse(rawText);
-      } catch (e) {
-        raw = [];
-      }
-    }
+    const raw = rawText ? safeJsonParse<any[]>(rawText, []) : [];
     const budgetRows = Array.isArray(raw)
       ? normalizeBudgetRows(raw, dept.code)
       : [];
