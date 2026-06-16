@@ -1831,7 +1831,13 @@ export default function PlanActualUpload() {
             <div className="flex flex-col gap-1 text-[11px] text-[#8b95a1] max-w-[280px] text-right">
               {uploadTarget === '실적' && <p>현재 선택: 월 실적<br/>이 파일은 실적 데이터로 업로드됩니다.</p>}
               {uploadTarget === '경영계획' && <p>현재 선택: 경영계획<br/>이 파일은 예산 데이터로 업로드됩니다.</p>}
-              {uploadTarget === '증액반영' && <p>현재 선택: 증액반영<br/>이 파일은 경영계획 대비 증감액으로 병합 저장됩니다.</p>}
+              {uploadTarget === '증액반영' && (
+                <p>
+                  현재 선택: 증액반영<br/>
+                  이 파일은 경영계획 대비 증감액으로 병합 저장됩니다.<br/>
+                  <span className="text-amber-600 font-semibold block mt-0.5">(※ 최고관리자는 전체 부서, 그 외 사용자는 권한이 부여된 소속 부서 범위에 한해 복사 및 합산이 실행됩니다.)</span>
+                </p>
+              )}
               {uploadTarget !== '실적' && uploadTarget !== '경영계획' && uploadTarget !== '증액반영' && <p>현재 선택: {uploadTarget}<br/>이 파일은 예산 데이터로 업로드됩니다.</p>}
               <p className="opacity-80">
                 {uploadTarget === '실적' 

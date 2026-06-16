@@ -346,6 +346,14 @@ export default function VarianceComparison() {
     minAmount: '',
   });
 
+  const [multiPlanFilters, setMultiPlanFilters] = useState({
+    accountClass: '',
+    accountingType: '',
+    accountCode: '',
+    accountName: '',
+    minAmount: '',
+  });
+
   const QUICK_ACCOUNT_CLASSES: AccountClass[] = [
     '직원급여',
     '임원급여',
@@ -584,13 +592,13 @@ export default function VarianceComparison() {
   };
 
   const amountStyle = {
-    alignment: { horizontal: 'right', vertical: 'center' },
+    alignment: { horizontal: 'right', vertical: 'center', wrapText: true },
     numFmt: '#,##0',
     border: thinBorder,
   };
 
   const percentStyle = {
-    alignment: { horizontal: 'right', vertical: 'center' },
+    alignment: { horizontal: 'right', vertical: 'center', wrapText: true },
     numFmt: '0.00%',
     border: thinBorder,
   };
@@ -609,14 +617,14 @@ export default function VarianceComparison() {
 
   const boldAmountStyle = {
     font: { bold: true },
-    alignment: { horizontal: 'right', vertical: 'center' },
+    alignment: { horizontal: 'right', vertical: 'center', wrapText: true },
     numFmt: '#,##0',
     border: thinBorder,
   };
 
   const boldPercentStyle = {
     font: { bold: true },
-    alignment: { horizontal: 'right', vertical: 'center' },
+    alignment: { horizontal: 'right', vertical: 'center', wrapText: true },
     numFmt: '0.00%',
     border: thinBorder,
   };
@@ -1567,11 +1575,12 @@ export default function VarianceComparison() {
         ws1['!cols'][i] = { wch: 16 };
       }
     }
-    // D~G hidden default
+    // D~G hidden default: Only hide if not BY_DEPT view mode
+    const isMultiPlanDeptMode = effectiveMultiPlanViewMode === 'BY_DEPT';
     for (let c = 3; c <= 6; c++) {
       ws1['!cols'][c] = {
         ...(ws1['!cols'][c] || {}),
-        hidden: true,
+        hidden: !isMultiPlanDeptMode,
         level: 1,
         wch: c === 3 || c === 5 ? 13 : 22,
       };
@@ -1780,11 +1789,12 @@ export default function VarianceComparison() {
         }
       }
 
-      // Hide D~G 작성부서/귀속부서
+      // Hide D~G 작성부서/귀속부서: Only hide if not BY_DEPT view mode
+      const isMultiPlanDeptModeIdx = effectiveMultiPlanViewMode === 'BY_DEPT';
       for (let c = 3; c <= 6; c++) {
         wsIdx['!cols'][c] = {
           ...(wsIdx['!cols'][c] || {}),
-          hidden: true,
+          hidden: !isMultiPlanDeptModeIdx,
           level: 1,
           wch: c === 3 || c === 5 ? 13 : 22,
         };
@@ -2484,13 +2494,18 @@ export default function VarianceComparison() {
       result = result.filter(r => r.accountingType === '판관');
     }
 
-    const selectedDeptCodeSet = new Set(selectedDeptCodes);
-    if (
-      !['all', 'viewable', 'by_dept', 'mfg', 'sga'].includes(selectedDept)
-    ) {
+    const selectedDeptCodeSet = new Set(currentActiveDeptCodes.map(String));
+    const isSpecialDeptMode =
+      selectedDept === 'all' ||
+      selectedDept === 'viewable' ||
+      selectedDept === 'by_dept' ||
+      selectedDept === 'mfg' ||
+      selectedDept === 'sga';
+
+    if (!isSpecialDeptMode) {
       result = result.filter(row =>
-        selectedDeptCodeSet.has(row.attributedDeptCode) ||
-        selectedDeptCodeSet.has(row.writerDeptCode)
+        selectedDeptCodeSet.has(String(row.writerDeptCode || '')) ||
+        selectedDeptCodeSet.has(String(row.attributedDeptCode || ''))
       );
     }
     
@@ -2501,22 +2516,22 @@ export default function VarianceComparison() {
       result = result.filter(r => r.accountClass === selectedAccountClass);
     }
 
-    if (detailFilters.accountCode) {
-      const q = detailFilters.accountCode.toLowerCase();
+    if (multiPlanFilters.accountCode) {
+      const q = multiPlanFilters.accountCode.toLowerCase();
       result = result.filter(r => r.accountCode.toLowerCase().includes(q));
     }
-    if (detailFilters.accountName) {
-      const q = detailFilters.accountName.toLowerCase();
+    if (multiPlanFilters.accountName) {
+      const q = multiPlanFilters.accountName.toLowerCase();
       result = result.filter(r => r.accountName.toLowerCase().includes(q));
     }
-    if (detailFilters.accountClass) {
-      result = result.filter(r => r.accountClass.includes(detailFilters.accountClass));
+    if (multiPlanFilters.accountClass) {
+      result = result.filter(r => r.accountClass?.includes(multiPlanFilters.accountClass));
     }
-    if (detailFilters.accountingType) {
-      result = result.filter(r => r.accountingType === detailFilters.accountingType);
+    if (multiPlanFilters.accountingType) {
+      result = result.filter(r => r.accountingType === multiPlanFilters.accountingType);
     }
-    if (detailFilters.minAmount) {
-      const minVal = Number(detailFilters.minAmount) * 1000000;
+    if (multiPlanFilters.minAmount) {
+      const minVal = Number(multiPlanFilters.minAmount) * 1000000;
       if (!isNaN(minVal)) {
         result = result.filter(r => {
           return Object.values(r.totalByColumnId).some(val => Math.abs(val as number) >= minVal) || Math.abs(r.requiredIncreaseAmount) >= minVal;
@@ -2528,7 +2543,7 @@ export default function VarianceComparison() {
     result.sort((a, b) => Math.abs(b.requiredIncreaseAmount) - Math.abs(a.requiredIncreaseAmount));
 
     return result;
-  }, [multiPlanRows, selectedDept, selectedDeptCodes, selectedAccountingType, selectedAccountClass, detailFilters]);
+  }, [multiPlanRows, selectedDept, currentActiveDeptCodes, selectedAccountingType, selectedAccountClass, multiPlanFilters]);
 
   const pagedMultiPlanRows = useMemo(() => {
     return filteredMultiPlanRows.slice(0, visibleDetailCount);
@@ -3322,20 +3337,24 @@ export default function VarianceComparison() {
                     </button>
                   </>
                 )}
-                <button
-                  onClick={() => { setShowDownloadMenu(false); handleDownloadPPT(); }}
-                  className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
-                >
-                  <Presentation className="w-5 h-5 text-cobalt-600 flex-shrink-0" />
-                  <span className="font-semibold">PPT 다운로드</span>
-                </button>
-                <button
-                  onClick={() => { setShowDownloadMenu(false); handleDownloadPDF(); }}
-                  className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
-                >
-                  <FileText className="w-5 h-5 text-red-500 flex-shrink-0" />
-                  <span className="font-semibold">PDF 다운로드</span>
-                </button>
+                {tab !== 'multi_plan' && (
+                  <>
+                    <button
+                      onClick={() => { setShowDownloadMenu(false); handleDownloadPPT(); }}
+                      className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
+                    >
+                      <Presentation className="w-5 h-5 text-cobalt-600 flex-shrink-0" />
+                      <span className="font-semibold">PPT 다운로드</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowDownloadMenu(false); handleDownloadPDF(); }}
+                      className="w-full text-left px-5 py-4 text-sm font-medium text-eco-black hover:bg-lithium-50 transition-colors flex items-center gap-3 border-t border-lithium-100"
+                    >
+                      <FileText className="w-5 h-5 text-red-500 flex-shrink-0" />
+                      <span className="font-semibold">PDF 다운로드</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -4357,9 +4376,9 @@ export default function VarianceComparison() {
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-zinc-400">비용성격:</span>
                 <select
-                  value={detailFilters.accountClass}
+                  value={multiPlanFilters.accountClass}
                   onChange={(e) => {
-                    setDetailFilters(prev => ({ ...prev, accountClass: e.target.value }));
+                    setMultiPlanFilters(prev => ({ ...prev, accountClass: e.target.value }));
                     setVisibleDetailCount(100);
                   }}
                   className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
@@ -4374,9 +4393,9 @@ export default function VarianceComparison() {
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-zinc-400">회계구분:</span>
                 <select
-                  value={detailFilters.accountingType}
+                  value={multiPlanFilters.accountingType}
                   onChange={(e) => {
-                    setDetailFilters(prev => ({ ...prev, accountingType: e.target.value }));
+                    setMultiPlanFilters(prev => ({ ...prev, accountingType: e.target.value }));
                     setVisibleDetailCount(100);
                   }}
                   className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
@@ -4393,9 +4412,9 @@ export default function VarianceComparison() {
                 <input
                   type="text"
                   placeholder="계정코드 검색..."
-                  value={detailFilters.accountCode}
+                  value={multiPlanFilters.accountCode}
                   onChange={(e) => {
-                    setDetailFilters(prev => ({ ...prev, accountCode: e.target.value }));
+                    setMultiPlanFilters(prev => ({ ...prev, accountCode: e.target.value }));
                     setVisibleDetailCount(100);
                   }}
                   className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2.5 py-1 outline-none font-medium w-28 focus:border-[#008f83]"
@@ -4407,9 +4426,9 @@ export default function VarianceComparison() {
                 <input
                   type="text"
                   placeholder="계정명 검색..."
-                  value={detailFilters.accountName}
+                  value={multiPlanFilters.accountName}
                   onChange={(e) => {
-                    setDetailFilters(prev => ({ ...prev, accountName: e.target.value }));
+                    setMultiPlanFilters(prev => ({ ...prev, accountName: e.target.value }));
                     setVisibleDetailCount(100);
                   }}
                   className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2.5 py-1 outline-none font-medium w-36 focus:border-[#008f83]"
@@ -4421,9 +4440,9 @@ export default function VarianceComparison() {
                 <input
                   type="number"
                   placeholder="단위 백만..."
-                  value={detailFilters.minAmount}
+                  value={multiPlanFilters.minAmount}
                   onChange={(e) => {
-                    setDetailFilters(prev => ({ ...prev, minAmount: e.target.value }));
+                    setMultiPlanFilters(prev => ({ ...prev, minAmount: e.target.value }));
                     setVisibleDetailCount(100);
                   }}
                   className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2.5 py-1 outline-none font-medium w-24 focus:border-[#008f83]"
@@ -4431,17 +4450,15 @@ export default function VarianceComparison() {
                 <span className="text-zinc-400">백만원 ↑</span>
               </div>
 
-              {(detailFilters.accountClass || detailFilters.accountingType || detailFilters.accountCode || detailFilters.accountName || detailFilters.minAmount) && (
+              {(multiPlanFilters.accountClass || multiPlanFilters.accountingType || multiPlanFilters.accountCode || multiPlanFilters.accountName || multiPlanFilters.minAmount) && (
                 <button
                   type="button"
                   onClick={() => {
-                    setDetailFilters({
+                    setMultiPlanFilters({
                       accountClass: '',
                       accountingType: '',
                       accountCode: '',
                       accountName: '',
-                      status: '',
-                      minVariance: '',
                       minAmount: '',
                     });
                     setVisibleDetailCount(100);
@@ -4481,14 +4498,20 @@ export default function VarianceComparison() {
                 <tbody className="divide-y divide-lithium-100 bg-white">
                   {currentActiveDeptCodes.length === 0 ? (
                     <tr>
-                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm font-bold text-rose-600 bg-white">
-                        조회 가능한 부서가 없습니다. 로그인 상태 또는 부서 권한을 확인하세요.
+                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm font-semibold text-rose-600 bg-white">
+                        조회 권한이 있는 부서가 없거나 선택된 부서가 없습니다. 권한 매핑을 확인해주세요.
                       </td>
                     </tr>
-                  ) : pagedMultiPlanRows.length === 0 ? (
+                  ) : multiPlanRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white">
-                        다중계획 조건에 해당하는 계정과목 데이터가 없습니다. 상위 소분류나 필터 조건을 변경해 보세요.
+                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white font-medium">
+                        해당 연도({baseYear}년)에 등록된 다중계획(경영계획, RP 등) 예산 데이터가 없습니다. 실적/예산 업로드 화면을 확인해주세요.
+                      </td>
+                    </tr>
+                  ) : filteredMultiPlanRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white font-medium">
+                        선택한 필터 조건에 부합하는 분석 데이터가 없습니다. 필터를 완화하거나 초기화해주세요.
                       </td>
                     </tr>
                   ) : (

@@ -1,6 +1,7 @@
 import { DEPARTMENTS, getViewableDepts, STORAGE_KEYS } from '../constants';
 import { isSalaryAccountCode } from './budgetAggregation';
 import { useState, useEffect } from 'react';
+import { safeLocalStorageGet } from './safeStorage';
 
 export interface PermissionContext {
   currentUser: any;
@@ -24,9 +25,8 @@ export function usePermission() {
   });
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('current_user');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
+    const user = safeLocalStorageGet<any | null>('current_user', null);
+    if (user) {
       setPermission({ ...getPermissionContext(user), currentUser: user, viewableDepts: getViewableDepts(user.code) });
     }
   }, []);
@@ -68,8 +68,7 @@ export const canViewSalaryAccounts = (user: any): boolean => {
   if (!userCode) return false;
   if (userCode === '99999' || userCode === '32100') return true;
   
-  const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-  const settings = savedSettings ? JSON.parse(savedSettings) : {};
+  const settings = safeLocalStorageGet<Record<string, any>>(STORAGE_KEYS.USER_SETTINGS, {});
   const userSetting = settings[userCode];
   
   return !!(userSetting && userSetting.hasSalaryAccess);

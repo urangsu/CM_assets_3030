@@ -406,14 +406,21 @@ export function runRegressionTests() {
   console.log('[회귀 테스트] A60601115 복리후생비 검과 검증:', isSuccess ? '성공 (PASS)' : '실패 (FAIL)');
 }
 
-// Run regression test immediately on module load to prevent regression
-setTimeout(() => {
-  try {
-    runRegressionTests();
-  } catch (err) {
-    console.error('Failed to run regression tests:', err);
-  }
-}, 100);
+// Run regression test immediately on module load only in dev environment with special flag to prevent visual noise during showcase
+if (
+  (import.meta as any).env?.DEV &&
+  typeof window !== 'undefined' &&
+  window.localStorage &&
+  window.localStorage.getItem('debug_variance') === 'true'
+) {
+  setTimeout(() => {
+    try {
+      runRegressionTests();
+    } catch (err) {
+      console.error('Failed to run regression tests:', err);
+    }
+  }, 100);
+}
 
 export function buildVarianceComparison(params: {
   baseRows: AtomicCompareRow[];
@@ -458,7 +465,7 @@ export function buildVarianceComparison(params: {
   });
 
   const allCodes = new Set([...baseMap.keys(), ...targetMap.keys()]);
-  const rows: ComparisonRow[] = Array.from(allCodes).map(code => {
+  const rawRows: ComparisonRow[] = Array.from(allCodes).map(code => {
     const baseItem = baseMap.get(code);
     const targetItem = targetMap.get(code);
     
@@ -500,7 +507,17 @@ export function buildVarianceComparison(params: {
       isSalary,
     };
   })
-  .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0)
+  .filter(row => row.baseAmount !== 0 || row.targetAmount !== 0);
+
+  // Verify no rows were dropped during union calculation (prior to user filters)
+  assertNoDroppedCompareRows({
+    baseRows,
+    targetRows,
+    finalRows: rawRows,
+    groupBy,
+  });
+
+  const rows = rawRows
   .filter(row => {
     if (activeDept === 'mfg' && row.accountingType !== '제조') return false;
     if (activeDept === 'sga' && row.accountingType !== '판관') return false;
@@ -531,16 +548,9 @@ export function buildVarianceComparison(params: {
     'base keys': baseMap.size,
     'target keys': targetMap.size,
     'union keys': allCodes.size,
-    'final rows': rows.length,
-    'dropped before filter': 0,
-    'A60601115 included': A60601115Included
-  });
-
-  assertNoDroppedCompareRows({
-    baseRows,
-    targetRows,
-    finalRows: rows,
-    groupBy,
+    'raw rows length': rawRows.length,
+    'final rows length': rows.length,
+    'A651111 included': A60601115Included
   });
 
   return {

@@ -4,6 +4,7 @@ import { Calculator, AlertCircle, ShieldAlert, Lock } from 'lucide-react';
 import { DEPARTMENTS, STORAGE_KEYS } from '../constants';
 import { verifyPassword } from '../lib/auth';
 import Footer from '../components/Footer';
+import { safeLocalStorageGet } from '../lib/safeStorage';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -38,12 +39,9 @@ export default function Login() {
       return;
     }
 
-    // Get all users and their settings
-    const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-    const settings = savedSettings ? JSON.parse(savedSettings) : {};
-    
-    const savedCustomUsers = localStorage.getItem(STORAGE_KEYS.CUSTOM_USERS);
-    const customUsers = savedCustomUsers ? JSON.parse(savedCustomUsers) : [];
+    // Get all users and their settings safely
+    const settings = safeLocalStorageGet<Record<string, any>>(STORAGE_KEYS.USER_SETTINGS, {});
+    const customUsers = safeLocalStorageGet<any[]>(STORAGE_KEYS.CUSTOM_USERS, []);
 
     // 1. Find the user by ID first to check protection status
     let targetUserCode = null;
