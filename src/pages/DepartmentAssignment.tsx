@@ -418,13 +418,36 @@ export default function DepartmentAssignment() {
 
   const appendAttributionAuditLogs = (newLogs: any[]) => {
     try {
-      const currentLogs = safeLocalStorageGet<any[]>('hycm_attribution_audit_log', []);
+      const currentRaw = safeLocalStorageGet<unknown>('hycm_attribution_audit_log', []);
+      const currentLogs = Array.isArray(currentRaw) ? currentRaw : [];
       const nextLogs = [...newLogs, ...currentLogs];
       localStorage.setItem('hycm_attribution_audit_log', JSON.stringify(nextLogs));
       setAuditLogs(nextLogs);
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const getStoredActualRows = (): any[] => {
+    const actKey = getActualDataKey(year);
+    const raw = safeLocalStorageGet<unknown>(actKey, []);
+
+    if (!Array.isArray(raw)) {
+      localStorage.setItem(actKey, JSON.stringify([]));
+      return [];
+    }
+
+    return raw;
+  };
+
+  const resetAttributionSelections = () => {
+    setSelectedRowIds(new Set());
+    setSelectedRecommendationGroupIds(new Set());
+    setSelectedRowId(null);
+    setSelectedGroupId(null);
+    setEditingAttributionRowId(null);
+    setEditingGroupRowId(null);
+    setDraftAttributedDeptCode('');
   };
 
   // Selected Row for Details (Master-Detail)
@@ -599,12 +622,23 @@ export default function DepartmentAssignment() {
   // Load Initial Storage Data
   const loadData = () => {
     // 1. Overrides
-    const storedOverrides = safeLocalStorageGet<any[]>('hycm_department_assignment_overrides', []);
-    setOverrides(storedOverrides);
+    const rawOverrides = safeLocalStorageGet<unknown>('hycm_department_assignment_overrides', []);
+    const normalizedOverrides = Array.isArray(rawOverrides) ? rawOverrides : [];
+
+    if (!Array.isArray(rawOverrides)) {
+      localStorage.setItem('hycm_department_assignment_overrides', JSON.stringify([]));
+    }
+    setOverrides(normalizedOverrides);
 
     // 2. Actuals
     const actKey = getActualDataKey(year);
-    const parsed = safeLocalStorageGet<any[]>(actKey, []);
+    const rawActuals = safeLocalStorageGet<unknown>(actKey, []);
+    const parsed = Array.isArray(rawActuals) ? rawActuals : [];
+
+    if (!Array.isArray(rawActuals)) {
+      localStorage.setItem(actKey, JSON.stringify([]));
+    }
+
     if (parsed.length > 0) {
       try {
         const normalizedRows = parsed.map((row: any) => {
@@ -1366,7 +1400,7 @@ export default function DepartmentAssignment() {
   // Actions: Apply recommended department attribution
   const handleApplyRecommendation = (rowId: string | number, recDeptCode: string, recDeptName: string, reasons: string[], score: number) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+    const storedActuals = getStoredActualRows();
     let targetRow: any = null;
 
     const updated = storedActuals.map((row: any) => {
@@ -1408,6 +1442,7 @@ export default function DepartmentAssignment() {
         text: `[${targetRow.accountName}] 의 귀속부서가 [${recDeptName}] 추천 부서로 성공적으로 적용되었습니다.`
       });
       setTimeout(() => setFeedbackMsg(null), 3000);
+      resetAttributionSelections();
       loadData();
     }
   };
@@ -1419,7 +1454,7 @@ export default function DepartmentAssignment() {
     if (!dept) return;
 
     const actKey = getActualDataKey(year);
-    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+    const storedActuals = getStoredActualRows();
     let targetRow: any = null;
 
     const updated = storedActuals.map((row: any) => {
@@ -1461,6 +1496,7 @@ export default function DepartmentAssignment() {
         text: `[${targetRow.accountName}] 의 귀속부서가 [${dept.name}] (수동)으로 적용되었습니다.`
       });
       setTimeout(() => setFeedbackMsg(null), 3000);
+      resetAttributionSelections();
       loadData();
     }
   };
@@ -1468,7 +1504,7 @@ export default function DepartmentAssignment() {
   // Actions: Revert to original attribution
   const handleRevertAttribution = (rowId: string | number) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+    const storedActuals = getStoredActualRows();
     let targetRow: any = null;
 
     const updated = storedActuals.map((row: any) => {
@@ -1510,6 +1546,7 @@ export default function DepartmentAssignment() {
         text: `[${targetRow.accountName}] 의 지정 귀속부서가 성공적으로 제거(원본 부서 기준으로 원복)되었습니다.`
       });
       setTimeout(() => setFeedbackMsg(null), 3000);
+      resetAttributionSelections();
       loadData();
     }
   };
@@ -1543,6 +1580,7 @@ export default function DepartmentAssignment() {
       text: '선택하신 귀속 추천 항목을 무시 처리하여 제외 리스트에 등록했습니다.'
     });
     setTimeout(() => setFeedbackMsg(null), 3000);
+    resetAttributionSelections();
     loadData();
   };
 
@@ -1577,12 +1615,13 @@ export default function DepartmentAssignment() {
       text: '무시 처리가 해제되어 정상 대기 상태로 복구되었습니다.'
     });
     setTimeout(() => setFeedbackMsg(null), 3000);
+    resetAttributionSelections();
     loadData();
   };
 
   const handleApplyRecommendationGroup = (group: GroupedRecommendationRow) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+    const storedActuals = getStoredActualRows();
     const targetIds = new Set(group.months.filter(m => m.status === '대기').map(m => m.rowId));
     if (targetIds.size === 0) return;
 
@@ -1628,6 +1667,7 @@ export default function DepartmentAssignment() {
       text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건에 추천 귀속부서 [${group.recommendedDeptName}]를 적용하였습니다.`
     });
     setTimeout(() => setFeedbackMsg(null), 3000);
+    resetAttributionSelections();
     loadData();
   };
 
@@ -1659,6 +1699,7 @@ export default function DepartmentAssignment() {
       text: `[${group.accountName}] 계정 묶음 ${group.months.length}건을 추천 무시 처리했습니다.`
     });
     setTimeout(() => setFeedbackMsg(null), 3000);
+    resetAttributionSelections();
     loadData();
   };
 
@@ -1668,7 +1709,7 @@ export default function DepartmentAssignment() {
     if (!dept) return;
 
     const actKey = getActualDataKey(year);
-    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+    const storedActuals = getStoredActualRows();
     const targetIds = new Set(group.months.map(m => m.rowId));
 
     const newLogs: any[] = [];
@@ -1710,12 +1751,13 @@ export default function DepartmentAssignment() {
       text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 귀속부서를 [${dept.name}] (수동)으로 적용하였습니다.`
     });
     setTimeout(() => setFeedbackMsg(null), 3000);
+    resetAttributionSelections();
     loadData();
   };
 
   const handleRevertAttributionGroup = (group: GroupedRecommendationRow) => {
     const actKey = getActualDataKey(year);
-    const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+    const storedActuals = getStoredActualRows();
     const targetIds = new Set(group.months.map(m => m.rowId));
 
     const newLogs: any[] = [];
@@ -1756,6 +1798,7 @@ export default function DepartmentAssignment() {
       text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 지정 귀속부서를 제거하고 원본 부서 기준으로 원복하였습니다.`
     });
     setTimeout(() => setFeedbackMsg(null), 3000);
+    resetAttributionSelections();
     loadData();
   };
 
@@ -1799,78 +1842,6 @@ export default function DepartmentAssignment() {
     loadData();
   };
 
-  // Actions: Higher confidence bulk apply
-  const handleBulkApplyHighConfidence = () => {
-    const highPending = allRecommendationRows.filter(r => {
-      const effectiveCurrentDeptCode = r.currentAttributedDeptCode || r.originalDeptCode;
-      return r.status === '대기' && r.confidence === 'HIGH' && r.recommendedDeptCode && r.recommendedDeptCode !== effectiveCurrentDeptCode;
-    });
-    if (highPending.length === 0) {
-      showAlert('권장 항목 일괄 적용', '적용 가능한 권장 항목이 없습니다.');
-      return;
-    }
-
-    showConfirm(
-      '권장 항목 일괄 적용',
-      `권장 항목 ${highPending.length}건을 추천 귀속부서로 적용하시겠습니까?`,
-      () => {
-        const actKey = getActualDataKey(year);
-        const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
-        const opName = currentUser?.name || '기획재무담당';
-        let updateCount = 0;
-        const newLogs: any[] = [];
-
-        const updated = storedActuals.map((row: any) => {
-          const isHigh = highPending.find(h => h.rowId === row.id);
-          if (isHigh) {
-            updateCount++;
-            const reasons = isHigh.reasons.map(r => r.label);
-
-            newLogs.push({
-              id: `${Date.now()}_bulk_${Math.random().toString(36).substring(2, 7)}`,
-              time: new Date().toLocaleString(),
-              action: '추천 적용 (일괄)',
-              accountCode: row.accountCode,
-              accountName: row.accountName,
-              originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
-              beforeAttributedDeptName: row.attributedDeptCode 
-                ? `[${row.attributedDeptCode}] ${row.attributedDeptName}` 
-                : '원 사용처 기준',
-              afterAttributedDeptName: `[${isHigh.recommendedDeptCode}] ${isHigh.recommendedDeptName}`,
-              user: opName,
-              reason: `[권장 항목 일괄] ${reasons.join(', ')}`,
-            });
-
-            return {
-              ...row,
-              usageCode: row.usageCode,
-              usageDept: row.usageDept,
-              attributedDeptCode: isHigh.recommendedDeptCode,
-              attributedDeptName: isHigh.recommendedDeptName,
-              attributionSource: 'recommendation',
-              attributionScore: isHigh.score,
-              attributionReasons: reasons,
-              attributionUpdatedAt: new Date().toISOString(),
-            };
-          }
-          return row;
-        });
-
-        localStorage.setItem(actKey, JSON.stringify(updated));
-        appendAttributionAuditLogs(newLogs);
-        clearDataLoaderCache();
-
-        setFeedbackMsg({
-          type: 'success',
-          text: `총 ${updateCount}건에 대해 실적 귀속부서 일괄 적용했습니다.`
-        });
-        setTimeout(() => setFeedbackMsg(null), 3000);
-        loadData();
-      },
-      '적용'
-    );
-  };
-
   // Actions: Bulk Action Applied Selected
   const handleApplySelectedRows = () => {
     if (recommendationViewMode === 'GROUPED') {
@@ -1900,7 +1871,7 @@ export default function DepartmentAssignment() {
         `선택한 ${targets.length}개 그룹 (총 ${actionableRowIds.size}건의 월별 항목)을 추천 귀속부서로 적용하시겠습니까?`,
         () => {
           const actKey = getActualDataKey(year);
-          const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+          const storedActuals = getStoredActualRows();
           const opName = currentUser?.name || '기획재무담당';
           const newLogs: any[] = [];
           let count = 0;
@@ -1959,7 +1930,7 @@ export default function DepartmentAssignment() {
             type: 'success',
             text: `선택하신 ${targets.length}개 그룹 (총 ${count}건)에 대해 실적 귀속부서를 적용했습니다.`
           });
-          setSelectedRecommendationGroupIds(new Set());
+          resetAttributionSelections();
           setTimeout(() => setFeedbackMsg(null), 3000);
           loadData();
         },
@@ -1987,7 +1958,7 @@ export default function DepartmentAssignment() {
       `선택한 ${targets.length}건을 추천 귀속부서로 적용하시겠습니까?`,
       () => {
         const actKey = getActualDataKey(year);
-        const storedActuals = safeLocalStorageGet<any[]>(actKey, []);
+        const storedActuals = getStoredActualRows();
         const opName = currentUser?.name || '기획재무담당';
         const newLogs: any[] = [];
         let count = 0;
@@ -2036,7 +2007,7 @@ export default function DepartmentAssignment() {
           type: 'success',
           text: `선택하신 ${count}건에 대해 실적 귀속부서를 적용했습니다.`
         });
-        setSelectedRowIds(new Set());
+        resetAttributionSelections();
         setTimeout(() => setFeedbackMsg(null), 3000);
         loadData();
       },
@@ -2102,7 +2073,7 @@ export default function DepartmentAssignment() {
             type: 'success',
             text: `선택하신 ${targets.length}개 그룹 (총 ${actionableRowIds.size}건)의 항목이 추천 무시 처리되었습니다.`
           });
-          setSelectedRecommendationGroupIds(new Set());
+          resetAttributionSelections();
           setTimeout(() => setFeedbackMsg(null), 3000);
           loadData();
         },
@@ -2157,7 +2128,7 @@ export default function DepartmentAssignment() {
           type: 'success',
           text: `${targets.length}건의 항목이 추천 무시 처리되었습니다.`
         });
-        setSelectedRowIds(new Set());
+        resetAttributionSelections();
         setTimeout(() => setFeedbackMsg(null), 3000);
         loadData();
       },
@@ -2505,17 +2476,6 @@ export default function DepartmentAssignment() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleBulkApplyHighConfidence}
-              disabled={stats.highConfidence === 0}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded font-bold text-white transition-all select-none ${
-                stats.highConfidence > 0 ? 'bg-[#008f83] hover:bg-[#00746b] cursor-pointer' : 'bg-zinc-300 cursor-not-allowed opacity-60'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              권장 항목 일괄 적용 ({stats.highConfidence}건)
-            </button>
-
-            <button
               onClick={handleApplySelectedRows}
               disabled={recommendationViewMode === 'GROUPED' ? selectedRecommendationGroupIds.size === 0 : selectedRowIds.size === 0}
               className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded font-bold border transition ${
@@ -2525,8 +2485,8 @@ export default function DepartmentAssignment() {
               }`}
             >
               {recommendationViewMode === 'GROUPED'
-                ? `선택 묶음 적용 (${selectedRecommendationGroupIds.size}개 그룹)`
-                : `선택 항목 적용 (${selectedRowIds.size}건)`}
+                ? `선택 계정 묶음 추천 적용 (${selectedRecommendationGroupIds.size}개 그룹)`
+                : `선택 개별 항목 추천 적용 (${selectedRowIds.size}건)`}
             </button>
 
             <button
@@ -2535,8 +2495,8 @@ export default function DepartmentAssignment() {
               className="flex items-center gap-1 px-3 py-1.5 text-xs rounded font-bold border border-zinc-200 text-zinc-500 hover:bg-zinc-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {recommendationViewMode === 'GROUPED'
-                ? `선택 묶음 무시 (${selectedRecommendationGroupIds.size}개 그룹)`
-                : `선택 항목 무시 (${selectedRowIds.size}건)`}
+                ? `선택 계정 묶음 추천 무시 (${selectedRecommendationGroupIds.size}개 그룹)`
+                : `선택 개별 항목 추천 무시 (${selectedRowIds.size}건)`}
             </button>
 
             <button

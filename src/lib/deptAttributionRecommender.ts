@@ -189,10 +189,15 @@ export function getHistoricalOverrideScore(params: {
   accountCode: string;
   accountName: string;
   deptCode: string;
-  previousOverrides: AttributionOverride[];
+  previousOverrides: AttributionOverride[] | unknown;
 }): number {
-  const hasHistory = params.previousOverrides.some(
-    ov => ov.accountCode === params.accountCode && ov.newAssignedDeptCode === params.deptCode
+  const previousOverrides = Array.isArray(params.previousOverrides)
+    ? params.previousOverrides
+    : [];
+
+  const hasHistory = previousOverrides.some(
+    ov => ov && typeof ov === 'object' && 'accountCode' in ov && 'newAssignedDeptCode' in ov &&
+          (ov as any).accountCode === params.accountCode && (ov as any).newAssignedDeptCode === params.deptCode
   );
   return hasHistory ? 25 : 0;
 }
@@ -447,7 +452,7 @@ export function recommendAttributionForRow(params: {
   departments: any[];
   budgetRowsByDept: Map<string, any[]>;
   actualRows: any[];
-  previousOverrides: AttributionOverride[];
+  previousOverrides: AttributionOverride[] | unknown;
 }): AttributionRecommendation | null {
   const rowAmount = Number(params.row.completed || 0);
   if (!rowAmount) return null;
