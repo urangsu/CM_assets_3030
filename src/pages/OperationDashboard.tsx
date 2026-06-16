@@ -823,7 +823,7 @@ export default function OperationDashboard() {
               const checkM = activeMonth === 'all' ? '05' : String(activeMonth).padStart(2, '0');
               return (
                 <div className="relative flex items-center gap-1.5 px-3 py-1.5 bg-teal-50/85 border border-teal-150 rounded-xl text-xs text-teal-950 font-medium">
-                  <span>USD 환산 기준: <strong className="font-mono text-[#00786F]">{appliedInfo.rate.toLocaleString()}원/USD</strong></span>
+                  <span>USD 환산 기준: <strong className="font-mono text-[#00786F]">{(appliedInfo.rate ?? 1372).toLocaleString()}원/USD</strong></span>
                   <button
                     type="button"
                     onClick={() => setShowExchangeRateDetail(!showExchangeRateDetail)}
@@ -991,7 +991,7 @@ export default function OperationDashboard() {
                   <div className="p-2.5 bg-[#f0f9f8] rounded-xl border border-teal-100">
                     <span className="text-[10px] text-teal-800 block font-bold">총 판매 수량</span>
                     <span className="text-sm font-mono font-bold text-teal-950 block mt-0.5">
-                      {selectedLocation.salesQuantity.toLocaleString()} Ton
+                      {(selectedLocation.salesQuantity ?? 0).toLocaleString()} Ton
                     </span>
                   </div>
                   <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-100">
@@ -1006,7 +1006,7 @@ export default function OperationDashboard() {
                   <div className="p-2.5 bg-indigo-50/50 rounded-xl border border-indigo-100">
                     <span className="text-[10px] text-indigo-800 block font-bold">원료 인도 조달량</span>
                     <span className="text-sm font-mono font-bold text-indigo-950 block mt-0.5">
-                      {selectedLocation.purchaseQuantity.toLocaleString()} Ton
+                      {(selectedLocation.purchaseQuantity ?? 0).toLocaleString()} Ton
                     </span>
                   </div>
                   <div className="p-2.5 bg-zinc-50 rounded-xl border border-zinc-200">

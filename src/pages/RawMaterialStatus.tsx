@@ -554,13 +554,13 @@ export default function RawMaterialStatus() {
                             {r.materialGroup}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 text-right">{r.beginningQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                        <td className="px-3 py-2.5 text-right">{(r.beginningQty ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                         <td className="px-3 py-2.5 text-right text-zinc-450">{formatFinancialValue(r.beginningAmount)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-teal-800">{r.purchaseQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-teal-800">{(r.purchaseQty ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                         <td className="px-3 py-2.5 text-right text-teal-700">{formatFinancialValue(r.purchaseAmount)}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-amber-800">{r.issueTotalQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-amber-800">{(r.issueTotalQty ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                         <td className="px-3 py-2.5 text-right text-amber-700">{formatFinancialValue(r.issueTotalAmount)}</td>
-                        <td className="px-3 py-2.5 text-right font-extrabold text-indigo-950 bg-indigo-50/5">{r.endingQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                        <td className="px-3 py-2.5 text-right font-extrabold text-indigo-950 bg-indigo-50/5">{(r.endingQty ?? 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                         <td className="px-3 py-2.5 text-right font-bold text-indigo-900 bg-indigo-50/5">{formatFinancialValue(r.endingAmount)}</td>
                       </tr>
                     ))

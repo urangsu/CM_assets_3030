@@ -442,21 +442,21 @@ export default function ProductStatus() {
                                 {/* Qty */}
                                 <tr className="divide-x divide-[#eef2ec]">
                                   <td className="px-2.5 py-1.5 font-bold text-center text-zinc-500 bg-[#fcfdfc]">수량</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.beginningInventory.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.normalReceipt.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.transferReceipt.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.returnReceipt.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.otherReceipt.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right font-bold text-indigo-950 bg-indigo-50/5">{qtyRow.receiptTotal.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right font-bold text-emerald-950 bg-emerald-50/5">{qtyRow.salesQuantity.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.reInput.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.compensation.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.sample.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.transferIssue.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right text-rose-650">{qtyRow.disposal.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right">{qtyRow.otherIssue.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right font-bold text-emerald-950 bg-emerald-50/5">{qtyRow.issueTotal.toLocaleString()}</td>
-                                  <td className="px-2 py-1.5 text-right font-bold text-zinc-900 bg-zinc-50">{qtyRow.endingInventory.toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.beginningInventory ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.normalReceipt ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.transferReceipt ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.returnReceipt ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.otherReceipt ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-indigo-950 bg-indigo-50/5">{(qtyRow.receiptTotal ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-emerald-950 bg-emerald-50/5">{(qtyRow.salesQuantity ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.reInput ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.compensation ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.sample ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.transferIssue ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right text-rose-650">{(qtyRow.disposal ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right">{(qtyRow.otherIssue ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-emerald-950 bg-emerald-50/5">{(qtyRow.issueTotal ?? 0).toLocaleString()}</td>
+                                  <td className="px-2 py-1.5 text-right font-bold text-zinc-900 bg-zinc-50">{(qtyRow.endingInventory ?? 0).toLocaleString()}</td>
                                 </tr>
 
                                 {/* Amount */}

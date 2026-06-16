@@ -502,7 +502,7 @@ export default function SalesStatus() {
                     <td className="px-5 py-3.5 text-center font-bold text-zinc-400">
                       <span className="bg-slate-100 text-zinc-70d text-[10px] px-2 py-0.5 rounded font-mono">{item.metal}</span>
                     </td>
-                    <td className="px-5 py-3.5 text-right text-zinc-900 font-bold">{item.salesQty.toLocaleString()} Ton</td>
+                    <td className="px-5 py-3.5 text-right text-zinc-900 font-bold">{(item.salesQty ?? 0).toLocaleString()} Ton</td>
                     <td className="px-5 py-3.5 text-right font-bold text-zinc-950">{formatCurrencyValue(item.revenue)}</td>
                     <td className="px-5 py-3.5 text-right text-zinc-550">{formatCurrencyValue(item.costOfSales)}</td>
                     <td className="px-5 py-3.5 text-right font-extrabold text-teal-800 bg-teal-50/5">{formatCurrencyValue(item.grossProfit)}</td>
@@ -510,7 +510,7 @@ export default function SalesStatus() {
                     <td className="px-5 py-3.5 text-right text-zinc-500">
                       {formatCurrencyValue(item.avgPrice, false)} {currencyMode === 'KRW' ? '' : '/Ton'}
                     </td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-indigo-900">{item.endingQty.toLocaleString()} Ton</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-indigo-900">{(item.endingQty ?? 0).toLocaleString()} Ton</td>
                   </tr>
                 );
               })}
