@@ -599,7 +599,7 @@ export default function DepartmentAssignment() {
   // Load Initial Storage Data
   const loadData = () => {
     // 1. Overrides
-    const storedOverrides = safeLocalStorageGet<Record<string, any>>('hycm_department_assignment_overrides', {});
+    const storedOverrides = safeLocalStorageGet<any[]>('hycm_department_assignment_overrides', []);
     setOverrides(storedOverrides);
 
     // 2. Actuals

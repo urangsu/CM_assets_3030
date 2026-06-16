@@ -37,7 +37,10 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   try {
-    JSON.parse(raw);
+    const user = JSON.parse(raw);
+    if (!user || typeof user !== 'object' || !user.code) {
+      throw new Error('Invalid user object');
+    }
   } catch {
     localStorage.removeItem('current_user');
     return <Navigate to="/" replace />;
