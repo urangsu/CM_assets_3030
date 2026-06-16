@@ -3191,8 +3191,8 @@ export default function DepartmentAssignment() {
                                 <span className="text-zinc-400 font-mono">-</span>
                               )}
                             </td>
-                            <td className="py-3 px-3 text-right font-mono font-bold text-zinc-800" title={`${group.amount.toLocaleString()}원`}>
-                              {formatMillionWon(group.amount)}
+                            <td className="py-3 px-3 text-right font-mono font-bold text-zinc-800" title={`${(group.totalAmount || 0).toLocaleString()}원`}>
+                              {formatMillionWon(group.totalAmount || 0)}
                             </td>
                             <td className="py-3 px-2 text-center">
                               {statusBadge}
