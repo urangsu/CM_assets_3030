@@ -38,6 +38,7 @@ import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { safeLocalStorageGet, safeJsonParse } from '../lib/safeStorage';
+import { normalizePlanType, getPlanTypeAliases } from '../lib/planTypes';
 
 // Sort logic
 type SortDirection = 'asc' | 'desc';
@@ -345,7 +346,7 @@ function saveBudgetAdjustmentPlan(params: {
   });
 }
 
-function loadExistingRowsForUploadTarget(params: {
+export function loadExistingRowsForUploadTarget(params: {
   year: string;
   uploadTarget: '' | '실적' | '경영계획' | '증액반영' | '수정경영계획' | '1차 RP' | '2차 RP';
   currentUser: any;
@@ -513,14 +514,30 @@ export default function PlanActualUpload() {
     const user = safeLocalStorageGet<any>('current_user', null);
     if (user) {
       if (user.code !== '99999' && user.code !== '32100') {
-        navigate('/dashboard');
+         navigate('/dashboard');
       } else {
-        setCurrentUser(user);
+         setCurrentUser(user);
       }
     } else {
       navigate('/');
     }
   }, [navigate]);
+
+  useEffect(() => {
+    if (
+      (import.meta as any).env?.DEV &&
+      localStorage.getItem('debug_upload') === 'true'
+    ) {
+      import('../lib/uploadIsolationTest')
+        .then(({ runSecondRpUploadIsolationTest }) => {
+          const res = runSecondRpUploadIsolationTest();
+          console.log('[Upload Isolation Test Result]', res);
+        })
+        .catch(e => {
+          console.error('Failed to run runSecondRpUploadIsolationTest', e);
+        });
+    }
+  }, []);
 
   const viewableDepts = currentUser ? getViewableDepts(currentUser.code) : [];
   const viewableDeptCodes = viewableDepts.map(d => d.code);
@@ -1112,12 +1129,31 @@ export default function PlanActualUpload() {
       } catch (e) {
         console.error('Failed to save actual upload history', e);
       }
+
+      // P0-3 Debug logging for verifying saved keys under debug_upload config
+      if (
+        (import.meta as any).env?.DEV &&
+        localStorage.getItem('debug_upload') === 'true'
+      ) {
+        console.log('[upload-save-check]', {
+          uploadTarget,
+          year,
+          savedDeptNames,
+          expectedKeySuffix: normalizePlanType(uploadTarget),
+        });
+      }
     }
 
     // Reset pending states as requested (P0-4 & P0-2)
     setPendingUploadRows([]);
     setPendingUploadTarget('');
     setUploadTargetExistingRows([]);
+
+    // P1-1: Ensure view transition remains aligned with uploaded target and triggers active search view
+    setViewPlanType(uploadTarget);
+    setTimeout(() => {
+      setIsSearched(true);
+    }, 100);
   };
 
   const handleClear = () => {
@@ -1658,6 +1694,10 @@ export default function PlanActualUpload() {
                    </div>
                    <div className="col-span-2 border-t border-dashed border-[#e5e8eb] pt-2">
                      <p className="text-xs text-[#8b95a1] mb-1 font-semibold">중복 감지</p>
+                      <p className="text-[11px] text-[#8b95a1] mt-1 leading-relaxed">
+                        중복 기준: 업로드 대상 DB 기준 (<strong>{uploadTarget === '실적' ? `실적DB ${year}` : `예산DB ${year} (${uploadTarget})`}</strong>)<br />
+                        동일한 업로드 대상 DB의 기존 월별 데이터와만 중복 비교를 수행하며, 경영계획, 1차 RP, 실적 등 타 계획 및 실적 데이터는 중복 판정에서 제외됩니다.
+                      </p>
                      <p className={`text-sm font-bold ${duplicateUploadCount > 0 ? 'text-red-500' : 'text-green-600'}`}>
                        {duplicateUploadCount}건
                      </p>

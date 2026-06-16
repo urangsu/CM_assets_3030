@@ -1,6 +1,9 @@
 // A thin wrapper around localStorage for Budgets
-import { getBudgetDataKey } from '../lib/storageKeys';
+import { getBudgetDataKey, readBudgetData } from '../lib/storageKeys';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
+import { getPlanTypeAliases, normalizePlanType } from '../lib/planTypes';
+import { STORAGE_KEYS } from '../constants';
+import { safeJsonParse } from '../lib/safeStorage';
 
 export function normalizeBudgetRows(rows: any[], deptCode: string): any[] {
   const map = new Map<string, any>();
@@ -89,23 +92,44 @@ export function normalizeActualRows(rows: any[]): any[] {
   return Array.from(map.values());
 }
 
+function removeLegacyBudgetKeysAfterNormalizedSave(deptCode: string, year: string, planType: string) {
+  const normalized = normalizePlanType(planType);
+  const normalizedKey = getBudgetDataKey(deptCode, year, normalized);
+
+  getPlanTypeAliases(planType).forEach(alias => {
+    const key = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${alias}`;
+    if (key !== normalizedKey) {
+      localStorage.removeItem(key);
+    }
+  });
+}
+
 export const BudgetRepository = {
   getRows: (deptCode: string, year: string, planType: string): any[] => {
-    const key = getBudgetDataKey(deptCode, year, planType);
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+    const raw = readBudgetData(deptCode, year, planType);
+    const parsed = safeJsonParse<any[]>(raw, []);
+    return Array.isArray(parsed) ? parsed : [];
   },
 
   saveRows: (deptCode: string, year: string, planType: string, rows: any[]): void => {
     const key = getBudgetDataKey(deptCode, year, planType);
     const normalizedRows = normalizeBudgetRows(rows, deptCode);
     localStorage.setItem(key, JSON.stringify(normalizedRows));
+    removeLegacyBudgetKeysAfterNormalizedSave(deptCode, year, planType);
     clearDataLoaderCache();
   },
 
   deleteRows: (deptCode: string, year: string, planType: string): void => {
-    const key = getBudgetDataKey(deptCode, year, planType);
-    localStorage.removeItem(key);
+    const normalized = normalizePlanType(planType);
+
+    for (const candidate of getPlanTypeAliases(planType)) {
+      const key = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${candidate}`;
+      localStorage.removeItem(key);
+    }
+
+    const normalizedKey = getBudgetDataKey(deptCode, year, normalized);
+    localStorage.removeItem(normalizedKey);
+
     clearDataLoaderCache();
   }
 };
