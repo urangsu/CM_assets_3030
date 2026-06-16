@@ -34,6 +34,9 @@ export interface MultiPlanCompareRow {
   totalByColumnId: Record<string, number>;      // colId -> sum up to sumEndMonth
 
   requiredIncreaseAmount: number;
+
+  writerDeptCodes?: string[];
+  attributedDeptCodes?: string[];
 }
 
 const HR_DEPT_CODE = '32200';
@@ -97,6 +100,29 @@ export function getRowKey(params: {
   return accountCode;
 }
 
+function shouldIncludeBySelectedDept(params: {
+  selectedDept?: string;
+  deptFilterCodes: string[];
+  writerDeptCode: string;
+  attributedDeptCode: string;
+}) {
+  const special =
+    !params.selectedDept ||
+    params.selectedDept === 'all' ||
+    params.selectedDept === 'viewable' ||
+    params.selectedDept === 'by_dept' ||
+    params.selectedDept === 'mfg' ||
+    params.selectedDept === 'sga';
+
+  if (special) return true;
+
+  const filterSet = new Set((params.deptFilterCodes || []).map(normalizeDeptCode));
+  const writer = normalizeDeptCode(params.writerDeptCode);
+  const attributed = normalizeDeptCode(params.attributedDeptCode);
+
+  return filterSet.has(writer) || filterSet.has(attributed);
+}
+
 interface BuildMultiPlanRowsParams {
   year: string;
   selectedPlanTypes: BudgetPlanType[];
@@ -104,6 +130,7 @@ interface BuildMultiPlanRowsParams {
   actualEndMonth: number;
   viewMode: MultiPlanDeptViewMode;
   deptCodes: string[];
+  deptFilterCodes?: string[];
   accountMetaMap: Map<string, AccountMeta>;
   hasSalaryAccess: boolean;
   includeSalaryRows: boolean;
@@ -124,6 +151,7 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
     actualEndMonth,
     viewMode,
     deptCodes,
+    deptFilterCodes = [],
     accountMetaMap,
     hasSalaryAccess,
     includeSalaryRows,
@@ -197,6 +225,8 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
         monthlyByColumnId,
         totalByColumnId,
         requiredIncreaseAmount: 0,
+        writerDeptCodes: [],
+        attributedDeptCodes: [],
       };
       rowMap.set(rowKey, existing);
     }
@@ -238,6 +268,16 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
         const resolvedAttribDeptName = allDepts.find(d => d.code === rowDeptCode)?.name;
         attribVal.attributedDeptName = resolvedAttribDeptName || attribVal.attributedDeptName || rowDeptCode;
 
+        // P0-2: Apply department filter at source row stage (before getOrInitRow)
+        const includeBySelectedDept = shouldIncludeBySelectedDept({
+          selectedDept,
+          deptFilterCodes,
+          writerDeptCode: writerVal.writerDeptCode,
+          attributedDeptCode: attribVal.attributedDeptCode,
+        });
+
+        if (!includeBySelectedDept) return;
+
         const rowKey = getRowKey({
           viewMode,
           writerDeptCode: writerVal.writerDeptCode,
@@ -255,6 +295,21 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
           attributedDeptCode: attribVal.attributedDeptCode,
           attributedDeptName: attribVal.attributedDeptName,
         });
+
+        // P0-5: Trace which departments were aggregated under this row
+        if (!compareRow.writerDeptCodes) {
+          compareRow.writerDeptCodes = [];
+        }
+        if (!compareRow.writerDeptCodes.includes(writerVal.writerDeptCode)) {
+          compareRow.writerDeptCodes.push(writerVal.writerDeptCode);
+        }
+
+        if (!compareRow.attributedDeptCodes) {
+          compareRow.attributedDeptCodes = [];
+        }
+        if (!compareRow.attributedDeptCodes.includes(attribVal.attributedDeptCode)) {
+          compareRow.attributedDeptCodes.push(attribVal.attributedDeptCode);
+        }
 
         // Add monthly values
         for (let m = 0; m < 12; m++) {
@@ -312,6 +367,16 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
       const resolvedAttribDeptName = allDepts.find(d => d.code === effectiveDeptCode)?.name;
       attribVal.attributedDeptName = resolvedAttribDeptName || attribVal.attributedDeptName || effectiveDeptCode;
 
+      // P0-2: Apply department filter at source row stage (before getOrInitRow)
+      const includeBySelectedDept = shouldIncludeBySelectedDept({
+        selectedDept,
+        deptFilterCodes,
+        writerDeptCode: writerVal.writerDeptCode,
+        attributedDeptCode: attribVal.attributedDeptCode,
+      });
+
+      if (!includeBySelectedDept) return;
+
       const rowKey = getRowKey({
         viewMode,
         writerDeptCode: writerVal.writerDeptCode,
@@ -329,6 +394,21 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
         attributedDeptCode: attribVal.attributedDeptCode,
         attributedDeptName: attribVal.attributedDeptName,
       });
+
+      // P0-5: Trace which departments were aggregated under this row
+      if (!compareRow.writerDeptCodes) {
+        compareRow.writerDeptCodes = [];
+      }
+      if (!compareRow.writerDeptCodes.includes(writerVal.writerDeptCode)) {
+        compareRow.writerDeptCodes.push(writerVal.writerDeptCode);
+      }
+
+      if (!compareRow.attributedDeptCodes) {
+        compareRow.attributedDeptCodes = [];
+      }
+      if (!compareRow.attributedDeptCodes.includes(attribVal.attributedDeptCode)) {
+        compareRow.attributedDeptCodes.push(attribVal.attributedDeptCode);
+      }
 
       compareRow.monthlyByColumnId[actualCol.id][mIndex] += amount;
     });
@@ -362,17 +442,7 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
       const targetVal = row.totalByColumnId[increaseTargetCol] || 0;
       row.requiredIncreaseAmount = targetVal - basisVal;
 
-      // Filter by user-selected department code if specific
-      if (selectedDept && selectedDept !== 'all' && selectedDept !== 'by_dept') {
-        const targetNorm = normalizeDeptCode(selectedDept);
-        const writerNorm = normalizeDeptCode(row.writerDeptCode);
-        const attribNorm = normalizeDeptCode(row.attributedDeptCode);
-
-        if (writerNorm !== targetNorm && attribNorm !== targetNorm) {
-          return; // Skip row if it matches neither
-        }
-      }
-
+      // P0-1: Removed selectedDept post-filtering; now filtered pre-initialization at source row stage!
       finalRows.push(row);
     }
   });

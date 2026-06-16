@@ -2440,6 +2440,13 @@ export default function VarianceComparison() {
     return selectedDept === 'by_dept' ? 'BY_DEPT' : multiPlanViewMode;
   }, [selectedDept, multiPlanViewMode]);
 
+  // P0-3. VarianceComparison.tsx에서 load scope와 filter scope 분리
+  const multiPlanLoadDeptCodes = useMemo(() => {
+    return viewableDepts.map(d => d.code);
+  }, [viewableDepts]);
+
+  const multiPlanFilterDeptCodes = currentActiveDeptCodes;
+
   // multi_plan calculations
   const { columns: multiPlanColumns, rows: multiPlanRows } = useMemo(() => {
     if (tab !== 'multi_plan') {
@@ -2457,7 +2464,8 @@ export default function VarianceComparison() {
       planEndMonth,
       actualEndMonth,
       viewMode: effectiveMultiPlanViewMode,
-      deptCodes: viewableDepts.map(d => d.code),
+      deptCodes: multiPlanLoadDeptCodes,
+      deptFilterCodes: multiPlanFilterDeptCodes,
       accountMetaMap,
       hasSalaryAccess,
       includeSalaryRows,
@@ -2475,6 +2483,8 @@ export default function VarianceComparison() {
     selectedDept,
     effectiveMultiPlanViewMode,
     currentActiveDeptCodes,
+    multiPlanLoadDeptCodes,
+    multiPlanFilterDeptCodes,
     accountMetaMap,
     hasSalaryAccess,
     includeSalaryRows,
@@ -2493,20 +2503,7 @@ export default function VarianceComparison() {
       result = result.filter(r => r.accountingType === '판관');
     }
 
-    const selectedDeptCodeSet = new Set(currentActiveDeptCodes.map(String));
-    const isSpecialDeptMode =
-      selectedDept === 'all' ||
-      selectedDept === 'viewable' ||
-      selectedDept === 'by_dept' ||
-      selectedDept === 'mfg' ||
-      selectedDept === 'sga';
-
-    if (!isSpecialDeptMode) {
-      result = result.filter(row =>
-        selectedDeptCodeSet.has(String(row.writerDeptCode || '')) ||
-        selectedDeptCodeSet.has(String(row.attributedDeptCode || ''))
-      );
-    }
+    // P0-4: Removed filteredMultiPlanRows post filter for specific departments
     
     if (selectedAccountingType !== '전체') {
       result = result.filter(r => r.accountingType === selectedAccountingType);
@@ -2548,18 +2545,65 @@ export default function VarianceComparison() {
     return filteredMultiPlanRows.slice(0, visibleDetailCount);
   }, [filteredMultiPlanRows, visibleDetailCount]);
 
+  // P0-6. 빈 화면 메시지를 “예산 없음” 하나로 뭉개지 말고 원인 분리
+  const multiPlanEmptyReason = useMemo(() => {
+    if (tab !== 'multi_plan') return '';
+
+    if (!currentUser) {
+      return '로그인 정보를 확인하는 중입니다.';
+    }
+
+    if (currentActiveDeptCodes.length === 0) {
+      return '조회 가능한 부서가 없습니다. 로그인 또는 부서 권한을 확인해주세요.';
+    }
+
+    if (multiPlanRows.length === 0) {
+      return '선택한 계획유형과 연도에 해당하는 원천 다중계획 데이터가 없습니다. 업로드 자료와 저장 key를 확인해주세요.';
+    }
+
+    if (filteredMultiPlanRows.length === 0) {
+      return '원천 데이터는 있으나 현재 부서/회계구분/비용성격/검색 필터 조건에 맞는 항목이 없습니다. 필터를 완화해보세요.';
+    }
+
+    return '';
+  }, [tab, currentUser, currentActiveDeptCodes.length, multiPlanRows.length, filteredMultiPlanRows.length]);
+
+  // P0-7. debug panel 또는 console 로그를 정확히 추가
   useEffect(() => {
     if (tab === 'multi_plan') {
-      console.log('[multi_plan debug]', {
-        selectedDept,
-        selectedDeptCodes,
-        currentActiveDeptCodes,
-        effectiveMultiPlanViewMode,
-        multiPlanRows: multiPlanRows.length,
-        filteredMultiPlanRows: filteredMultiPlanRows.length,
-      });
+      if ((import.meta as any).env?.DEV && localStorage.getItem('debug_multi_plan') === 'true') {
+        console.log('[multi_plan debug]', {
+          selectedDept,
+          currentActiveDeptCodes,
+          multiPlanLoadDeptCodes,
+          multiPlanFilterDeptCodes,
+          effectiveMultiPlanViewMode,
+          selectedPlanTypes,
+          multiPlanRows: multiPlanRows.length,
+          filteredMultiPlanRows: filteredMultiPlanRows.length,
+          sampleRows: multiPlanRows.slice(0, 5).map(r => ({
+            rowKey: r.rowKey,
+            accountCode: r.accountCode,
+            writerDeptCode: r.writerDeptCode,
+            attributedDeptCode: r.attributedDeptCode,
+            writerDeptCodes: r.writerDeptCodes,
+            attributedDeptCodes: r.attributedDeptCodes,
+            totals: r.totalByColumnId,
+          })),
+        });
+      }
     }
-  }, [tab, selectedDept, selectedDeptCodes, currentActiveDeptCodes, effectiveMultiPlanViewMode, multiPlanRows, filteredMultiPlanRows]);
+  }, [
+    tab,
+    selectedDept,
+    currentActiveDeptCodes,
+    multiPlanLoadDeptCodes,
+    multiPlanFilterDeptCodes,
+    effectiveMultiPlanViewMode,
+    selectedPlanTypes,
+    multiPlanRows,
+    filteredMultiPlanRows,
+  ]);
 
   const multiPlanTotals = useMemo(() => {
     const listToSum = filteredMultiPlanRows;
@@ -4495,22 +4539,10 @@ export default function VarianceComparison() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-lithium-100 bg-white">
-                  {currentActiveDeptCodes.length === 0 ? (
+                  {multiPlanEmptyReason ? (
                     <tr>
-                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm font-semibold text-rose-600 bg-white">
-                        조회 권한이 있는 부서가 없거나 선택된 부서가 없습니다. 권한 매핑을 확인해주세요.
-                      </td>
-                    </tr>
-                  ) : multiPlanRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white font-medium">
-                        해당 연도({baseYear}년)에 등록된 다중계획(경영계획, RP 등) 예산 데이터가 없습니다. 실적/예산 업로드 화면을 확인해주세요.
-                      </td>
-                    </tr>
-                  ) : filteredMultiPlanRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white font-medium">
-                        선택한 필터 조건에 부합하는 분석 데이터가 없습니다. 필터를 완화하거나 초기화해주세요.
+                      <td colSpan={5 + selectedPlanTypes.length + 2} className="px-6 py-16 text-center text-sm text-text-secondary bg-white font-semibold whitespace-pre-line leading-relaxed">
+                        {multiPlanEmptyReason}
                       </td>
                     </tr>
                   ) : (
