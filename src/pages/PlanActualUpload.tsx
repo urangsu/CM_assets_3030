@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, getActualDataKey, isBudgetLocked } from '../lib/storageKeys';
+import { getBudgetDataKey, getActualDataKey, isBudgetLocked, readBudgetData } from '../lib/storageKeys';
 import { BudgetRepository, normalizeBudgetRows } from '../repositories/BudgetRepository';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
@@ -372,8 +372,15 @@ function loadExistingRowsForUploadTarget(params: {
   let idCounter = 1;
 
   deptsToLoad.forEach(dept => {
-    const key = getBudgetDataKey(dept.code, params.year, params.uploadTarget);
-    const raw = safeLocalStorageGet<unknown>(key, []);
+    const rawText = readBudgetData(dept.code, params.year, params.uploadTarget);
+    let raw: any[] = [];
+    if (rawText) {
+      try {
+        raw = JSON.parse(rawText);
+      } catch (e) {
+        raw = [];
+      }
+    }
     const budgetRows = Array.isArray(raw)
       ? normalizeBudgetRows(raw, dept.code)
       : [];
@@ -1114,9 +1121,10 @@ export default function PlanActualUpload() {
       }
     }
 
-    // Reset pending states as requested (P0-4)
+    // Reset pending states as requested (P0-4 & P0-2)
     setPendingUploadRows([]);
     setPendingUploadTarget('');
+    setUploadTargetExistingRows([]);
   };
 
   const handleClear = () => {
@@ -1652,7 +1660,7 @@ export default function PlanActualUpload() {
                      </p>
                    </div>
                    <div>
-                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">기존 데이터 행 수</p>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">기존 월별 데이터 행 수</p>
                      <p className="text-sm font-bold text-gray-900">{uploadTargetExistingRows.length}건</p>
                    </div>
                    <div className="col-span-2 border-t border-dashed border-[#e5e8eb] pt-2">
