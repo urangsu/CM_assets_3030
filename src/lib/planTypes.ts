@@ -81,5 +81,17 @@ export function getPlanTypeAliases(planType: string): string[] {
     return ['수정경영계획', '수정계획', '수수계획', '수주계획'];
   }
 
+  if (normalized === '1차 RP') {
+    return ['1차 RP', '1차RP', 'RP1', 'RP 1'];
+  }
+
+  if (normalized === '2차 RP') {
+    return ['2차 RP', '2차RP', 'RP2', 'RP 2'];
+  }
+
+  if (normalized === '증액반영') {
+    return ['증액반영', '예산증액반영', '증액계획', 'AdjustedPlan', 'budgetincrease'];
+  }
+
   return [normalized];
 }

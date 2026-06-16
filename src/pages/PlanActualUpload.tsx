@@ -37,6 +37,7 @@ import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
+import { safeLocalStorageGet } from '../lib/safeStorage';
 
 // Sort logic
 type SortDirection = 'asc' | 'desc';
@@ -300,8 +301,7 @@ function saveBudgetAdjustmentPlan(params: {
 
     const deptAdjustRows = groupedByDept.get(dept.code);
     
-    const baseRaw = localStorage.getItem(getBudgetDataKey(dept.code, params.year, '경영계획'));
-    const baseRows = normalizeBudgetRows(baseRaw ? JSON.parse(baseRaw) : [], dept.code);
+    const baseRows = normalizeBudgetRows(safeLocalStorageGet<any[]>(getBudgetDataKey(dept.code, params.year, '경영계획'), []), dept.code);
 
     const adjustedRows = baseRows.map(row => ({
       ...row,
@@ -343,6 +343,74 @@ function saveBudgetAdjustmentPlan(params: {
 
     BudgetRepository.saveRows(dept.code, params.year, '증액반영', adjustedRows);
   });
+}
+
+function loadExistingRowsForUploadTarget(params: {
+  year: string;
+  uploadTarget: '' | '실적' | '경영계획' | '증액반영' | '수정경영계획' | '1차 RP' | '2차 RP';
+  currentUser: any;
+  viewableDepts: any[];
+}): ActualData[] {
+  if (!params.uploadTarget) return [];
+
+  if (params.uploadTarget === '실적') {
+    const raw = safeLocalStorageGet<unknown>(getActualDataKey(params.year), []);
+    return Array.isArray(raw) ? (raw as ActualData[]) : [];
+  }
+
+  if (params.uploadTarget === '증액반영') {
+    const raw = safeLocalStorageGet<unknown>(`hycm_budget_adjustment_rows_${params.year}`, []);
+    return Array.isArray(raw) ? (raw as ActualData[]) : [];
+  }
+
+  const deptsToLoad =
+    params.currentUser?.code === '99999'
+      ? getAllDepartments()
+      : params.viewableDepts;
+
+  const rows: ActualData[] = [];
+  let idCounter = 1;
+
+  deptsToLoad.forEach(dept => {
+    const key = getBudgetDataKey(dept.code, params.year, params.uploadTarget);
+    const raw = safeLocalStorageGet<unknown>(key, []);
+    const budgetRows = Array.isArray(raw)
+      ? normalizeBudgetRows(raw, dept.code)
+      : [];
+
+    budgetRows.forEach((budgetRow: any) => {
+      const values = Array.isArray(budgetRow.values)
+        ? budgetRow.values
+        : Array(12).fill(0);
+
+      values.forEach((value: any, idx: number) => {
+        const amount = Number(value || 0);
+        if (amount === 0) return;
+
+        rows.push({
+          id: idCounter++,
+          year: params.year,
+          period: `${idx + 1}월`,
+          periodMonth: idx + 1,
+          accountCode: String(budgetRow.code || '').trim(),
+          accountName: budgetRow.name || '',
+          controlType: 'D.부서',
+          usageCode: budgetRow.attributedDeptCode || dept.code,
+          usageDept: dept.name,
+          amount,
+          additional: 0,
+          transferred: 0,
+          carriedOver: 0,
+          planned: 0,
+          completed: 0,
+          balance: amount,
+          remarks: budgetRow.detail || '',
+        } as ActualData);
+      });
+    });
+  });
+
+  return rows;
 }
 
 const numericFields: Array<keyof ActualData> = [
@@ -419,7 +487,12 @@ export default function PlanActualUpload() {
     } else {
       setUploadKind('');
     }
-  }, [uploadTarget]);
+    setValidationResult(null);
+    setDuplicateUploadCount(0);
+    setUploadTargetExistingRows([]);
+    setPendingUploadRows([]);
+    setPendingUploadTarget('');
+  }, [uploadTarget, year]);
   const [pasteText, setPasteText] = useState('');
   const [firstRowIsHeader, setFirstRowIsHeader] = useState(true);
   const [headerlessStartMonth, setHeaderlessStartMonth] = useState(1);
@@ -428,15 +501,17 @@ export default function PlanActualUpload() {
   const [isSearched, setIsSearched] = useState(false);
   const [visibleCount, setVisibleCount] = useState(100);
   const [data, setData] = useState<ActualData[]>([]);
+  const [uploadTargetExistingRows, setUploadTargetExistingRows] = useState<ActualData[]>([]);
+  const [pendingUploadRows, setPendingUploadRows] = useState<ActualData[]>([]);
+  const [pendingUploadTarget, setPendingUploadTarget] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   
   useEffect(() => {
-    const savedUser = localStorage.getItem('current_user');
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
+    const user = safeLocalStorageGet<any>('current_user', null);
+    if (user) {
       if (user.code !== '99999' && user.code !== '32100') {
         navigate('/dashboard');
       } else {
@@ -532,12 +607,9 @@ export default function PlanActualUpload() {
 
   useEffect(() => {
     if (viewPlanType === '실적') {
-      const savedData = localStorage.getItem(getActualDataKey(year));
-      if (savedData) {
-        let actualData: ActualData[] = JSON.parse(savedData);
-        // ... (keep actualData mapping)
-        const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-        const settings = savedSettings ? JSON.parse(savedSettings) : {};
+      let actualData = safeLocalStorageGet<ActualData[]>(getActualDataKey(year), []);
+      if (actualData.length > 0) {
+        const settings = safeLocalStorageGet<any>(STORAGE_KEYS.USER_SETTINGS, {});
         const userSetting = currentUser ? settings[currentUser.code] : null;
         const hasSalaryAccess = userSetting ? userSetting.hasSalaryAccess : (currentUser?.code === '99999');
 
@@ -558,10 +630,7 @@ export default function PlanActualUpload() {
       let loadedData: ActualData[] = [];
 
       if (viewPlanType === '증액반영') {
-        const rawAdjustmentsRaw = localStorage.getItem(`hycm_budget_adjustment_rows_${year}`);
-        if (rawAdjustmentsRaw) {
-          loadedData = JSON.parse(rawAdjustmentsRaw);
-        }
+        loadedData = safeLocalStorageGet<ActualData[]>(`hycm_budget_adjustment_rows_${year}`, []);
       }
 
       if (loadedData.length === 0) {
@@ -572,7 +641,7 @@ export default function PlanActualUpload() {
 
         allDepts.forEach(dept => {
           const key = getBudgetDataKey(dept.code, year, viewPlanType);
-          const budgetRows = JSON.parse(localStorage.getItem(key) || '[]');
+          const budgetRows = safeLocalStorageGet<any[]>(key, []);
           budgetRows.forEach((row: any) => {
             row.values.forEach((val: number, idx: number) => {
               if (val !== 0) {
@@ -602,8 +671,7 @@ export default function PlanActualUpload() {
       }
 
       // Filter salary accounts if no permission
-      const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-      const settings = savedSettings ? JSON.parse(savedSettings) : {};
+      const settings = safeLocalStorageGet<any>(STORAGE_KEYS.USER_SETTINGS, {});
       const userSetting = currentUser ? settings[currentUser.code] : null;
       const hasSalaryAccess = userSetting ? userSetting.hasSalaryAccess : (currentUser?.code === '99999');
 
@@ -792,20 +860,34 @@ export default function PlanActualUpload() {
         return;
     }
 
-    setDuplicateUploadCount(countDuplicates(data, result.actualRows, uploadTarget));
+    const targetExistingRows = loadExistingRowsForUploadTarget({
+      year,
+      uploadTarget,
+      currentUser,
+      viewableDepts,
+    });
+
+    setUploadTargetExistingRows(targetExistingRows);
+    setDuplicateUploadCount(countDuplicates(targetExistingRows, result.actualRows, uploadTarget));
     setValidationResult(result);
   };
 
   const confirmImport = () => {
     if (validationResult) {
+       const mergeBaseRows = uploadTargetExistingRows;
+
        const mergeResult = mergeUploadRows(
-         data,
+         mergeBaseRows,
          validationResult.actualRows,
          uploadTarget,
          duplicatePolicy
        );
 
-       setData(reindexRows(mergeResult.rows));
+       const finalRows = reindexRows(mergeResult.rows);
+       setPendingUploadRows(finalRows);
+       setPendingUploadTarget(uploadTarget);
+       setData(finalRows);
+       setViewPlanType(uploadTarget);
        
        setSuccessBanner({
          isOpen: true,
@@ -824,13 +906,22 @@ export default function PlanActualUpload() {
       return;
     }
 
+    if (pendingUploadTarget !== uploadTarget || pendingUploadRows.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        message: '저장할 업로드 미리보기 데이터가 없습니다. 파일을 다시 검증하고 임시 반영 후 저장하세요.'
+      });
+      return;
+    }
+
+    const rowsToSave = dedupeRowsByKey(pendingUploadRows, uploadTarget);
+
     if (uploadTarget === '실적') {
-      const dedupedData = dedupeRowsByKey(data, uploadTarget);
-      localStorage.setItem(getActualDataKey(year), JSON.stringify(dedupedData));
+      localStorage.setItem(getActualDataKey(year), JSON.stringify(rowsToSave));
       clearDataLoaderCache();
-      setData(dedupedData);
+      setData(rowsToSave);
       
-      const affectedCodes = new Set(dedupedData.map(r => r.usageCode).filter(Boolean));
+      const affectedCodes = new Set(rowsToSave.map(r => r.usageCode).filter(Boolean));
       setSuccessBanner({
          isOpen: true,
          isFinal: true,
@@ -840,7 +931,7 @@ export default function PlanActualUpload() {
 
       // Save upload history
       const monthSummary: Record<string, number> = {};
-      dedupedData.forEach((row: any) => {
+      rowsToSave.forEach((row: any) => {
         const mIndex = parsePeriodMonth(row.period || row.month);
         const mKey = mIndex !== null ? String(mIndex + 1) : '미지정';
         monthSummary[mKey] = (monthSummary[mKey] || 0) + 1;
@@ -850,13 +941,12 @@ export default function PlanActualUpload() {
         time: new Date().toLocaleString(),
         year,
         target: uploadTarget,
-        rowCount: dedupedData.length,
+        rowCount: rowsToSave.length,
         monthSummary,
         user: currentUser?.name || '사용자'
       };
       try {
-        const existingHistoryStr = localStorage.getItem('hycm_actual_upload_history');
-        const existingHistory = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
+        const existingHistory = safeLocalStorageGet<any[]>('hycm_actual_upload_history', []);
         existingHistory.unshift(uploadLogItem);
         localStorage.setItem('hycm_actual_upload_history', JSON.stringify(existingHistory));
         window.dispatchEvent(new Event('actual-upload-history-changed'));
@@ -864,8 +954,6 @@ export default function PlanActualUpload() {
         console.error('Failed to save actual upload history', e);
       }
     } else if (uploadTarget === '증액반영') {
-      const rowsToSave = dedupeRowsByKey(data, uploadTarget);
-      
       // Save original adjustment rows to raw key
       localStorage.setItem(`hycm_budget_adjustment_rows_${year}`, JSON.stringify(rowsToSave));
 
@@ -904,8 +992,7 @@ export default function PlanActualUpload() {
       };
 
       try {
-        const existingHistoryStr = localStorage.getItem('hycm_actual_upload_history');
-        const existingHistory = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
+        const existingHistory = safeLocalStorageGet<any[]>('hycm_actual_upload_history', []);
         existingHistory.unshift(uploadLogItem);
         localStorage.setItem('hycm_actual_upload_history', JSON.stringify(existingHistory));
         window.dispatchEvent(new Event('actual-upload-history-changed'));
@@ -916,8 +1003,7 @@ export default function PlanActualUpload() {
       // Also save to custom adjustment history key
       try {
         const customHistKey = 'hycm_budget_adjustment_upload_history';
-        const customHistoryStr = localStorage.getItem(customHistKey);
-        const customHistory = customHistoryStr ? JSON.parse(customHistoryStr) : [];
+        const customHistory = safeLocalStorageGet<any[]>(customHistKey, []);
         customHistory.unshift(uploadLogItem);
         localStorage.setItem(customHistKey, JSON.stringify(customHistory));
       } catch (e) {
@@ -925,7 +1011,6 @@ export default function PlanActualUpload() {
       }
     } else {
       const groupedByDept = new Map<string, ActualData[]>();
-      const rowsToSave = dedupeRowsByKey(data, uploadTarget);
       
       rowsToSave.forEach(item => {
         if (!groupedByDept.has(item.usageCode)) {
@@ -957,8 +1042,8 @@ export default function PlanActualUpload() {
 
         savedDeptNames.push(dept.name);
 
-        const existingData = localStorage.getItem(key);
-        let budgetRows: any[] = existingData ? JSON.parse(existingData) : [];
+        const budgetRowsRaw = safeLocalStorageGet<unknown>(key, []);
+        let budgetRows: any[] = Array.isArray(budgetRowsRaw) ? budgetRowsRaw : [];
         budgetRows = normalizeBudgetRows(budgetRows, deptCode);
         
         deptData.forEach(uploadRow => {
@@ -1020,8 +1105,7 @@ export default function PlanActualUpload() {
         user: currentUser?.name || '사용자'
       };
       try {
-        const existingHistoryStr = localStorage.getItem('hycm_actual_upload_history');
-        const existingHistory = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
+        const existingHistory = safeLocalStorageGet<any[]>('hycm_actual_upload_history', []);
         existingHistory.unshift(uploadLogItem);
         localStorage.setItem('hycm_actual_upload_history', JSON.stringify(existingHistory));
         window.dispatchEvent(new Event('actual-upload-history-changed'));
@@ -1029,6 +1113,10 @@ export default function PlanActualUpload() {
         console.error('Failed to save actual upload history', e);
       }
     }
+
+    // Reset pending states as requested (P0-4)
+    setPendingUploadRows([]);
+    setPendingUploadTarget('');
   };
 
   const handleClear = () => {
@@ -1556,6 +1644,22 @@ export default function PlanActualUpload() {
                    <div>
                      <p className="text-xs text-[#8b95a1] mb-1 font-semibold">저장 예정 위치</p>
                      <p className="text-sm font-bold text-gray-900">{uploadTarget === '실적' ? `실적DB ${year}` : `예산DB ${year} (${uploadTarget})`}</p>
+                   </div>
+                   <div>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">기존 데이터 확인 기준</p>
+                     <p className="text-sm font-bold text-[#344054]">
+                       {uploadTarget === '실적' ? `실적DB ${year}` : `예산DB ${year} (${uploadTarget})`}
+                     </p>
+                   </div>
+                   <div>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">기존 데이터 행 수</p>
+                     <p className="text-sm font-bold text-gray-900">{uploadTargetExistingRows.length}건</p>
+                   </div>
+                   <div className="col-span-2 border-t border-dashed border-[#e5e8eb] pt-2">
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">중복 감지</p>
+                     <p className={`text-sm font-bold ${duplicateUploadCount > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                       {duplicateUploadCount}건
+                     </p>
                    </div>
                  </div>
               </div>
