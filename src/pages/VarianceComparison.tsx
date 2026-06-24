@@ -2447,6 +2447,25 @@ export default function VarianceComparison() {
 
   const multiPlanFilterDeptCodes = currentActiveDeptCodes;
 
+  // P0-1. 다중계획 전용 effectiveIncludeSalaryRows 추가 및 직원급여 계정 필터 충돌 방지
+  const isSalaryAccountClassSelected = useMemo(() => {
+    const SALARY_ACCOUNT_CLASSES = new Set([
+      '직원급여',
+      '임원급여',
+      '급여',
+      '상여',
+      '임원활동수당',
+    ]);
+    return SALARY_ACCOUNT_CLASSES.has(selectedAccountClass);
+  }, [selectedAccountClass]);
+
+  const effectiveIncludeSalaryRowsForMultiPlan = useMemo(() => {
+    return hasSalaryAccess && (
+      includeSalaryRows ||
+      (tab === 'multi_plan' && isSalaryAccountClassSelected)
+    );
+  }, [hasSalaryAccess, includeSalaryRows, tab, isSalaryAccountClassSelected]);
+
   // multi_plan calculations
   const { columns: multiPlanColumns, rows: multiPlanRows } = useMemo(() => {
     if (tab !== 'multi_plan') {
@@ -2468,7 +2487,7 @@ export default function VarianceComparison() {
       deptFilterCodes: multiPlanFilterDeptCodes,
       accountMetaMap,
       hasSalaryAccess,
-      includeSalaryRows,
+      includeSalaryRows: effectiveIncludeSalaryRowsForMultiPlan,
       allDepts,
       increaseBasisCol: increaseBasisCol.startsWith('plan_') ? increaseBasisCol : `plan_${increaseBasisCol}`,
       increaseTargetCol: increaseTargetCol.startsWith('plan_') ? increaseTargetCol : `plan_${increaseTargetCol}`,
@@ -2487,7 +2506,7 @@ export default function VarianceComparison() {
     multiPlanFilterDeptCodes,
     accountMetaMap,
     hasSalaryAccess,
-    includeSalaryRows,
+    effectiveIncludeSalaryRowsForMultiPlan,
     allDepts,
     increaseBasisCol,
     increaseTargetCol,
@@ -2553,6 +2572,10 @@ export default function VarianceComparison() {
       return '로그인 정보를 확인하는 중입니다.';
     }
 
+    if (isSalaryAccountClassSelected && !hasSalaryAccess) {
+      return '급여성 계정은 조회 권한이 없어 표시되지 않습니다. 권한을 확인하거나 비용성격을 전체로 변경해주세요.';
+    }
+
     if (currentActiveDeptCodes.length === 0) {
       return '조회 가능한 부서가 없습니다. 로그인 또는 부서 권한을 확인해주세요.';
     }
@@ -2561,12 +2584,25 @@ export default function VarianceComparison() {
       return '선택한 계획유형과 연도에 해당하는 원천 다중계획 데이터가 없습니다. 업로드 자료와 저장 key를 확인해주세요.';
     }
 
+    if (isSalaryAccountClassSelected && hasSalaryAccess && !effectiveIncludeSalaryRowsForMultiPlan) {
+      return '직원급여 등 급여성 계정을 조회하려면 급여성 계정 포함을 켜야 합니다.';
+    }
+
     if (filteredMultiPlanRows.length === 0) {
       return '원천 데이터는 있으나 현재 부서/회계구분/비용성격/검색 필터 조건에 맞는 항목이 없습니다. 필터를 완화해보세요.';
     }
 
     return '';
-  }, [tab, currentUser, currentActiveDeptCodes.length, multiPlanRows.length, filteredMultiPlanRows.length]);
+  }, [
+    tab,
+    currentUser,
+    isSalaryAccountClassSelected,
+    hasSalaryAccess,
+    effectiveIncludeSalaryRowsForMultiPlan,
+    currentActiveDeptCodes.length,
+    multiPlanRows.length,
+    filteredMultiPlanRows.length,
+  ]);
 
   // P0-7. debug panel 또는 console 로그를 정확히 추가
   useEffect(() => {
@@ -4409,15 +4445,36 @@ export default function VarianceComparison() {
                   <span className="text-xs bg-zinc-100 text-zinc-650 font-bold px-2 py-0.5 rounded-full border border-zinc-200 font-sans">요약 모드</span>
                 </h3>
                 <p className="text-xs text-text-secondary mt-1 font-sans">
-                  선택한 예산 계획과 실적을 통합 비교합니다. 마이너스(-) 편차는 예산 잔여 또는 감소를 의미합니다.
+                  선택한 예산 계획과 실적을 통합 비교합니다. 마이너스(-) 편차는 예산 잔여 또는 감소를 의미합니다. 상단 부서/회계구분/비용성격 조건이 먼저 적용되며, 아래 필터는 표시된 결과 안에서 추가 검색합니다.
                 </p>
+              </div>
+
+              {/* P0-4. 급여성 계정 조작 및 자동 포함 표시 */}
+              <div className="flex flex-wrap items-center gap-3">
+                {tab === 'multi_plan' && hasSalaryAccess && isSalaryAccountClassSelected && (
+                  <span className="text-xs font-bold text-nickel-700 bg-nickel-50 border border-nickel-100 rounded-lg px-2.5 py-1">
+                    급여성 계정 자동 포함
+                  </span>
+                )}
+                
+                {tab === 'multi_plan' && hasSalaryAccess && (
+                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-650 bg-white border border-lithium-200 rounded-lg px-2.5 py-1 cursor-pointer hover:bg-lithium-50 select-none">
+                    <input
+                      type="checkbox"
+                      checked={includeSalaryRows}
+                      onChange={(e) => setIncludeSalaryRows(e.target.checked)}
+                      className="w-4 h-4 accent-[#008f83]"
+                    />
+                    급여성 계정 포함
+                  </label>
+                )}
               </div>
             </div>
 
             {/* Dynamic filter bar */}
             <div className="bg-zinc-50/50 border-b border-zinc-200 px-6 py-3.5 flex flex-wrap gap-3 items-center text-xs">
               <div className="flex items-center gap-1.5">
-                <span className="font-bold text-zinc-400">비용성격:</span>
+                <span className="font-bold text-zinc-400">추가 비용성격:</span>
                 <select
                   value={multiPlanFilters.accountClass}
                   onChange={(e) => {
