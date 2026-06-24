@@ -1,4 +1,5 @@
 import { getActualDataKey, readBudgetData, clearEffectiveDeptCache } from './storageKeys';
+import { safeJsonParse } from './safeStorage';
 
 // Memory cache for parsed datasets to guarantee maximum performance and zero redundant JSON.parse calls
 const actualRowsCache = new Map<string, any[]>();
@@ -15,13 +16,19 @@ export function loadActualRows(year: string): any[] {
     return actualRowsCache.get(year)!;
   }
 
+  const key = getActualDataKey(year);
   try {
-    const key = getActualDataKey(year);
     const raw = localStorage.getItem(key);
-    const rows = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(rows)) {
-      actualRowsCache.set(year, rows);
-      return rows;
+    if (raw) {
+      const parsed = safeJsonParse<unknown>(raw, null);
+      if (parsed === null) {
+        console.warn(`[varianceDataLoader] Failed to parse actual rows for key: ${key}. Returned null/invalid JSON.`);
+      } else if (!Array.isArray(parsed)) {
+        console.warn(`[varianceDataLoader] Actual rows data for key: ${key} is not an array`, parsed);
+      } else {
+        actualRowsCache.set(year, parsed);
+        return parsed;
+      }
     }
   } catch (e) {
     console.error(`Failed to load actual rows for year ${year}`, e);
@@ -47,10 +54,18 @@ export function loadBudgetRowsByDept(params: {
 
     try {
       const raw = readBudgetData(deptCode, params.year, params.planType);
-      const rows = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(rows)) {
-        budgetRowsCache.set(cacheKey, rows);
-        result.set(deptCode, rows);
+      if (raw) {
+        const parsed = safeJsonParse<unknown>(raw, null);
+        if (parsed === null) {
+          console.warn(`[varianceDataLoader] Failed to parse budget rows for deptCode: ${deptCode}, year: ${params.year}, planType: ${params.planType}. Returned null/invalid JSON.`);
+          result.set(deptCode, []);
+        } else if (!Array.isArray(parsed)) {
+          console.warn(`[varianceDataLoader] Budget rows data for deptCode: ${deptCode}, year: ${params.year}, planType: ${params.planType} is not an array`, parsed);
+          result.set(deptCode, []);
+        } else {
+          budgetRowsCache.set(cacheKey, parsed);
+          result.set(deptCode, parsed);
+        }
       } else {
         result.set(deptCode, []);
       }

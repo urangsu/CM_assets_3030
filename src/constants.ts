@@ -1,3 +1,5 @@
+import { safeLocalStorageGet } from './lib/safeStorage';
+
 export const DEPARTMENTS = [
   { code: '99999', name: '운영자', manager: '운영자(본인)', role: '시스템 관리자' },
   { code: '32100', name: '기획재무그룹', manager: '부서장', role: '부서장' },
@@ -49,17 +51,18 @@ export const SALARY_CATEGORIES = [
 ];
 
 export const getAllDepartments = () => {
-  const savedCustomUsers = localStorage.getItem(STORAGE_KEYS.CUSTOM_USERS);
-  const customUsers = savedCustomUsers ? JSON.parse(savedCustomUsers) : [];
-  
-  const customDepts = customUsers.map((u: any) => ({
-    code: u.departmentCode,
-    name: u.department,
-    manager: u.name,
-    role: u.role
-  })).filter((d: any) => d.code);
+  const customUsers = safeLocalStorageGet<any[]>(STORAGE_KEYS.CUSTOM_USERS, []);
+  const safeCustomUsers = Array.isArray(customUsers) ? customUsers : [];
 
-  // Merge and remove duplicates by code
+  const customDepts = safeCustomUsers
+    .map((u: any) => ({
+      code: u.departmentCode,
+      name: u.department,
+      manager: u.name,
+      role: u.role,
+    }))
+    .filter((d: any) => d.code);
+
   const allDepts = [...DEPARTMENTS, ...customDepts];
   const uniqueDepts = Array.from(new Map(allDepts.map(item => [item.code, item])).values());
   
@@ -73,11 +76,10 @@ export const getViewableDepts = (userCode: string) => {
     return allDepts.filter(d => d.code !== '99999');
   }
   
-  const savedSettings = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
-  const settings = savedSettings ? JSON.parse(savedSettings) : {};
+  const settings = safeLocalStorageGet<Record<string, any>>(STORAGE_KEYS.USER_SETTINGS, {});
   const userSetting = settings[userCode];
   
-  if (userSetting && userSetting.viewableDepts) {
+  if (userSetting && Array.isArray(userSetting.viewableDepts)) {
     return allDepts.filter(d => userSetting.viewableDepts.includes(d.code));
   }
   

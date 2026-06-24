@@ -102,21 +102,26 @@ export function getRowKey(params: {
 
 function shouldIncludeBySelectedDept(params: {
   selectedDept?: string;
-  deptFilterCodes: string[];
+  deptFilterCodes?: string[];
   writerDeptCode: string;
   attributedDeptCode: string;
 }) {
-  const special =
-    !params.selectedDept ||
-    params.selectedDept === 'all' ||
-    params.selectedDept === 'viewable' ||
-    params.selectedDept === 'by_dept' ||
-    params.selectedDept === 'mfg' ||
-    params.selectedDept === 'sga';
+  const selectedDept = params.selectedDept || '';
 
-  if (special) return true;
+  const isSpecial =
+    !selectedDept ||
+    selectedDept === 'all' ||
+    selectedDept === 'viewable' ||
+    selectedDept === 'by_dept' ||
+    selectedDept === 'mfg' ||
+    selectedDept === 'sga';
+
+  if (isSpecial) return true;
 
   const filterSet = new Set((params.deptFilterCodes || []).map(normalizeDeptCode));
+
+  if (filterSet.size === 0) return false;
+
   const writer = normalizeDeptCode(params.writerDeptCode);
   const attributed = normalizeDeptCode(params.attributedDeptCode);
 
@@ -300,14 +305,14 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
         if (!compareRow.writerDeptCodes) {
           compareRow.writerDeptCodes = [];
         }
-        if (!compareRow.writerDeptCodes.includes(writerVal.writerDeptCode)) {
+        if (writerVal.writerDeptCode && !compareRow.writerDeptCodes.includes(writerVal.writerDeptCode)) {
           compareRow.writerDeptCodes.push(writerVal.writerDeptCode);
         }
 
         if (!compareRow.attributedDeptCodes) {
           compareRow.attributedDeptCodes = [];
         }
-        if (!compareRow.attributedDeptCodes.includes(attribVal.attributedDeptCode)) {
+        if (attribVal.attributedDeptCode && !compareRow.attributedDeptCodes.includes(attribVal.attributedDeptCode)) {
           compareRow.attributedDeptCodes.push(attribVal.attributedDeptCode);
         }
 
@@ -399,14 +404,14 @@ export function buildMultiPlanComparisonRows(params: BuildMultiPlanRowsParams): 
       if (!compareRow.writerDeptCodes) {
         compareRow.writerDeptCodes = [];
       }
-      if (!compareRow.writerDeptCodes.includes(writerVal.writerDeptCode)) {
+      if (writerVal.writerDeptCode && !compareRow.writerDeptCodes.includes(writerVal.writerDeptCode)) {
         compareRow.writerDeptCodes.push(writerVal.writerDeptCode);
       }
 
       if (!compareRow.attributedDeptCodes) {
         compareRow.attributedDeptCodes = [];
       }
-      if (!compareRow.attributedDeptCodes.includes(attribVal.attributedDeptCode)) {
+      if (attribVal.attributedDeptCode && !compareRow.attributedDeptCodes.includes(attribVal.attributedDeptCode)) {
         compareRow.attributedDeptCodes.push(attribVal.attributedDeptCode);
       }
 
