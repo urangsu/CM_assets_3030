@@ -96,6 +96,19 @@ export function classifyAccount(accountCode?: string, accountName?: string): Acc
   }
 
   if (
+    name.includes('임원급여') ||
+    name.includes('임원활동수당') ||
+    name.includes('임원경영성과금') ||
+    name.includes('임원성과금') ||
+    name.includes('임원성과급') ||
+    name.includes('기타보수') ||
+    name.includes('퇴직급여충당부채전입액_임원') ||
+    name.includes('퇴직급여충당부채전입액임원')
+  ) {
+    return '임원급여';
+  }
+
+  if (
     name.includes('직원급여') ||
     name.includes('직원경영성과금') ||
     name.includes('시간외수당') ||
@@ -105,20 +118,18 @@ export function classifyAccount(accountCode?: string, accountName?: string): Acc
     name.includes('조정수당') ||
     name.includes('기타수당') ||
     name.includes('퇴직급여충당부채전입액_사내') ||
-    name.includes('퇴직급여충당부채전입액사내')
+    name.includes('퇴직급여충당부채전입액사내') ||
+    name.includes('기본급') ||
+    name.includes('급료') ||
+    name.includes('보수') ||
+    name.includes('인건비') ||
+    name.includes('성과급') ||
+    name.includes('직원성과급') ||
+    name.includes('시간외근무수당') ||
+    name.includes('휴가보상') ||
+    name.includes('수당')
   ) {
     return '직원급여';
-  }
-
-  if (
-    name.includes('임원급여') ||
-    name.includes('임원활동수당') ||
-    name.includes('임원경영성과금') ||
-    name.includes('기타보수') ||
-    name.includes('퇴직급여충당부채전입액_임원') ||
-    name.includes('퇴직급여충당부채전입액임원')
-  ) {
-    return '임원급여';
   }
 
   // 수선비보다 먼저 처리해서 제조비용_협력작업_수선비가 협력작업으로 남게 함
@@ -304,5 +315,14 @@ export function isSalaryAccountRow(row: {
     '연차수당',
     '휴일근무수당',
     '조정수당',
+    '기본급',
+    '급료',
+    '보수',
+    '인건비',
+    '성과급',
+    '직원성과급',
+    '시간외근무수당',
+    '휴가보상',
+    '수당',
   ].some(keyword => name.includes(keyword));
 }

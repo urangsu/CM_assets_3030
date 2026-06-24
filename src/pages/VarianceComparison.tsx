@@ -354,6 +354,17 @@ export default function VarianceComparison() {
     minAmount: '',
   });
 
+  useEffect(() => {
+    if (tab !== 'multi_plan') return;
+
+    if (selectedAccountClass !== '전체' && multiPlanFilters.accountClass) {
+      setMultiPlanFilters(prev => ({
+        ...prev,
+        accountClass: '',
+      }));
+    }
+  }, [tab, selectedAccountClass, multiPlanFilters.accountClass]);
+
   const QUICK_ACCOUNT_CLASSES: AccountClass[] = [
     '직원급여',
     '임원급여',
@@ -3313,7 +3324,7 @@ export default function VarianceComparison() {
               onChange={(e) => setSelectedAccountClass(e.target.value as AccountClass)}
               className="bg-lithium-50 border-none text-eco-black text-sm rounded-xl focus:ring-2 focus:ring-nickel-500 p-2.5 font-medium appearance-none flex-1 outline-none transition-all"
             >
-              <option value="전체">전체 비용성격</option>
+              <option value="전체">전체 비용성격{!includeSalaryRows ? ' (급여성 계정 제외 중)' : ''}</option>
               {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
@@ -4481,9 +4492,10 @@ export default function VarianceComparison() {
                     setMultiPlanFilters(prev => ({ ...prev, accountClass: e.target.value }));
                     setVisibleDetailCount(100);
                   }}
-                  className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer"
+                  disabled={selectedAccountClass !== '전체'}
+                  className="bg-white border border-zinc-200 text-zinc-700 text-xs rounded-lg px-2 py-1 outline-none font-semibold cursor-pointer disabled:bg-zinc-100 disabled:text-zinc-450 disabled:cursor-not-allowed"
                 >
-                  <option value="">전체 소분류</option>
+                  <option value="">{selectedAccountClass !== '전체' ? `상단 필터 적용 중 (${selectedAccountClass})` : '전체 소분류'}</option>
                   {ACCOUNT_CLASS_OPTIONS.filter(opt => opt !== '전체').map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
