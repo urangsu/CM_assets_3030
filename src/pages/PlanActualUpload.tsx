@@ -1683,6 +1683,14 @@ export default function PlanActualUpload() {
                      <p className="text-sm font-bold text-gray-900">{uploadTarget === '실적' ? `실적DB ${year}` : `예산DB ${year} (${uploadTarget})`}</p>
                    </div>
                    <div>
+                     <p className="text-xs text-[#8b95a1] mb-1 font-semibold">저장 key / 형식</p>
+                     <p className="text-xs font-bold text-gray-900 font-mono break-all bg-gray-50 p-1.5 rounded border border-gray-100">
+                       {uploadTarget === '실적' 
+                         ? `cleanmetal_actual_data_${year}` 
+                         : `cleanmetal_budget_data_{부서코드}_${year}_${uploadTarget}`}
+                     </p>
+                   </div>
+                   <div>
                      <p className="text-xs text-[#8b95a1] mb-1 font-semibold">기존 데이터 확인 기준</p>
                      <p className="text-sm font-bold text-[#344054]">
                        {uploadTarget === '실적' ? `실적DB ${year}` : `예산DB ${year} (${uploadTarget})`}
@@ -1852,7 +1860,7 @@ export default function PlanActualUpload() {
       <div className="bg-white p-6 rounded-2xl border border-[#e5e8eb] shadow-sm flex flex-col xl:flex-row justify-between items-end gap-4">
         <div className="flex flex-wrap gap-4 items-end">
           <div>
-            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">조회 연도</label>
+            <label className="block text-xs font-bold text-[#8b95a1] uppercase mb-1">조회/저장 연도</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Calendar className="h-4 w-4 text-[#8b95a1]" />
@@ -1964,12 +1972,12 @@ export default function PlanActualUpload() {
               className="px-4 py-2 h-[42px] bg-brand-50 border border-brand-200 rounded-xl text-sm font-bold text-brand-700 focus:ring-2 focus:ring-brand-500 transition-all outline-none appearance-none"
             >
               <option value="">▼ 선택해주세요</option>
-              <option value="실적">실적DB</option>
-              <option value="경영계획">경영계획 예산DB</option>
-              <option value="증액반영">증액반영 예산DB</option>
-              <option value="수정경영계획">수정경영계획 예산DB</option>
-              <option value="1차 RP">1차 RP 예산DB</option>
-              <option value="2차 RP">2차 RP 예산DB</option>
+              <option value="실적">{`실적DB ${year}`}</option>
+              <option value="경영계획">{`예산DB ${year} (경영계획)`}</option>
+              <option value="증액반영">{`예산DB ${year} (증액반영)`}</option>
+              <option value="수정경영계획">{`예산DB ${year} (수정경영계획)`}</option>
+              <option value="1차 RP">{`예산DB ${year} (1차 RP)`}</option>
+              <option value="2차 RP">{`예산DB ${year} (2차 RP)`}</option>
             </select>
           </div>
           {uploadTarget && (

@@ -138,7 +138,11 @@ export function appendBudgetLockAuditLog(log: Omit<BudgetLockAuditLog, 'id' | 't
   localStorage.setItem(key, JSON.stringify(rows));
 }
 
-export function getEffectiveDeptCodeForActual(row: any, attributionIndex?: Map<string, string> | Record<string, string>): string {
+export function getEffectiveDeptCodeForActual(
+  row: any,
+  attributionIndex?: Map<string, string> | Record<string, string>,
+  fallbackYear?: string
+): string {
   const itemId = row.id || row.sourceRowId || row.rowNo || row._rowIndex || 'no-id';
   const itemSignature = `${row.period}_${row.usageCode}_${row.accountCode}_${itemId}`;
 
@@ -157,7 +161,11 @@ export function getEffectiveDeptCodeForActual(row: any, attributionIndex?: Map<s
   }
 
   // Fallback to cached lookup
-  const year = row.year || '2026';
+  const year = row.year || fallbackYear;
+  if (!year) {
+    return row.attributedDeptCode || row.usageCode || '';
+  }
+
   if (!actualsMapsByYear.has(year)) {
     const map = new Map<string, string>();
     try {

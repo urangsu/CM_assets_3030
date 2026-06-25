@@ -278,12 +278,37 @@ type AttributionColumnKey = keyof typeof DEFAULT_ATTRIBUTION_COL_WIDTHS;
 
 const ATTRIBUTION_COL_WIDTHS_KEY = 'hycm_attribution_column_widths';
 
+function getAvailableActualYears(): string[] {
+  const years = new Set<string>();
+
+  Object.keys(localStorage).forEach(key => {
+    const match = key.match(/^cleanmetal_actual_data_(\d{4})$/);
+    if (match) years.add(match[1]);
+  });
+
+  years.add('2025');
+  years.add('2026');
+
+  return Array.from(years).sort((a, b) => Number(b) - Number(a));
+}
+
 export default function DepartmentAssignment() {
   const navigate = useNavigate();
   const { currentUser } = usePermission();
 
   // Filter States
-  const [year, setYear] = useState('2026');
+  const [selectedYear, setSelectedYear] = useState(() => {
+    return localStorage.getItem('actual_assignment_year') || '2026';
+  });
+  const year = selectedYear;
+  const setYear = setSelectedYear;
+
+  useEffect(() => {
+    localStorage.setItem('actual_assignment_year', selectedYear);
+  }, [selectedYear]);
+
+  const getAuditLogKey = (y: string) => `hycm_attribution_audit_log_${y}`;
+
   type AttributionDataFilter =
     | '실적'
     | '경영계획'
@@ -375,17 +400,35 @@ export default function DepartmentAssignment() {
   });
 
   const showConfirm = (title: string, description: string, onConfirm: () => void, confirmText = '확인') => {
+    const isPastYear = Number(selectedYear) < 2026;
+    const finalDescription = isPastYear 
+      ? `⚠️ [과거 연도 경고] 과거 연도(${selectedYear}년)의 귀속부서를 수정하고 있습니다. 정말 수정하시겠습니까?\n\n${description}`
+      : description;
+
     setConfirmState({
       open: true,
-      title,
-      description,
-      confirmText,
+      title: isPastYear ? `⚠️ 과거 연도 수정 주의 (${selectedYear}년)` : title,
+      description: finalDescription,
+      confirmText: isPastYear ? '예, 수정합니다' : confirmText,
       onConfirm: () => {
         onConfirm();
         setConfirmState(prev => ({ ...prev, open: false }));
       },
       isAlert: false
     });
+  };
+
+  const checkPastYearAndExecute = (onConfirm: () => void, text = '귀속부서 보정 작업을 진행하시겠습니까?') => {
+    if (selectedYear !== '2026') {
+      showConfirm(
+        `⚠️ 과거 연도 수정 주의 (${selectedYear}년)`,
+        `과거 연도(${selectedYear}년)의 귀속부서를 수정하고 있습니다. 정말 수정하시겠습니까?\n\n(${text})`,
+        onConfirm,
+        '예, 수정합니다'
+      );
+    } else {
+      onConfirm();
+    }
   };
 
   const showAlert = (title: string, description: string) => {
@@ -412,16 +455,18 @@ export default function DepartmentAssignment() {
   const [historyModalTab, setHistoryModalTab] = useState<'ATTRIBUTION' | 'UPLOAD'>('ATTRIBUTION');
 
   const reloadAuditLogs = () => {
-    setAuditLogs(safeLocalStorageGet<any[]>('hycm_attribution_audit_log', []));
+    setAuditLogs(safeLocalStorageGet<any[]>(getAuditLogKey(selectedYear), []));
     setUploadHistory(safeLocalStorageGet<any[]>('hycm_actual_upload_history', []));
   };
 
   const appendAttributionAuditLogs = (newLogs: any[]) => {
     try {
-      const currentRaw = safeLocalStorageGet<unknown>('hycm_attribution_audit_log', []);
+      const logKey = getAuditLogKey(selectedYear);
+      const logsWithYear = newLogs.map(log => ({ ...log, year: log.year || selectedYear }));
+      const currentRaw = safeLocalStorageGet<unknown>(logKey, []);
       const currentLogs = Array.isArray(currentRaw) ? currentRaw : [];
-      const nextLogs = [...newLogs, ...currentLogs];
-      localStorage.setItem('hycm_attribution_audit_log', JSON.stringify(nextLogs));
+      const nextLogs = [...logsWithYear, ...currentLogs];
+      localStorage.setItem(logKey, JSON.stringify(nextLogs));
       setAuditLogs(nextLogs);
     } catch (e) {
       console.error(e);
@@ -429,15 +474,20 @@ export default function DepartmentAssignment() {
   };
 
   const getStoredActualRows = (): any[] => {
-    const actKey = getActualDataKey(year);
-    const raw = safeLocalStorageGet<unknown>(actKey, []);
+    const actKey = getActualDataKey(selectedYear);
+    const raw = safeLocalStorageGet<any[]>(actKey, []);
 
     if (!Array.isArray(raw)) {
       localStorage.setItem(actKey, JSON.stringify([]));
       return [];
     }
 
-    return raw;
+    return raw
+      .filter((row: any) => !row.year || String(row.year) === selectedYear)
+      .map((row: any) => ({
+        ...row,
+        year: row.year || selectedYear,
+      }));
   };
 
   const resetAttributionSelections = () => {
@@ -631,17 +681,24 @@ export default function DepartmentAssignment() {
     setOverrides(normalizedOverrides);
 
     // 2. Actuals
-    const actKey = getActualDataKey(year);
-    const rawActuals = safeLocalStorageGet<unknown>(actKey, []);
+    const actKey = getActualDataKey(selectedYear);
+    const rawActuals = safeLocalStorageGet<any[]>(actKey, []);
     const parsed = Array.isArray(rawActuals) ? rawActuals : [];
 
     if (!Array.isArray(rawActuals)) {
       localStorage.setItem(actKey, JSON.stringify([]));
     }
 
-    if (parsed.length > 0) {
+    const filteredAndNormalized = parsed
+      .filter((row: any) => !row.year || String(row.year) === selectedYear)
+      .map((row: any) => ({
+        ...row,
+        year: row.year || selectedYear,
+      }));
+
+    if (filteredAndNormalized.length > 0) {
       try {
-        const normalizedRows = parsed.map((row: any) => {
+        const normalizedRows = filteredAndNormalized.map((row: any) => {
           return {
             ...row,
             usageCode: String(row.usageCode ?? '').trim(),
@@ -1399,52 +1456,54 @@ export default function DepartmentAssignment() {
 
   // Actions: Apply recommended department attribution
   const handleApplyRecommendation = (rowId: string | number, recDeptCode: string, recDeptName: string, reasons: string[], score: number) => {
-    const actKey = getActualDataKey(year);
-    const storedActuals = getStoredActualRows();
-    let targetRow: any = null;
+    checkPastYearAndExecute(() => {
+      const actKey = getActualDataKey(year);
+      const storedActuals = getStoredActualRows();
+      let targetRow: any = null;
 
-    const updated = storedActuals.map((row: any) => {
-      if (row.id !== rowId) return row;
-      targetRow = row;
-      return {
-        ...row,
-        usageCode: row.usageCode, // Keep original untouched
-        usageDept: row.usageDept, // Keep original untouched
-        attributedDeptCode: recDeptCode,
-        attributedDeptName: recDeptName,
-        attributionSource: 'recommendation',
-        attributionScore: score,
-        attributionReasons: reasons,
-        attributionUpdatedAt: new Date().toISOString(),
-      };
-    });
-
-    if (targetRow) {
-      localStorage.setItem(actKey, JSON.stringify(updated));
-      clearDataLoaderCache();
-      saveAuditLog({
-        rowId,
-        action: 'APPLY',
-        accountCode: targetRow.accountCode,
-        accountName: targetRow.accountName,
-        originalDeptCode: targetRow.usageCode,
-        originalDeptName: targetRow.usageDept || targetRow.usageCode,
-        beforeAttributedDeptCode: targetRow.attributedDeptCode,
-        beforeAttributedDeptName: targetRow.attributedDeptName,
-        afterAttributedDeptCode: recDeptCode,
-        afterAttributedDeptName: recDeptName,
-        reasons,
-        score,
+      const updated = storedActuals.map((row: any) => {
+        if (row.id !== rowId) return row;
+        targetRow = row;
+        return {
+          ...row,
+          usageCode: row.usageCode, // Keep original untouched
+          usageDept: row.usageDept, // Keep original untouched
+          attributedDeptCode: recDeptCode,
+          attributedDeptName: recDeptName,
+          attributionSource: 'recommendation',
+          attributionScore: score,
+          attributionReasons: reasons,
+          attributionUpdatedAt: new Date().toISOString(),
+        };
       });
 
-      setFeedbackMsg({
-        type: 'success',
-        text: `[${targetRow.accountName}] 의 귀속부서가 [${recDeptName}] 추천 부서로 성공적으로 적용되었습니다.`
-      });
-      setTimeout(() => setFeedbackMsg(null), 3000);
-      resetAttributionSelections();
-      loadData();
-    }
+      if (targetRow) {
+        localStorage.setItem(actKey, JSON.stringify(updated));
+        clearDataLoaderCache();
+        saveAuditLog({
+          rowId,
+          action: 'APPLY',
+          accountCode: targetRow.accountCode,
+          accountName: targetRow.accountName,
+          originalDeptCode: targetRow.usageCode,
+          originalDeptName: targetRow.usageDept || targetRow.usageCode,
+          beforeAttributedDeptCode: targetRow.attributedDeptCode,
+          beforeAttributedDeptName: targetRow.attributedDeptName,
+          afterAttributedDeptCode: recDeptCode,
+          afterAttributedDeptName: recDeptName,
+          reasons,
+          score,
+        });
+
+        setFeedbackMsg({
+          type: 'success',
+          text: `[${targetRow.accountName}] 의 귀속부서가 [${recDeptName}] 추천 부서로 성공적으로 적용되었습니다.`
+        });
+        setTimeout(() => setFeedbackMsg(null), 3000);
+        resetAttributionSelections();
+        loadData();
+      }
+    }, `추천 부서 [${recDeptName}] 적용`);
   };
 
   // Actions: Manual attribute change
@@ -1453,102 +1512,106 @@ export default function DepartmentAssignment() {
     const dept = allDepts.find(d => d.code === selectedDeptCode);
     if (!dept) return;
 
-    const actKey = getActualDataKey(year);
-    const storedActuals = getStoredActualRows();
-    let targetRow: any = null;
+    checkPastYearAndExecute(() => {
+      const actKey = getActualDataKey(year);
+      const storedActuals = getStoredActualRows();
+      let targetRow: any = null;
 
-    const updated = storedActuals.map((row: any) => {
-      if (row.id !== rowId) return row;
-      targetRow = row;
-      return {
-        ...row,
-        usageCode: row.usageCode, // Keep original untouched
-        usageDept: row.usageDept, // Keep original untouched
-        attributedDeptCode: dept.code,
-        attributedDeptName: dept.name,
-        attributionSource: 'manual',
-        attributionScore: 0,
-        attributionReasons: ['업무담당자 수동 보정 변경'],
-        attributionUpdatedAt: new Date().toISOString(),
-      };
-    });
-
-    if (targetRow) {
-      localStorage.setItem(actKey, JSON.stringify(updated));
-      clearDataLoaderCache();
-      saveAuditLog({
-        rowId,
-        action: 'MANUAL_CHANGE',
-        accountCode: targetRow.accountCode,
-        accountName: targetRow.accountName,
-        originalDeptCode: targetRow.usageCode,
-        originalDeptName: targetRow.usageDept || targetRow.usageCode,
-        beforeAttributedDeptCode: targetRow.attributedDeptCode,
-        beforeAttributedDeptName: targetRow.attributedDeptName,
-        afterAttributedDeptCode: dept.code,
-        afterAttributedDeptName: dept.name,
-        reasons: ['수동 변경 지정 적용'],
-        score: 0,
+      const updated = storedActuals.map((row: any) => {
+        if (row.id !== rowId) return row;
+        targetRow = row;
+        return {
+          ...row,
+          usageCode: row.usageCode, // Keep original untouched
+          usageDept: row.usageDept, // Keep original untouched
+          attributedDeptCode: dept.code,
+          attributedDeptName: dept.name,
+          attributionSource: 'manual',
+          attributionScore: 0,
+          attributionReasons: ['업무담당자 수동 보정 변경'],
+          attributionUpdatedAt: new Date().toISOString(),
+        };
       });
 
-      setFeedbackMsg({
-        type: 'success',
-        text: `[${targetRow.accountName}] 의 귀속부서가 [${dept.name}] (수동)으로 적용되었습니다.`
-      });
-      setTimeout(() => setFeedbackMsg(null), 3000);
-      resetAttributionSelections();
-      loadData();
-    }
+      if (targetRow) {
+        localStorage.setItem(actKey, JSON.stringify(updated));
+        clearDataLoaderCache();
+        saveAuditLog({
+          rowId,
+          action: 'MANUAL_CHANGE',
+          accountCode: targetRow.accountCode,
+          accountName: targetRow.accountName,
+          originalDeptCode: targetRow.usageCode,
+          originalDeptName: targetRow.usageDept || targetRow.usageCode,
+          beforeAttributedDeptCode: targetRow.attributedDeptCode,
+          beforeAttributedDeptName: targetRow.attributedDeptName,
+          afterAttributedDeptCode: dept.code,
+          afterAttributedDeptName: dept.name,
+          reasons: ['수동 변경 지정 적용'],
+          score: 0,
+        });
+
+        setFeedbackMsg({
+          type: 'success',
+          text: `[${targetRow.accountName}] 의 귀속부서가 [${dept.name}] (수동)으로 적용되었습니다.`
+        });
+        setTimeout(() => setFeedbackMsg(null), 3000);
+        resetAttributionSelections();
+        loadData();
+      }
+    }, `수동 부서 [${dept.name}] 적용`);
   };
 
   // Actions: Revert to original attribution
   const handleRevertAttribution = (rowId: string | number) => {
-    const actKey = getActualDataKey(year);
-    const storedActuals = getStoredActualRows();
-    let targetRow: any = null;
+    checkPastYearAndExecute(() => {
+      const actKey = getActualDataKey(year);
+      const storedActuals = getStoredActualRows();
+      let targetRow: any = null;
 
-    const updated = storedActuals.map((row: any) => {
-      if (row.id !== rowId) return row;
-      targetRow = row;
+      const updated = storedActuals.map((row: any) => {
+        if (row.id !== rowId) return row;
+        targetRow = row;
 
-      const {
-        attributedDeptCode,
-        attributedDeptName,
-        attributionSource,
-        attributionScore,
-        attributionReasons,
-        attributionUpdatedAt,
-        ...rest
-      } = row;
-      return rest;
-    });
-
-    if (targetRow) {
-      localStorage.setItem(actKey, JSON.stringify(updated));
-      clearDataLoaderCache();
-      saveAuditLog({
-        rowId,
-        action: 'REVERT',
-        accountCode: targetRow.accountCode,
-        accountName: targetRow.accountName,
-        originalDeptCode: targetRow.usageCode,
-        originalDeptName: targetRow.usageDept || targetRow.usageCode,
-        beforeAttributedDeptCode: targetRow.attributedDeptCode,
-        beforeAttributedDeptName: targetRow.attributedDeptName,
-        afterAttributedDeptCode: undefined,
-        afterAttributedDeptName: undefined,
-        reasons: ['원본 사용처 기준으로 귀속부서 복원'],
-        score: 0,
+        const {
+          attributedDeptCode,
+          attributedDeptName,
+          attributionSource,
+          attributionScore,
+          attributionReasons,
+          attributionUpdatedAt,
+          ...rest
+        } = row;
+        return rest;
       });
 
-      setFeedbackMsg({
-        type: 'success',
-        text: `[${targetRow.accountName}] 의 지정 귀속부서가 성공적으로 제거(원본 부서 기준으로 원복)되었습니다.`
-      });
-      setTimeout(() => setFeedbackMsg(null), 3000);
-      resetAttributionSelections();
-      loadData();
-    }
+      if (targetRow) {
+        localStorage.setItem(actKey, JSON.stringify(updated));
+        clearDataLoaderCache();
+        saveAuditLog({
+          rowId,
+          action: 'REVERT',
+          accountCode: targetRow.accountCode,
+          accountName: targetRow.accountName,
+          originalDeptCode: targetRow.usageCode,
+          originalDeptName: targetRow.usageDept || targetRow.usageCode,
+          beforeAttributedDeptCode: targetRow.attributedDeptCode,
+          beforeAttributedDeptName: targetRow.attributedDeptName,
+          afterAttributedDeptCode: undefined,
+          afterAttributedDeptName: undefined,
+          reasons: ['원본 사용처 기준으로 귀속부서 복원'],
+          score: 0,
+        });
+
+        setFeedbackMsg({
+          type: 'success',
+          text: `[${targetRow.accountName}] 의 지정 귀속부서가 성공적으로 제거(원본 부서 기준으로 원복)되었습니다.`
+        });
+        setTimeout(() => setFeedbackMsg(null), 3000);
+        resetAttributionSelections();
+        loadData();
+      }
+    }, '원 사용처 기준으로 환원');
   };
 
   // Actions: Ignore single recommendation
@@ -1620,55 +1683,57 @@ export default function DepartmentAssignment() {
   };
 
   const handleApplyRecommendationGroup = (group: GroupedRecommendationRow) => {
-    const actKey = getActualDataKey(year);
-    const storedActuals = getStoredActualRows();
-    const targetIds = new Set(group.months.filter(m => m.status === '대기').map(m => m.rowId));
-    if (targetIds.size === 0) return;
+    checkPastYearAndExecute(() => {
+      const actKey = getActualDataKey(year);
+      const storedActuals = getStoredActualRows();
+      const targetIds = new Set(group.months.filter(m => m.status === '대기').map(m => m.rowId));
+      if (targetIds.size === 0) return;
 
-    const newLogs: any[] = [];
-    const updated = storedActuals.map((row: any) => {
-      if (!targetIds.has(row.id)) return row;
-      
-      const reasons = group.months[0]?.reasons.map(r => r.label) || [];
-      const score = group.months[0]?.score || 0;
+      const newLogs: any[] = [];
+      const updated = storedActuals.map((row: any) => {
+        if (!targetIds.has(row.id)) return row;
+        
+        const reasons = group.months[0]?.reasons.map(r => r.label) || [];
+        const score = group.months[0]?.score || 0;
 
-      newLogs.push({
-        id: `${Date.now()}_grp_${Math.random().toString(36).substring(2, 7)}`,
-        time: new Date().toLocaleString(),
-        action: '집계 귀속 적용 (계정 묶음)',
-        accountCode: row.accountCode,
-        accountName: row.accountName,
-        originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
-        beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
-        afterAttributedDeptName: `[${group.recommendedDeptCode}] ${group.recommendedDeptName}`,
-        user: currentUser?.name || '업무담당자',
-        reason: '계정 묶음 귀속추천 적용 (' + group.monthLabels + ')',
+        newLogs.push({
+          id: `${Date.now()}_grp_${Math.random().toString(36).substring(2, 7)}`,
+          time: new Date().toLocaleString(),
+          action: '집계 귀속 적용 (계정 묶음)',
+          accountCode: row.accountCode,
+          accountName: row.accountName,
+          originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+          beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
+          afterAttributedDeptName: `[${group.recommendedDeptCode}] ${group.recommendedDeptName}`,
+          user: currentUser?.name || '업무담당자',
+          reason: '계정 묶음 귀속추천 적용 (' + group.monthLabels + ')',
+        });
+
+        return {
+          ...row,
+          usageCode: row.usageCode,
+          usageDept: row.usageDept,
+          attributedDeptCode: group.recommendedDeptCode,
+          attributedDeptName: group.recommendedDeptName,
+          attributionSource: 'recommendation',
+          attributionScore: score,
+          attributionReasons: reasons,
+          attributionUpdatedAt: new Date().toISOString(),
+        };
       });
 
-      return {
-        ...row,
-        usageCode: row.usageCode,
-        usageDept: row.usageDept,
-        attributedDeptCode: group.recommendedDeptCode,
-        attributedDeptName: group.recommendedDeptName,
-        attributionSource: 'recommendation',
-        attributionScore: score,
-        attributionReasons: reasons,
-        attributionUpdatedAt: new Date().toISOString(),
-      };
-    });
+      localStorage.setItem(actKey, JSON.stringify(updated));
+      clearDataLoaderCache();
+      appendAttributionAuditLogs(newLogs);
 
-    localStorage.setItem(actKey, JSON.stringify(updated));
-    clearDataLoaderCache();
-    appendAttributionAuditLogs(newLogs);
-
-    setFeedbackMsg({
-      type: 'success',
-      text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건에 추천 귀속부서 [${group.recommendedDeptName}]를 적용하였습니다.`
-    });
-    setTimeout(() => setFeedbackMsg(null), 3000);
-    resetAttributionSelections();
-    loadData();
+      setFeedbackMsg({
+        type: 'success',
+        text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건에 추천 귀속부서 [${group.recommendedDeptName}]를 적용하였습니다.`
+      });
+      setTimeout(() => setFeedbackMsg(null), 3000);
+      resetAttributionSelections();
+      loadData();
+    }, `계정 묶음 추천 부서 [${group.recommendedDeptName}] 적용`);
   };
 
   const handleIgnoreRecommendationGroup = (group: GroupedRecommendationRow) => {
@@ -1708,98 +1773,102 @@ export default function DepartmentAssignment() {
     const dept = allDepts.find(d => d.code === selectedDeptCode);
     if (!dept) return;
 
-    const actKey = getActualDataKey(year);
-    const storedActuals = getStoredActualRows();
-    const targetIds = new Set(group.months.map(m => m.rowId));
+    checkPastYearAndExecute(() => {
+      const actKey = getActualDataKey(year);
+      const storedActuals = getStoredActualRows();
+      const targetIds = new Set(group.months.map(m => m.rowId));
 
-    const newLogs: any[] = [];
-    const updated = storedActuals.map((row: any) => {
-      if (!targetIds.has(row.id)) return row;
+      const newLogs: any[] = [];
+      const updated = storedActuals.map((row: any) => {
+        if (!targetIds.has(row.id)) return row;
 
-      newLogs.push({
-        id: `${Date.now()}_grpmn_${Math.random().toString(36).substring(2, 7)}`,
-        time: new Date().toLocaleString(),
-        action: '수동 보정 적용 (계정 묶음)',
-        accountCode: row.accountCode,
-        accountName: row.accountName,
-        originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
-        beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
-        afterAttributedDeptName: `[${dept.code}] ${dept.name}`,
-        user: currentUser?.name || '업무담당자',
-        reason: '계정 묶음 수동 변경 지정',
+        newLogs.push({
+          id: `${Date.now()}_grpmn_${Math.random().toString(36).substring(2, 7)}`,
+          time: new Date().toLocaleString(),
+          action: '수동 보정 적용 (계정 묶음)',
+          accountCode: row.accountCode,
+          accountName: row.accountName,
+          originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+          beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
+          afterAttributedDeptName: `[${dept.code}] ${dept.name}`,
+          user: currentUser?.name || '업무담당자',
+          reason: '계정 묶음 수동 변경 지정',
+        });
+
+        return {
+          ...row,
+          usageCode: row.usageCode,
+          usageDept: row.usageDept,
+          attributedDeptCode: dept.code,
+          attributedDeptName: dept.name,
+          attributionSource: 'manual',
+          attributionScore: 0,
+          attributionReasons: ['업무담당자 수동 보정 변경 (계정 묶음)'],
+          attributionUpdatedAt: new Date().toISOString(),
+        };
       });
 
-      return {
-        ...row,
-        usageCode: row.usageCode,
-        usageDept: row.usageDept,
-        attributedDeptCode: dept.code,
-        attributedDeptName: dept.name,
-        attributionSource: 'manual',
-        attributionScore: 0,
-        attributionReasons: ['업무담당자 수동 보정 변경 (계정 묶음)'],
-        attributionUpdatedAt: new Date().toISOString(),
-      };
-    });
+      localStorage.setItem(actKey, JSON.stringify(updated));
+      clearDataLoaderCache();
+      appendAttributionAuditLogs(newLogs);
 
-    localStorage.setItem(actKey, JSON.stringify(updated));
-    clearDataLoaderCache();
-    appendAttributionAuditLogs(newLogs);
-
-    setFeedbackMsg({
-      type: 'success',
-      text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 귀속부서를 [${dept.name}] (수동)으로 적용하였습니다.`
-    });
-    setTimeout(() => setFeedbackMsg(null), 3000);
-    resetAttributionSelections();
-    loadData();
+      setFeedbackMsg({
+        type: 'success',
+        text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 귀속부서를 [${dept.name}] (수동)으로 적용하였습니다.`
+      });
+      setTimeout(() => setFeedbackMsg(null), 3000);
+      resetAttributionSelections();
+      loadData();
+    }, `계정 묶음 수동 부서 [${dept.name}] 적용`);
   };
 
   const handleRevertAttributionGroup = (group: GroupedRecommendationRow) => {
-    const actKey = getActualDataKey(year);
-    const storedActuals = getStoredActualRows();
-    const targetIds = new Set(group.months.map(m => m.rowId));
+    checkPastYearAndExecute(() => {
+      const actKey = getActualDataKey(year);
+      const storedActuals = getStoredActualRows();
+      const targetIds = new Set(group.months.map(m => m.rowId));
 
-    const newLogs: any[] = [];
-    const updated = storedActuals.map((row: any) => {
-      if (!targetIds.has(row.id)) return row;
+      const newLogs: any[] = [];
+      const updated = storedActuals.map((row: any) => {
+        if (!targetIds.has(row.id)) return row;
 
-      newLogs.push({
-        id: `${Date.now()}_grprv_${Math.random().toString(36).substring(2, 7)}`,
-        time: new Date().toLocaleString(),
-        action: '지정 귀속 복원 (계정 묶음)',
-        accountCode: row.accountCode,
-        accountName: row.accountName,
-        originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
-        beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
-        afterAttributedDeptName: '원 사용처 기준',
-        user: currentUser?.name || '업무담당자',
-        reason: '계정 묶음 원본 부서 기준으로 복원 (' + group.monthLabels + ')',
+        newLogs.push({
+          id: `${Date.now()}_grprv_${Math.random().toString(36).substring(2, 7)}`,
+          time: new Date().toLocaleString(),
+          action: '지정 귀속 복원 (계정 묶음)',
+          accountCode: row.accountCode,
+          accountName: row.accountName,
+          originalDeptName: `[${row.usageCode}] ${row.usageDept || row.usageCode}`,
+          beforeAttributedDeptName: row.attributedDeptName || '원 사용처 기준',
+          afterAttributedDeptName: '원 사용처 기준',
+          user: currentUser?.name || '업무담당자',
+          reason: '계정 묶음 원본 부서 기준으로 복원 (' + group.monthLabels + ')',
+        });
+
+        const {
+          attributedDeptCode,
+          attributedDeptName,
+          attributionSource,
+          attributionScore,
+          attributionReasons,
+          attributionUpdatedAt,
+          ...rest
+        } = row;
+        return rest;
       });
 
-      const {
-        attributedDeptCode,
-        attributedDeptName,
-        attributionSource,
-        attributionScore,
-        attributionReasons,
-        attributionUpdatedAt,
-        ...rest
-      } = row;
-      return rest;
-    });
+      localStorage.setItem(actKey, JSON.stringify(updated));
+      clearDataLoaderCache();
+      appendAttributionAuditLogs(newLogs);
 
-    localStorage.setItem(actKey, JSON.stringify(updated));
-    clearDataLoaderCache();
-    appendAttributionAuditLogs(newLogs);
-
-    setFeedbackMsg({
-      type: 'success',
-      text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 지정 귀속부서를 제거하고 원본 부서 기준으로 원복하였습니다.`
-    });
-    setTimeout(() => setFeedbackMsg(null), 3000);
-    resetAttributionSelections();
-    loadData();
+      setFeedbackMsg({
+        type: 'success',
+        text: `[${group.accountName}] 계정 묶음 ${targetIds.size}건의 지정 귀속부서를 제거하고 원본 부서 기준으로 원복하였습니다.`
+      });
+      setTimeout(() => setFeedbackMsg(null), 3000);
+      resetAttributionSelections();
+      loadData();
+    }, '계정 묶음 원 사용처 기준으로 환원');
   };
 
   const handleUndoIgnoreGroup = (group: GroupedRecommendationRow) => {
@@ -3218,7 +3287,7 @@ export default function DepartmentAssignment() {
                                               </td>
                                               <td className="py-2 px-2 text-center font-mono font-medium text-zinc-500">{subItem.period}</td>
                                               <td className="py-2 px-2 text-left truncate max-w-[180px]" title={`[${subItem.originalDeptCode}] ${subItem.originalDeptName}`}>
-                                                [{subItem.originalDeptCode}] {subItem.originalDeptName}
+                                                {renderDeptCellContent(subItem.originalDeptCode, subItem.originalDeptName)}
                                               </td>
                                               <td className="py-2 px-2 text-left">
                                                 {editingAttributionRowId === subItem.rowId ? (
@@ -3946,7 +4015,7 @@ export default function DepartmentAssignment() {
                         {item.accountName}
                       </td>
                       <td className="py-2.5 px-3 text-zinc-650 truncate max-w-[200px]" title={item.originalDeptName}>
-                        [{item.originalDeptCode}] {item.originalDeptName}
+                        {renderDeptCellContent(item.originalDeptCode, item.originalDeptName)}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-zinc-800">
                         {item.amount.toLocaleString()}원
@@ -4039,7 +4108,7 @@ export default function DepartmentAssignment() {
                             '이력 전체 비우기',
                             '모든 로컬 귀속 보정 이력을 비우시겠습니까? 이 작업은 되돌릴 수 없습니다.',
                             () => {
-                              localStorage.removeItem('hycm_attribution_audit_log');
+                              localStorage.removeItem(getAuditLogKey(selectedYear));
                               setAuditLogs([]);
                             },
                             '비우기'
