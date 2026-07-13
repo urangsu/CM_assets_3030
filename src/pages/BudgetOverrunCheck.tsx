@@ -267,7 +267,7 @@ export default function BudgetOverrunCheck() {
           </AppSelect>
         </FilterItem>
         <FilterItem label="계획구분">
-          <AppSelect value={planType} onChange={(e) => setPlanType(normalizePlanType(e.target.value))}>
+          <AppSelect value={planType} onChange={(e) => setPlanType(normalizePlanType(e.target.value) || '경영계획')}>
             {BUDGET_PLAN_TYPE_OPTIONS.map(type => (
               <option key={type} value={type}>{type}</option>
             ))}
@@ -314,7 +314,7 @@ export default function BudgetOverrunCheck() {
       </FilterBar>
 
       <div className="mb-4 rounded-xl border border-lithium-200 bg-lithium-50 px-4 py-2 text-[12px] text-lithium-600 leading-relaxed flex justify-between items-center">
-        <span>조회 권한이 있는 부서만 표시되며, 급여성 계정은 권한 보유자에게만 노출됩니다.</span>
+        <span>조회 권한이 있는 부서만 표시되며, 급여성 계정은 권한 보유자에게만 노출됩니다. <strong>(실적 집계 기준: 귀속부서)</strong></span>
         {searched && (
           <span className="font-medium bg-white px-2 py-0.5 rounded border border-lithium-200 shadow-sm text-zinc-700">
             예산 {diagnostics.budgetRowCount.toLocaleString()}건 ·

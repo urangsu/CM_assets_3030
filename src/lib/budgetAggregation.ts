@@ -1,4 +1,4 @@
-import { getBudgetDataKey, getActualDataKey, readBudgetData } from './storageKeys';
+import { getBudgetDataKey, getActualDataKey, readBudgetData, getEffectiveDeptCodeForActual } from './storageKeys';
 import { SALARY_CATEGORIES, DEPARTMENTS } from '../constants';
 import { INITIAL_CATEGORIES } from '../pages/AccountSelection';
 
@@ -211,7 +211,7 @@ export function aggregateByDeptAccount(params: {
     if (monthIndex === null) return; // Skip invalid periods
     
     const isQuarter = months.includes(monthIndex);
-    const effDeptCode = a.attributedDeptCode || a.usageCode;
+    const effDeptCode = getEffectiveDeptCodeForActual(a, undefined, a.year);
     const key = `${effDeptCode}_${a.accountCode}`;
     
     // Only union if the dept is allowed (preventing random dept leakage via actuals)

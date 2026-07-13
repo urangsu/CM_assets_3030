@@ -3,6 +3,9 @@ import { normalizePlanType, getPlanTypeAliases } from './planTypes';
 
 export function getBudgetDataKey(deptCode: string, year: string, planType: string) {
   const safePlanType = normalizePlanType(planType);
+  if (!safePlanType) {
+    throw new Error(`알 수 없는 계획유형(원본값: ${planType})입니다.`);
+  }
   return `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${safePlanType}`;
 }
 
@@ -31,7 +34,7 @@ export interface SubmissionStatus {
 }
 
 export function getSubmissionStatusMapKey(deptCode: string, year: string, planType: string) {
-  const safePlanType = normalizePlanType(planType);
+  const safePlanType = normalizePlanType(planType) || '경영계획';
   return `${deptCode}_${year}_${safePlanType}`;
 }
 

@@ -38,7 +38,7 @@ import { INITIAL_CATEGORIES } from './AccountSelection';
 import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { safeLocalStorageGet, safeJsonParse } from '../lib/safeStorage';
-import { normalizePlanType, getPlanTypeAliases } from '../lib/planTypes';
+import { normalizePlanType, getPlanTypeAliases, isValidPlanType } from '../lib/planTypes';
 
 // Sort logic
 type SortDirection = 'asc' | 'desc';
@@ -718,6 +718,30 @@ export default function PlanActualUpload() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Helper for local browser parsing fallback
+    const parseFileLocally = (targetFile: File) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: 'binary' });
+          if (!wb.SheetNames || wb.SheetNames.length === 0) {
+            setAlertModal({ isOpen: true, message: '엑셀 파일에서 시트를 찾을 수 없습니다.' });
+            return;
+          }
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+          
+          processImportedData(jsonData);
+        } catch (localErr: any) {
+          console.error("Local parsing error:", localErr);
+          setAlertModal({ isOpen: true, message: `로컬 파일 파싱 중 오류가 발생했습니다: ${localErr.message || localErr}` });
+        }
+      };
+      reader.readAsBinaryString(targetFile);
+    };
+
     // requirement: API payload
     const formData = new FormData();
     formData.append("file", file);
@@ -730,35 +754,24 @@ export default function PlanActualUpload() {
         method: 'POST',
         body: formData,
       });
-      const data = await response.json();
-      if (!data.success) {
-        setAlertModal({ isOpen: true, message: data.error || '업로드 중 오류가 발생했습니다.' });
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        return;
-      }
-      
-      // Continue with local preview rendering to keep UI exactly the same
-      if (data.rows && data.rows.length > 0) {
-        processImportedData(data.rows);
+
+      if (response.status === 501) {
+        console.info("[upload] Server returned 501 Not Implemented. Falling back to local client-side parsing.");
+        parseFileLocally(file);
+      } else {
+        const data = await response.json();
+        if (!data.success) {
+          console.warn("[upload] Server returned error, falling back to local client-side parsing:", data.message || data.error);
+          parseFileLocally(file);
+        } else if (data.rows && data.rows.length > 0) {
+          processImportedData(data.rows);
+        } else {
+          parseFileLocally(file);
+        }
       }
     } catch (err) {
-      console.error("API error, falling back to local fallback", err);
-      // Fallback for purely client environment testing
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        if (!wb.SheetNames || wb.SheetNames.length === 0) {
-          setAlertModal({ isOpen: true, message: '엑셀 파일에서 시트를 찾을 수 없습니다.' });
-          return;
-        }
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-        
-        processImportedData(jsonData);
-      };
-      reader.readAsBinaryString(file);
+      console.warn("API error, falling back to local parsing", err);
+      parseFileLocally(file);
     }
     
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -920,6 +933,14 @@ export default function PlanActualUpload() {
   const handleSave = () => {
     if (!uploadTarget) {
       setAlertModal({ isOpen: true, message: '업로드 대상을 선택하고 데이터를 임시 반영한 뒤 저장해주세요.' });
+      return;
+    }
+
+    if (!isValidPlanType(uploadTarget)) {
+      setAlertModal({
+        isOpen: true,
+        message: `알 수 없는 계획유형(원본값: "${uploadTarget}")입니다. 저장이 차단되었습니다.`
+      });
       return;
     }
 

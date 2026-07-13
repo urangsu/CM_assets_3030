@@ -5,7 +5,7 @@ import { TrendingUp, TrendingDown, Minus as MinusIcon, Plus, Minus, Download, Fi
 import { STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
 import { getBudgetDataKey, readBudgetData, getEffectiveDeptCodeForActual } from '../lib/storageKeys';
 import { getDeptGroups, getDeptCodesByGroup, DeptGroup } from '../lib/departmentGroups';
-import { normalizePlanType } from '../lib/planTypes';
+import { normalizePlanType, PlanType, BudgetPlanType } from '../lib/planTypes';
 import { usePermission } from '../lib/permissions';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { classifyAccount, ACCOUNT_CLASS_OPTIONS, ACCOUNTING_TYPE_OPTIONS, AccountClass, AccountingType, getAccountingType, isSalaryAccountRow } from '../lib/accountClassification';
@@ -20,7 +20,6 @@ import { loadActualRows, loadBudgetRowsByDept } from '../lib/varianceDataLoader'
 import { buildAtomicCompareRows, buildVarianceComparison, resolveSelectedDeptCodes, AtomicCompareRow as EngineAtomicCompareRow, getVarianceStatus, VarianceStatus, resolveUnionMeta, normalizeCompareCode } from '../lib/varianceEngine';
 import { calcVarianceRate, formatVarianceRate, toExcelPercentValue } from '../lib/varianceMath';
 import { buildMonthlyMatrix, buildAccountMonthlyCompareRows, buildDeptMonthlyCompareRows, MonthlyCompareMatrixRow } from '../lib/varianceMonthlyExport';
-import { BudgetPlanType } from '../lib/planTypes';
 import { AppButton } from '../components/ui/AppButton';
 import {
   MultiPlanDeptViewMode,
@@ -173,12 +172,12 @@ export default function VarianceComparison() {
   };
 
   const [baseYear, setBaseYear] = useState(() => localStorage.getItem('variance_baseYear') || '2026');
-  const [basePlanType, setBasePlanType] = useState(() => normalizePlanType(localStorage.getItem('variance_basePlanType') || '경영계획'));
+  const [basePlanType, setBasePlanType] = useState<PlanType>(() => normalizePlanType(localStorage.getItem('variance_basePlanType') || '경영계획') || '경영계획');
   const [baseMonthMode, setBaseMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
   const [baseSelectedMonth, setBaseSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   
   const [targetYear, setTargetYear] = useState(() => localStorage.getItem('variance_targetYear') || '2026');
-  const [targetPlanType, setTargetPlanType] = useState(() => normalizePlanType(localStorage.getItem('variance_targetPlanType') || '실적'));
+  const [targetPlanType, setTargetPlanType] = useState<PlanType>(() => normalizePlanType(localStorage.getItem('variance_targetPlanType') || '실적') || '실적');
   const [targetMonthMode, setTargetMonthMode] = useState<'MONTH' | 'YTD'>('YTD');
   const [targetSelectedMonth, setTargetSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   
@@ -232,7 +231,7 @@ export default function VarianceComparison() {
     if (!currentUser) return;
 
     if (queryBaseYear) setBaseYear(queryBaseYear);
-    if (queryBasePlanType) setBasePlanType(normalizePlanType(queryBasePlanType));
+    if (queryBasePlanType) setBasePlanType(normalizePlanType(queryBasePlanType) || '경영계획');
     if (queryBaseMonthMode === 'MONTH' || queryBaseMonthMode === 'YTD') {
       setBaseMonthMode(queryBaseMonthMode);
     }
@@ -241,7 +240,7 @@ export default function VarianceComparison() {
     }
 
     if (queryTargetYear) setTargetYear(queryTargetYear);
-    if (queryTargetPlanType) setTargetPlanType(normalizePlanType(queryTargetPlanType));
+    if (queryTargetPlanType) setTargetPlanType(normalizePlanType(queryTargetPlanType) || '실적');
     if (queryTargetMonthMode === 'MONTH' || queryTargetMonthMode === 'YTD') {
       setTargetMonthMode(queryTargetMonthMode);
     }
@@ -2962,6 +2961,9 @@ export default function VarianceComparison() {
           {tab === 'account' && '계정별 예산과 실적 차이를 확인하고 주요 변동 계정을 점검합니다.'}
           {tab === 'multi_plan' && '경영계획(증액반영), 1차/2차 RP 및 누적 실적 데이터를 계정 기준으로 다각도 비교합니다.'}
         </p>
+        <div className="mt-2 text-[11px] font-semibold text-brand-600 bg-brand-50 px-2 py-1 rounded inline-block">
+          💡 실적 집계 기준: 작성부서(usageCode)가 아닌 <strong>귀속부서(attributedDeptCode)</strong> 기준으로 연도별 귀속 override를 반영하여 비교분석합니다.
+        </div>
       </div>
 
       {fromDashboardTop6 && queryDeptCode && !permissionError && (

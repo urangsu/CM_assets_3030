@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Download, Copy, RefreshCw, ClipboardPaste, Send, Building2, Save, Divide, FileDown, CheckSquare, Square, ArrowUp, ArrowDown, ArrowUpDown, Filter, Trash2, LayoutGrid, Check, X, ArrowRightLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts, SALARY_CATEGORIES } from '../constants';
-import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked, getSubmissionStatus, unlockBudget, appendBudgetLockAuditLog } from '../lib/storageKeys';
+import { getBudgetDataKey, getSubmissionStatusMapKey, SubmissionStatus, BudgetStatus, isBudgetLocked, getSubmissionStatus, unlockBudget, appendBudgetLockAuditLog, getEffectiveDeptCodeForActual } from '../lib/storageKeys';
 import { INITIAL_CATEGORIES } from './AccountSelection';
 import { parsePeriodMonth } from '../lib/budgetAggregation';
 import { inferBudgetTypeByAccountCode, inferManagementCategoryByAccountCode } from '../lib/accountMaster';
@@ -237,13 +237,12 @@ export default function BudgetCreation() {
       actualData.forEach((actual: any) => {
         const sourceDeptCode = actual.usageCode;
         const accountCode = actual.accountCode;
-        const actualKey = `${year}_${actual.period}_${sourceDeptCode}_${accountCode}_${actual.id}`;
-        const attributedDeptCode = savedActualsMap.get(actualKey) || actual.attributedDeptCode || sourceDeptCode;
+        const attributedDeptCode = getEffectiveDeptCodeForActual(actual, savedActualsMap, year);
 
-        // Filtering logic: only relevant data for the selected department or viewable departments
+        // Filtering logic: only relevant data for the selected department or viewable departments based strictly on effective/attributed department code
         if (selectedDeptCode === 'viewable') {
           if (!viewableDeptCodes.has(attributedDeptCode)) return;
-        } else if (selectedDeptCode !== 'all' && attributedDeptCode !== selectedDeptCode && sourceDeptCode !== selectedDeptCode) {
+        } else if (selectedDeptCode !== 'all' && attributedDeptCode !== selectedDeptCode) {
           return;
         }
 
@@ -637,11 +636,17 @@ export default function BudgetCreation() {
     // Check if any selected row has actuals for the current year
     const selectedRowsData = data.filter(row => selectedRows.has(row.id));
     const rowsWithActuals = selectedRowsData.filter(row => {
-      // The actualsMap key depends on whether we are in 'all' mode or specific dept mode
-      // But handleDeleteAccount is only for specific dept mode (checked above)
-      const actuals = actualsMap.get(row.code);
-      if (!actuals) return false;
-      return actuals.some(val => val !== 0);
+      // Keys in actualsMap are formatted as `${attributedDeptCode}_${sourceDeptCode}_${accountCode}`
+      for (const [key, actuals] of actualsMap.entries()) {
+        const parts = key.split('_');
+        const accountCode = parts[parts.length - 1];
+        if (accountCode === row.code) {
+          if (actuals && actuals.some(val => val !== 0)) {
+            return true;
+          }
+        }
+      }
+      return false;
     });
 
     if (rowsWithActuals.length > 0) {
@@ -823,8 +828,11 @@ export default function BudgetCreation() {
       const actualDataStr = localStorage.getItem(`${STORAGE_KEYS.ACTUAL_DATA}_${sourceYear}`);
       const actualData = actualDataStr ? JSON.parse(actualDataStr) : [];
       
-      // Filter actual data for this department and aggregate by account
-      const deptActuals = actualData.filter((item: any) => item.usageCode === selectedDeptCode);
+      // Filter actual data for this department using getEffectiveDeptCodeForActual and aggregate by account
+      const deptActuals = actualData.filter((item: any) => {
+        const effDept = getEffectiveDeptCodeForActual(item, undefined, sourceYear);
+        return effDept === selectedDeptCode;
+      });
       const tempActualsMap = new Map<string, number[]>();
       
       deptActuals.forEach((actual: any) => {
@@ -1140,8 +1148,9 @@ export default function BudgetCreation() {
       localStorage.setItem(notificationKey, JSON.stringify([newNotif, ...notifications]));
 
       // Send email
+      let emailError: string | null = null;
       try {
-        await fetch('/api/send-email', {
+        const emailResponse = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1150,14 +1159,28 @@ export default function BudgetCreation() {
             text: `${currentDept.name} 부서에서 ${year}년 ${planType}을 상신하였습니다.\n상신 시간: ${now}`
           })
         });
-      } catch (e) {
+        if (!emailResponse.ok) {
+          const errData = await emailResponse.json().catch(() => ({}));
+          emailError = errData.message || `HTTP ${emailResponse.status}`;
+        } else {
+          const errData = await emailResponse.json().catch(() => ({}));
+          if (!errData.success) {
+            emailError = errData.message || 'SMTP 전송 실패';
+          }
+        }
+      } catch (e: any) {
         console.error('Email send failed:', e);
+        emailError = e.message || '네트워크 오류';
       }
 
       // Update data to be read-only
       setData(prev => prev.map(row => ({ ...row, isReadOnly: true })));
 
-      showAlert('예산이 성공적으로 상신되었습니다.');
+      if (emailError) {
+        showAlert(`예산 상신은 성공하였으나, 알림 메일 발송에 실패했습니다.\n(사유: ${emailError})`);
+      } else {
+        showAlert('예산이 성공적으로 상신되었습니다.');
+      }
     });
   };
 
@@ -1193,8 +1216,9 @@ export default function BudgetCreation() {
       localStorage.setItem(notificationKey, JSON.stringify([newNotif, ...notifications]));
 
       // Send email
+      let emailError: string | null = null;
       try {
-        await fetch('/api/send-email', {
+        const emailResponse = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1203,14 +1227,28 @@ export default function BudgetCreation() {
             text: `${currentDept.name} 부서에서 ${year}년 ${planType} 상신을 취소하였습니다.\n취소 시간: ${now}`
           })
         });
-      } catch (e) {
+        if (!emailResponse.ok) {
+          const errData = await emailResponse.json().catch(() => ({}));
+          emailError = errData.message || `HTTP ${emailResponse.status}`;
+        } else {
+          const errData = await emailResponse.json().catch(() => ({}));
+          if (!errData.success) {
+            emailError = errData.message || 'SMTP 전송 실패';
+          }
+        }
+      } catch (e: any) {
         console.error('Email send failed:', e);
+        emailError = e.message || '네트워크 오류';
       }
 
       // Update data to be editable (except those that were already read-only)
       setReloadTrigger(prev => prev + 1);
 
-      showAlert('상신이 취소되었습니다. 이제 수정이 가능합니다.');
+      if (emailError) {
+        showAlert(`상신 취소는 완료되었으나, 알림 메일 발송에 실패했습니다.\n(사유: ${emailError})`);
+      } else {
+        showAlert('상신이 취소되었습니다. 이제 수정이 가능합니다.');
+      }
     });
   };
 
@@ -2055,6 +2093,9 @@ export default function BudgetCreation() {
 
                 {importModal.sourceType === 'actual' && (
                   <div>
+                    <div className="bg-emerald-50 text-emerald-800 p-3 rounded-xl text-xs font-medium mb-3">
+                      💡 <strong>실적 부서 귀속 기준 조회:</strong> 실적 데이터는 작성부서(usageCode)가 아닌 <strong>귀속부서(attributedDeptCode)</strong> 기준으로 연도별 귀속 override를 반영하여 가져옵니다.
+                    </div>
                     <div className="flex justify-between items-center mb-2">
                       <label className="block text-xs font-bold text-[#8b95a1] uppercase">가져올 월 선택</label>
                       <button 

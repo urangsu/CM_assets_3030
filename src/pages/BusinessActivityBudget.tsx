@@ -6,6 +6,7 @@ import { getBudgetDataKey, isBudgetLocked } from '../lib/storageKeys';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { BudgetRepository } from '../repositories/BudgetRepository';
 import { INITIAL_CATEGORIES } from './AccountSelection';
+import { DEFAULT_ACTIVITY_EXPENSES, calculateExpense } from '../lib/activityExpensePolicy';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { AppTable, AppTableHeader, AppTableRow, AppTableHead, AppTableBody, AppTableCell } from '../components/ui/AppTable';
 import { AppModal } from '../components/ui/AppModal';
@@ -84,11 +85,7 @@ export default function BusinessActivityBudget() {
   const [year, setYear] = useState('2026');
   const [planType, setPlanType] = useState('경영계획');
   const [categoryFilter, setCategoryFilter] = useState('전체');
-  const [expenses, setExpenses] = useState({
-    회의비: 50000,
-    간담회비: 20000,
-    부서별그룹활동지원비: 10000
-  });
+  const [expenses, setExpenses] = useState(DEFAULT_ACTIVITY_EXPENSES);
   const [headcounts, setHeadcounts] = useState<Record<string, { category: '제조' | '판관', data: number[] }>>({});
   const [previewApplyConfig, setPreviewApplyConfig] = useState<{isOpen: boolean, summary: any} | null>(null);
   const [deptModal, setDeptModal] = useState(false);
@@ -139,7 +136,7 @@ export default function BusinessActivityBudget() {
 
       Object.entries(accountMappings).forEach(([expenseName, accountCode]) => {
         const expenseAmount = expenses[expenseName as keyof typeof expenses];
-        const budgetValues = data.map(h => h * expenseAmount);
+        const budgetValues = data.map(h => calculateExpense(h, expenseAmount));
         const total = budgetValues.reduce((a, b) => a + b, 0);
         
         let accountName = '';
@@ -370,8 +367,9 @@ export default function BusinessActivityBudget() {
       };
       Object.entries(accountMappings).forEach(([expenseName, accountCode]) => {
         const expenseAmount = expenses[expenseName as keyof typeof expenses];
-        const budgetValues = deptHeadcounts.data.map(h => h * expenseAmount);
-        stats.totalAmount += budgetValues.reduce((a, b) => a + b, 0);
+        const budgetValues = deptHeadcounts.data.map(h => calculateExpense(h, expenseAmount));
+        const total = budgetValues.reduce((a, b) => a + b, 0);
+        stats.totalAmount += total;
       });
     });
 
@@ -413,7 +411,7 @@ export default function BusinessActivityBudget() {
 
       Object.entries(accountMappings).forEach(([expenseName, accountCode]) => {
         const expenseAmount = expenses[expenseName as keyof typeof expenses];
-        const budgetValues = deptHeadcounts.data.map(h => h * expenseAmount);
+        const budgetValues = deptHeadcounts.data.map(h => calculateExpense(h, expenseAmount));
 
         // Check if there's a manual row
         const manualRowFound = budgetData.some(row => row.code === accountCode && row.sourceType !== 'BUSINESS_ACTIVITY_AUTO');

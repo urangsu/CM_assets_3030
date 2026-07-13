@@ -597,28 +597,140 @@ export default function DepartmentAssignment() {
     return String(row?.attributedDeptCode || row?.usageCode || '').trim();
   }
 
+  // P0-1. buildHistoricalActualDeptMap
+  const historicalActualDeptMap = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; status: 'CURRENT' | 'LEGACY' }>();
+
+    actualRowsList.forEach(row => {
+      const pairs = [
+        {
+          code: String(row.usageCode || '').trim(),
+          name: String(row.usageDept || '').trim(),
+        },
+        {
+          code: String(row.attributedDeptCode || '').trim(),
+          name: String(row.attributedDeptName || '').trim(),
+        },
+      ];
+
+      pairs.forEach(({ code, name }) => {
+        if (!code || map.has(code)) return;
+
+        const current = allDepts.find(d => String(d.code).trim() === code);
+        if (current) {
+          map.set(code, { code, name: current.name, status: 'CURRENT' });
+        } else {
+          map.set(code, { code, name: name || '미등록 부서', status: 'LEGACY' });
+        }
+      });
+    });
+
+    return map;
+  }, [actualRowsList, allDepts]);
+
+  const historicalActualDepts = useMemo(() => {
+    const values = Array.from(historicalActualDeptMap.values()) as { code: string; name: string; status: 'CURRENT' | 'LEGACY' }[];
+    return values.sort((a, b) => a.code.localeCompare(b.code, 'ko-KR', { numeric: true }));
+  }, [historicalActualDeptMap]);
+
+  // P0-3. writerDeptFilterOptions useMemo hook
+  const writerDeptFilterOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string }>();
+
+    const baseDepts = ['99999', '32100'].includes(currentUser?.code || '')
+      ? allDepts
+      : viewableDepts;
+
+    baseDepts.forEach(d => {
+      map.set(String(d.code), {
+        value: String(d.code),
+        label: `[${d.code}] ${d.name}`,
+      });
+    });
+
+    historicalActualDepts.forEach(d => {
+      if (!map.has(String(d.code))) {
+        map.set(String(d.code), {
+          value: String(d.code),
+          label: `[${d.code}] ${d.name} · 과거/미등록`,
+        });
+      }
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => a.value.localeCompare(b.value, 'ko-KR', { numeric: true }));
+  }, [currentUser, allDepts, viewableDepts, historicalActualDepts]);
+
+  // P0-4. legacyDeptCodesInActuals useMemo hook
+  const legacyDeptCodesInActuals = useMemo(() => {
+    return historicalActualDepts
+      .filter(d => d.status === 'LEGACY')
+      .map(d => d.code);
+  }, [historicalActualDepts]);
+
+  // P0-2. isActualRowViewableForAssignment
+  function isActualRowViewableForAssignment(row: any) {
+    const isFinanceOrAdmin = currentUser && ['99999', '32100'].includes(currentUser.code);
+
+    if (isFinanceOrAdmin) {
+      return true;
+    }
+
+    const usageCode = String(row.usageCode || '').trim();
+    const attributedCode = String(row.attributedDeptCode || '').trim();
+
+    return viewableDepts.some(d =>
+      sameDeptCode(d.code, usageCode) ||
+      (attributedCode && sameDeptCode(d.code, attributedCode))
+    );
+  }
+
+  // P0-5. resolveDeptLabel and renderDeptCellContent update
   function resolveDeptLabel(code: unknown, fallback?: string) {
     const normalized = String(code ?? '').trim();
-    const dept = allDepts.find(d => sameDeptCode(d.code, normalized));
+    if (!normalized) return '[미지정]';
 
-    if (dept) return `[${dept.code}] ${dept.name}`;
+    const current = allDepts.find(d => sameDeptCode(d.code, normalized));
+    if (current) return `[${current.code}] ${current.name}`;
+
+    const historical = historicalActualDeptMap.get(normalized);
+    if (historical) {
+      return `[${historical.code}] ${historical.name} · 과거/미등록`;
+    }
+
     if (fallback) return `[${normalized}] ${fallback} · 미등록`;
     return `[${normalized}] 미등록 부서`;
   }
 
   function renderDeptCellContent(code: unknown, name?: string) {
     const normalized = String(code ?? '').trim();
-    const dept = allDepts.find(d => sameDeptCode(d.code, normalized));
-    if (dept) {
+    if (!normalized) return <span className="text-zinc-400">-</span>;
+
+    const current = allDepts.find(d => sameDeptCode(d.code, normalized));
+    if (current) {
       return (
         <span className="inline-flex items-center gap-1">
-          <span className="font-mono text-zinc-500">[{dept.code}]</span>
-          <span className="font-medium text-zinc-900">{dept.name}</span>
+          <span className="font-mono text-zinc-500">[{current.code}]</span>
+          <span className="font-medium text-zinc-900">{current.name}</span>
         </span>
       );
     }
+
+    const historical = historicalActualDeptMap.get(normalized);
+    if (historical) {
+      return (
+        <span className="inline-flex items-center gap-1.5" title={`[${historical.code}] ${historical.name} (과거/미등록)`}>
+          <span className="font-mono text-zinc-400">[{historical.code}]</span>
+          <span className="text-zinc-500 font-medium truncate max-w-[120px]">{historical.name || name || '미등록 부서'}</span>
+          <span className="inline-flex items-center rounded bg-amber-50 px-1 py-0.5 text-[9px] font-bold text-amber-650 ring-1 ring-inset ring-amber-600/15 select-none shrink-0">
+            과거/미등록
+          </span>
+        </span>
+      );
+    }
+
     return (
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-1.5" title={`[${normalized}] ${name || '미등록 부서'}`}>
         <span className="font-mono text-zinc-400">[{normalized}]</span>
         <span className="text-zinc-500 italic truncate max-w-[120px]">{name || '미등록 부서'}</span>
         <span className="inline-flex items-center rounded bg-red-50 px-1 py-0.5 text-[9px] font-bold text-red-650 ring-1 ring-inset ring-red-600/15 select-none shrink-0">
@@ -789,11 +901,7 @@ export default function DepartmentAssignment() {
 
     actualRowsList.forEach((row: any) => {
       // 권한 부서 필터링 (사용자별 조회 가능 부서에 해당하는 실적만 대상으로 삼음) using sameDeptCode
-      const isViewable = viewableDepts.some(d => 
-        sameDeptCode(d.code, row.usageCode) || 
-        (row.attributedDeptCode && sameDeptCode(d.code, row.attributedDeptCode))
-      );
-      if (!isViewable) return;
+      if (!isActualRowViewableForAssignment(row)) return;
 
       const rec = recommendAttributionForRow({
         row,
@@ -1231,8 +1339,7 @@ export default function DepartmentAssignment() {
     const result: any[] = [];
     actualRowsList.forEach((row: any) => {
       // 권한 부서 필터링 (사용자별 조회 가능 부서에 해당하는 실적만 대상으로 삼음)
-      const isViewable = viewableDepts.some(d => sameDeptCode(d.code, row.usageCode) || (row.attributedDeptCode && sameDeptCode(d.code, row.attributedDeptCode)));
-      if (!isViewable) return;
+      if (!isActualRowViewableForAssignment(row)) return;
 
       const excludeResult = getAttributionExcludeResult(row.accountCode, row.accountName);
       if (excludeResult.excluded) {
@@ -1276,7 +1383,7 @@ export default function DepartmentAssignment() {
     });
 
     return result;
-  }, [actualRowsList, viewableDepts, showExcludedAccounts, selectedMonth, monthMode, selectedWriterDept, searchQuery]);
+  }, [actualRowsList, viewableDepts, showExcludedAccounts, selectedMonth, monthMode, selectedWriterDept, searchQuery, currentUser]);
 
   // Selected Detail Row reference
   const activeDetailRow = useMemo(() => {
@@ -1287,8 +1394,7 @@ export default function DepartmentAssignment() {
   // Filter for manual selection list (independent of wait status or recommendations)
   const filteredActualRowsForManualGrid = useMemo(() => {
     return actualRowsList.filter((row: any) => {
-      const isViewable = viewableDepts.some(d => sameDeptCode(d.code, row.usageCode) || (row.attributedDeptCode && sameDeptCode(d.code, row.attributedDeptCode)));
-      if (!isViewable) return false;
+      if (!isActualRowViewableForAssignment(row)) return false;
 
       if (selectedMonth !== 'all') {
         const monthIndex = getActualRowMonth(row);
@@ -1330,7 +1436,7 @@ export default function DepartmentAssignment() {
 
       return true;
     });
-  }, [actualRowsList, viewableDepts, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, searchQuery]);
+  }, [actualRowsList, viewableDepts, selectedMonth, monthMode, selectedWriterDept, selectedAttributedDept, selectedAccountingType, selectedAccountClass, searchQuery, currentUser]);
 
   // Lazy-load mapping of manual rows: mapped only when manualRowsLoaded is true
   const manualRows = useMemo(() => {
@@ -2324,6 +2430,25 @@ export default function DepartmentAssignment() {
         </div>
       </div>
 
+      {/* P0-4. Legacy Department Warning Card */}
+      {legacyDeptCodesInActuals.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 flex flex-col gap-1">
+          <div className="font-bold flex items-center gap-1">
+            <AlertCircle className="w-4 h-4 text-amber-600" />
+            과거/미등록 부서코드가 포함되어 있습니다.
+          </div>
+          <div>
+            현재 부서마스터에 없는 원 사용처 코드:
+            {' '}
+            <span className="font-mono font-bold bg-amber-100/60 px-1 rounded">{legacyDeptCodesInActuals.slice(0, 10).join(', ')}</span>
+            {legacyDeptCodesInActuals.length > 10 ? ` 외 ${legacyDeptCodesInActuals.length - 10}건` : ''}
+          </div>
+          <div className="text-amber-700">
+            해당 row는 조회 및 수정 가능하며, 새 귀속부서는 현재 유효 부서로 지정해야 합니다.
+          </div>
+        </div>
+      )}
+
       {/* Feedback Banner */}
       {feedbackMsg && (
         <div className={`p-4 text-xs rounded-lg border flex items-center gap-2 ${
@@ -2428,8 +2553,10 @@ export default function DepartmentAssignment() {
               className="px-2 py-1 text-xs border border-zinc-200 rounded bg-white font-medium"
             >
               <option value="all">전체 부서</option>
-              {(['99999', '32100'].includes(currentUser?.code || '') ? allDepts : viewableDepts).map(d => (
-                <option key={d.code} value={d.code}>{d.name}</option>
+              {writerDeptFilterOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </div>

@@ -5,8 +5,64 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 dotenv.config();
+
+// Private IP / localhost / link-local checking helper
+function isPrivateOrLocalhost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  
+  if (
+    normalized === "localhost" ||
+    normalized === "localhost.localdomain" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0"
+  ) {
+    return true;
+  }
+
+  const ipv4Regex = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/;
+  const match = normalized.match(ipv4Regex);
+  if (match) {
+    const octet1 = parseInt(match[1], 10);
+    const octet2 = parseInt(match[2], 10);
+    if (octet1 === 10) return true;
+    if (octet1 === 172 && octet2 >= 16 && octet2 <= 31) return true;
+    if (octet1 === 192 && octet2 === 168) return true;
+    if (octet1 === 169 && octet2 === 254) return true;
+    if (octet1 === 127) return true;
+  }
+
+  if (
+    normalized.startsWith("fe80:") ||
+    normalized.startsWith("fc00:") ||
+    normalized.startsWith("fd00:")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+// Proxy host validator
+function validateProxyHost(host: string): boolean {
+  if (!host) return false;
+  const normalized = host.trim().toLowerCase();
+
+  // Block private and localhost
+  if (isPrivateOrLocalhost(normalized)) {
+    return false;
+  }
+
+  // Allowlist check (allow server env vars or a static list of safe proxies)
+  const allowedList = process.env.ALLOWED_PROXY_HOSTS
+    ? process.env.ALLOWED_PROXY_HOSTS.split(",").map(h => h.trim().toLowerCase())
+    : ["proxy.posco.com", "proxy.poscohycm.com", "proxy.posco-hycm.com", "proxy.company.com"];
+
+  return allowedList.includes(normalized);
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -16,114 +72,13 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Excel Upload API
+  // Excel Upload API - Server Persistence is Not Implemented
   app.post("/api/upload", upload.single("file"), (req, res) => {
-    try {
-      const { uploadKind, year, companyCode } = req.body;
-      
-      if (!uploadKind) {
-        throw new Error("업로드 유형이 없습니다. 월 실적 또는 경영계획을 선택해주세요.");
-      }
-
-      console.info("[upload] selected uploadKind:", uploadKind);
-
-      if (!req.file) {
-        throw new Error("파일이 없습니다.");
-      }
-
-      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-      
-      const compactRows = rawRows.filter(row => row.some(cell => String(cell ?? '').trim() !== ''));
-      if (compactRows.length === 0) {
-        throw new Error("빈 파일입니다.");
-      }
-
-      // Simplified header extraction for validation
-      let headers: string[] = [];
-      const headerIndex = compactRows.findIndex(row => row.includes("귀속부서코드") || row.includes("사용처코드"));
-      if (headerIndex >= 0) {
-        headers = compactRows[headerIndex].map(String);
-      } else {
-        headers = compactRows[0].map(String);
-      }
-
-      console.info("[upload] detected headers:", headers);
-
-      const REQUIRED_MONTHLY_COLUMNS = [
-        "귀속부서코드",
-        "계정과목코드",
-        "계정과목",
-        "1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"
-      ];
-
-      // validation check
-      const normalizeHeader = (h: string) => String(h).replace(/\s+/g, '').replace(/[·・._\-/]/g, '').toLowerCase();
-      const normHeaders = headers.map(normalizeHeader);
-      
-      function validateMonthlyWideFormat(h: string[]) {
-        const missing = REQUIRED_MONTHLY_COLUMNS.filter(
-          (column) => !normHeaders.some(nh => nh.includes(normalizeHeader(column)))
-        );
-        if (missing.length > 0) {
-          throw new Error(`필수 컬럼이 누락되었습니다: ${missing.join(", ")}`);
-        }
-      }
-
-      // Mock save handlers
-      const saveMonthlyActual = (rows: any) => {
-        return { success: true, scenarioType: "actual", message: "실적 데이터 저장 완료" };
-      };
-
-      const saveManagementPlan = (rows: any) => {
-        return { success: true, scenarioType: "budget", message: "예산 데이터 저장 완료" };
-      };
-
-      let scenarioType = "";
-      let saveHandlerName = "";
-      let result = null;
-
-      // detectUploadType should not determine the save destination
-      const detectUploadType = (h: string[]) => {
-        return "MONTHLY_WIDE"; // only for format check
-      };
-      const format = detectUploadType(headers);
-
-      switch (uploadKind) {
-        case "monthlyActual":
-          scenarioType = "actual";
-          saveHandlerName = "saveMonthlyActual";
-          validateMonthlyWideFormat(headers);
-          result = saveMonthlyActual(compactRows);
-          break;
-        case "managementPlan":
-          scenarioType = "budget";
-          saveHandlerName = "saveManagementPlan";
-          validateMonthlyWideFormat(headers);
-          result = saveManagementPlan(compactRows);
-          break;
-        default:
-          throw new Error("지원하지 않는 업로드 유형입니다.");
-      }
-
-      console.info("[upload] target scenarioType:", scenarioType);
-      console.info("[upload] target save handler:", saveHandlerName);
-
-      res.json({
-        success: true,
-        scenarioType,
-        message: `${scenarioType === "actual" ? "실적" : "경영계획(예산)"} 데이터 업로드 및 파싱 완료`,
-        result
-      });
-    } catch (err: any) {
-      console.error("[upload error] fail to process upload:", err);
-      res.status(400).json({
-        success: false,
-        message: err.message || "파일을 파싱하는 중 오류가 발생했습니다."
-      });
-    }
+    return res.status(501).json({
+      success: false,
+      reason: "SERVER_PERSISTENCE_NOT_IMPLEMENTED",
+      message: "서버 업로드 저장 기능이 구현되지 않았습니다. 클라이언트 업로드 화면을 이용해주세요."
+    });
   });
 
   // Korea Exim Bank Exchange Rate API proxy (Daily single rate lookup)
@@ -310,21 +265,22 @@ async function startServer() {
       const proxyUser = req.query.proxyUser;
       const proxyPass = req.query.proxyPass;
 
-      // 1. Dynamic Proxy setup logic
+      // Create local dispatcher per-request rather than polluting process.env
+      let dispatcher: ProxyAgent | undefined = undefined;
       if (useProxy === "true" && proxyHost && proxyPort) {
+        const hostStr = String(proxyHost);
+        if (!validateProxyHost(hostStr)) {
+          console.warn(`[EXIM API Proxy] Blocked unallowed or private/local proxy host: ${hostStr}`);
+          return res.status(400).json({
+            success: false,
+            reason: "PROXY_HOST_NOT_ALLOWED",
+            message: "허용되지 않은 프록시 호스트이거나 사설 IP/Localhost는 프록시로 사용할 수 없습니다."
+          });
+        }
         const authPart = (proxyUser && proxyPass) ? `${proxyUser}:${proxyPass}@` : "";
         const proxyUrl = `http://${authPart}${proxyHost}:${proxyPort}`;
-        process.env.HTTP_PROXY = proxyUrl;
-        process.env.HTTPS_PROXY = proxyUrl;
-        process.env.http_proxy = proxyUrl;
-        process.env.https_proxy = proxyUrl;
-        console.log(`[EXIM API Proxy] HTTP(S)_PROXY environment variables dynamically set: ${proxyUrl}`);
-      } else if (useProxy === "false") {
-        delete process.env.HTTP_PROXY;
-        delete process.env.HTTPS_PROXY;
-        delete process.env.http_proxy;
-        delete process.env.https_proxy;
-        console.log("[EXIM API Proxy] Proxy variables deleted / cleared.");
+        dispatcher = new ProxyAgent({ uri: proxyUrl });
+        console.log(`[EXIM API Proxy] Using ProxyAgent for host: ${proxyHost}:${proxyPort} (credentials masked)`);
       }
 
       const apiKeyRaw = process.env.EXIM_API_KEY;
@@ -354,8 +310,10 @@ async function startServer() {
       const m = Number(month);
       const lastDay = new Date(y, m, 0).getDate(); // Get last day of that month
 
-      console.log(`[EXIM API Proxy Monthly] API key loaded: ${maskApiKey(apiKey)}`);
       console.log(`[EXIM API Proxy Monthly] Querying average rate for ${y}-${m}`);
+
+      const startTime = Date.now();
+      const TOTAL_TIMEOUT_MS = 15000; // 15 seconds total request timeout limit
 
       // P0. Network Connection pre-check (Probe) on the 1st of the month
       const probeDate = make_searchdate(y, m, 1);
@@ -367,12 +325,13 @@ async function startServer() {
 
       try {
         console.log(`[EXIM API Proxy] Performing single probe connection test on ${probeDate}...`);
-        const probeResponse = await fetch(probeUrl, {
+        const probeResponse = await undiciFetch(probeUrl, {
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
             "Accept": "application/json"
           },
-          signal: AbortSignal.timeout(3000) // Lower connection/response probe timeout to 3s
+          signal: AbortSignal.timeout(3000), // Lower connection/response probe timeout to 3s
+          dispatcher
         });
 
         if (!probeResponse.ok) {
@@ -462,22 +421,28 @@ async function startServer() {
         }
       }
 
-      // Query weekdays sequentially, breaks immediately on 2 consecutive failures
+      // Query weekdays sequentially, breaks immediately on 2 consecutive failures or if total timeout is exceeded
       for (const item of weekdaysToQuery) {
         if (consecutiveFailures >= 2) {
           console.warn(`[EXIM API Proxy] 2 consecutive failures detected. Safely terminating query loop for ${y}-${m} at ${item.dateStr}`);
           break;
         }
 
+        if (Date.now() - startTime > TOTAL_TIMEOUT_MS) {
+          console.warn(`[EXIM API Proxy] Total request timeout limit of ${TOTAL_TIMEOUT_MS}ms exceeded. Aborting.`);
+          break;
+        }
+
         const requestUrl = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${encodeURIComponent(apiKey)}&searchdate=${item.dateStr}&data=AP01`;
 
         try {
-          const response = await fetch(requestUrl, {
+          const response = await undiciFetch(requestUrl, {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
               "Accept": "application/json"
             },
-            signal: AbortSignal.timeout(4000) // Lower response wait to 4s
+            signal: AbortSignal.timeout(4000), // Lower response wait to 4s
+            dispatcher
           });
 
           if (!response.ok) {
@@ -714,30 +679,51 @@ async function startServer() {
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, text } = req.body;
 
-    // For demo purposes, we'll log the email. 
-    // In a real app, you'd use a real SMTP transport.
-    console.log(`Sending email to ${to}...`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Content: ${text}`);
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+    const emailHost = process.env.EMAIL_HOST;
+    const emailPort = process.env.EMAIL_PORT;
+
+    if (!emailUser || !emailPass) {
+      console.warn("[Email API] SMTP transport is not configured (EMAIL_USER/EMAIL_PASS missing)");
+      return res.status(400).json({
+        success: false,
+        reason: "EMAIL_TRANSPORT_NOT_CONFIGURED",
+        message: "SMTP 메일 전송이 설정되지 않았습니다. 환경변수 EMAIL_USER, EMAIL_PASS를 점검해주세요."
+      });
+    }
 
     try {
-      // Mocking successful send
-      // If you have real credentials, uncomment and configure:
-      /*
       const transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: emailHost || "smtp.gmail.com",
+        port: Number(emailPort || 587),
+        secure: Number(emailPort) === 465,
         auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS
+          user: emailUser,
+          pass: emailPass
         }
       });
-      await transporter.sendMail({ from: process.env.EMAIL_USER, to, subject, text });
-      */
-      
-      res.json({ success: true, message: "Email sent (mocked)" });
-    } catch (error) {
-      console.error("Email error:", error);
-      res.status(500).json({ success: false, error: "Failed to send email" });
+
+      const info = await transporter.sendMail({
+        from: emailUser,
+        to,
+        subject,
+        text
+      });
+
+      console.info(`[Email API] Email sent successfully. MessageId: ${info.messageId}`);
+      return res.json({ 
+        success: true, 
+        message: "Email sent successfully", 
+        messageId: info.messageId 
+      });
+    } catch (error: any) {
+      console.error("[Email API] Email send error:", error);
+      return res.status(500).json({ 
+        success: false, 
+        reason: "EMAIL_SEND_FAILED",
+        error: error.message || "Failed to send email" 
+      });
     }
   });
 

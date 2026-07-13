@@ -30,52 +30,55 @@ export const BUDGET_PLAN_TYPE_OPTIONS: BudgetPlanType[] = [
   '2차 RP',
 ];
 
-export function normalizePlanType(value: unknown): PlanType {
-  const raw = String(value ?? '').trim();
+export function normalizePlanType(value: unknown): PlanType | null {
+  if (value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  if (raw === '') return null;
 
   const map: Record<string, PlanType> = {
-    실적: '실적',
-    actual: '실적',
-    Actual: '실적',
+    '실적': '실적',
+    'actual': '실적',
+    'Actual': '실적',
 
-    경영계획: '경영계획',
-    계획: '경영계획',
-    businessplan: '경영계획',
-    BusinessPlan: '경영계획',
+    '경영계획': '경영계획',
+    '계획': '경영계획',
+    'businessplan': '경영계획',
+    'BusinessPlan': '경영계획',
 
-    증액반영: '증액반영',
-    예산증액반영: '증액반영',
-    증액계획: '증액반영',
-    adjustedplan: '증액반영',
-    AdjustedPlan: '증액반영',
-    budgetincrease: '증액반영',
-    BudgetIncrease: '증액반영',
+    '증액반영': '증액반영',
+    '예산증액반영': '증액반영',
+    '증액계획': '증액반영',
+    'adjustedplan': '증액반영',
+    'AdjustedPlan': '증액반영',
+    'budgetincrease': '증액반영',
+    'BudgetIncrease': '증액반영',
 
-    수정경영계획: '수정경영계획',
-    수정계획: '수정경영계획',
-    수수계획: '수정경영계획',
-    수주계획: '수정경영계획',
+    '수정경영계획': '수정경영계획',
+    '수정계획': '수정경영계획',
+    '수수계획': '수정경영계획',
+    '수주계획': '수정경영계획',
 
     '1차 RP': '1차 RP',
     '1차RP': '1차 RP',
-    RP1: '1차 RP',
+    'RP1': '1차 RP',
     'RP 1': '1차 RP',
 
     '2차 RP': '2차 RP',
     '2차RP': '2차 RP',
-    RP2: '2차 RP',
+    'RP2': '2차 RP',
     'RP 2': '2차 RP',
   };
 
-  return map[raw] || '경영계획';
+  return map[raw] || null;
 }
 
 export function isValidPlanType(value: unknown): value is PlanType {
+  if (typeof value !== 'string') return false;
   return PLAN_TYPE_OPTIONS.includes(value as PlanType);
 }
 
 export function getPlanTypeAliases(planType: string): string[] {
-  const normalized = normalizePlanType(planType);
+  const normalized = normalizePlanType(planType) || '경영계획';
 
   if (normalized === '수정경영계획') {
     return ['수정경영계획', '수정계획', '수수계획', '수주계획'];

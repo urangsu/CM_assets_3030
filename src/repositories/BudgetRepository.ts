@@ -1,7 +1,7 @@
 // A thin wrapper around localStorage for Budgets
 import { getBudgetDataKey, readBudgetData } from '../lib/storageKeys';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
-import { getPlanTypeAliases, normalizePlanType } from '../lib/planTypes';
+import { getPlanTypeAliases, normalizePlanType, isValidPlanType } from '../lib/planTypes';
 import { STORAGE_KEYS } from '../constants';
 import { safeJsonParse } from '../lib/safeStorage';
 
@@ -94,6 +94,7 @@ export function normalizeActualRows(rows: any[]): any[] {
 
 function removeLegacyBudgetKeysAfterNormalizedSave(deptCode: string, year: string, planType: string) {
   const normalized = normalizePlanType(planType);
+  if (!normalized) return;
   const normalizedKey = getBudgetDataKey(deptCode, year, normalized);
 
   getPlanTypeAliases(planType).forEach(alias => {
@@ -112,6 +113,9 @@ export const BudgetRepository = {
   },
 
   saveRows: (deptCode: string, year: string, planType: string, rows: any[]): void => {
+    if (!isValidPlanType(planType)) {
+      throw new Error(`알 수 없는 계획유형(원본값: ${planType})입니다. 저장이 차단되었습니다.`);
+    }
     const key = getBudgetDataKey(deptCode, year, planType);
     const normalizedRows = normalizeBudgetRows(rows, deptCode);
     localStorage.setItem(key, JSON.stringify(normalizedRows));
@@ -121,6 +125,7 @@ export const BudgetRepository = {
 
   deleteRows: (deptCode: string, year: string, planType: string): void => {
     const normalized = normalizePlanType(planType);
+    if (!normalized) return;
 
     for (const candidate of getPlanTypeAliases(planType)) {
       const key = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${candidate}`;
