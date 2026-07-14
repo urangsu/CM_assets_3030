@@ -1,7 +1,7 @@
 // A thin wrapper around localStorage for Budgets
 import { getBudgetDataKey, readBudgetData } from '../lib/storageKeys';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
-import { getPlanTypeAliases, normalizePlanType, isValidPlanType } from '../lib/planTypes';
+import { getPlanTypeAliases, normalizePlanType, isValidPlanType, normalizePlanTypeForWrite, inspectLegacyPlanType } from '../lib/planTypes';
 import { STORAGE_KEYS } from '../constants';
 import { safeJsonParse } from '../lib/safeStorage';
 
@@ -137,8 +137,14 @@ function removeLegacyBudgetKeysAfterNormalizedSave(deptCode: string, year: strin
 
 export const BudgetRepository = {
   getRows: (deptCode: string, year: string, planType: string): any[] => {
-    if (getPlanTypeAliases(planType).length === 0) {
-      return [{ code: 'INVALID_PLAN_TYPE', isInvalidPlanType: true, originalPlanType: planType }];
+    const inspection = inspectLegacyPlanType(planType);
+    if (!inspection.isSupported) {
+      return [{
+        code: 'INVALID_PLAN_TYPE',
+        status: 'unsupported-plan-type',
+        originalPlanType: planType,
+        storageKey: `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${planType}`
+      }];
     }
     const raw = readBudgetData(deptCode, year, planType);
     const parsed = safeJsonParse<any[]>(raw, []);
@@ -146,29 +152,22 @@ export const BudgetRepository = {
   },
 
   saveRows: (deptCode: string, year: string, planType: string, rows: any[]): void => {
-    if (getPlanTypeAliases(planType).length === 0) {
-      throw new Error(`알 수 없는 계획유형(원본값: ${planType})입니다. 저장이 차단되었습니다.`);
-    }
-    const key = getBudgetDataKey(deptCode, year, planType);
+    const safePlanType = normalizePlanTypeForWrite(planType);
+    const key = getBudgetDataKey(deptCode, year, safePlanType);
     const normalizedRows = normalizeBudgetRows(rows, deptCode);
     localStorage.setItem(key, JSON.stringify(normalizedRows));
-    removeLegacyBudgetKeysAfterNormalizedSave(deptCode, year, planType);
+    removeLegacyBudgetKeysAfterNormalizedSave(deptCode, year, safePlanType);
     clearDataLoaderCache();
   },
 
   deleteRows: (deptCode: string, year: string, planType: string): void => {
-    if (getPlanTypeAliases(planType).length === 0) {
-      throw new Error(`알 수 없는 계획유형(원본값: ${planType})입니다. 삭제가 차단되었습니다.`);
-    }
-    const normalized = normalizePlanType(planType);
-    if (!normalized) return;
-
-    for (const candidate of getPlanTypeAliases(planType)) {
+    const safePlanType = normalizePlanTypeForWrite(planType);
+    for (const candidate of getPlanTypeAliases(safePlanType)) {
       const key = `${STORAGE_KEYS.BUDGET_DATA}_${deptCode}_${year}_${candidate}`;
       localStorage.removeItem(key);
     }
 
-    const normalizedKey = getBudgetDataKey(deptCode, year, normalized);
+    const normalizedKey = getBudgetDataKey(deptCode, year, safePlanType);
     localStorage.removeItem(normalizedKey);
 
     clearDataLoaderCache();

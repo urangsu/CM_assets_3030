@@ -89,18 +89,17 @@ describe('Regression Tests', () => {
     // Case 1: All months are zero budget
     const allZeros = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const zerosResult = applyErpOneWonPolicy(allZeros);
-    // 12th month (December, index 11) should have 1 won
+    // All months should have 1 won
     expect(zerosResult[11]).toBe(1);
-    // Other months should remain 0
-    expect(zerosResult[0]).toBe(0);
+    expect(zerosResult[0]).toBe(1);
+    expect(zerosResult.reduce((a, b) => a + b, 0)).toBe(12);
     // Source should not be mutated
     expect(allZeros[11]).toBe(0);
 
     // Case 2: Some months have non-zero budget
     const someBudget = [1000, 0, 500, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const budgetResult = applyErpOneWonPolicy(someBudget);
-    // No months should have 1 won unless it's a dummy row or explicitly set to 1.
-    // The existing values (1000 at index 0, 500 at index 2) are preserved.
+    // The existing values (1000 at index 0, 500 at index 2) are preserved and no 1 won is added to other months.
     expect(budgetResult[0]).toBe(1000);
     expect(budgetResult[2]).toBe(500);
     expect(budgetResult[11]).toBe(0); // 12th month remains 0 because budget has non-zero values

@@ -77,6 +77,37 @@ export function isValidPlanType(value: unknown): value is PlanType {
   return PLAN_TYPE_OPTIONS.includes(value as PlanType);
 }
 
+export function normalizePlanTypeForWrite(value: unknown): PlanType {
+  const normalized = normalizePlanType(value);
+  if (!normalized) {
+    throw new Error(`지원하지 않는 계획유형(원본값: ${value})입니다. 저장이 차단되었습니다.`);
+  }
+  return normalized;
+}
+
+export function inspectLegacyPlanType(value: unknown): {
+  isSupported: boolean;
+  normalized: PlanType | null;
+  originalPlanType: string;
+  status?: string;
+} {
+  const original = String(value ?? '');
+  const normalized = normalizePlanType(value);
+  if (!normalized) {
+    return {
+      isSupported: false,
+      normalized: null,
+      originalPlanType: original,
+      status: 'unsupported-plan-type',
+    };
+  }
+  return {
+    isSupported: true,
+    normalized,
+    originalPlanType: original,
+  };
+}
+
 export function getPlanTypeAliases(planType: string): string[] {
   const normalized = normalizePlanType(planType);
 

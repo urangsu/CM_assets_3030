@@ -39,6 +39,7 @@ import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { safeLocalStorageGet, safeJsonParse } from '../lib/safeStorage';
 import { normalizePlanType, getPlanTypeAliases, isValidPlanType } from '../lib/planTypes';
+import { getActualRowIdentity } from '../lib/actualIdentity';
 
 // Sort logic
 type SortDirection = 'asc' | 'desc';
@@ -129,20 +130,7 @@ const SortableResizableHeader = ({
 };
 
 function getUploadRowKey(row: ActualData, target: string): string {
-  const month =
-    row.periodMonth ||
-    (() => {
-      const parsed = parsePeriodMonth(row.period);
-      return parsed !== null ? parsed + 1 : row.period;
-    })();
-
-  return [
-    String(row.year || '').trim(),
-    String(target || '').trim(),
-    String(row.usageCode || '').trim(),
-    String(row.accountCode || '').trim(),
-    month,
-  ].join('|');
+  return getActualRowIdentity(row, target);
 }
 
 function countDuplicates(

@@ -1,18 +1,14 @@
-export interface ActivityExpenses {
-  회의비: number;
-  간담회비: number;
-  부서별그룹활동지원비: number;
-}
+export const DEFAULT_ACTIVITY_EXPENSES = {
+  회의비: 20_000,
+  간담회비: 50_000,
+  부서별그룹활동지원비: 10_000,
+} as const;
 
-export const DEFAULT_ACTIVITY_EXPENSES: ActivityExpenses = {
-  회의비: 50000, // Discussion: 50,000원
-  간담회비: 20000, // Meeting: 20,000원
-  부서별그룹활동지원비: 10000 // Group: 10,000원
-};
+export type ActivityExpenses = typeof DEFAULT_ACTIVITY_EXPENSES;
 
 export const ACTIVITY_EXPENSE_COGNITIVE_LABELS = {
-  회의비: 'Discussion (회의비 - 5만원)',
-  간담회비: 'Meeting (간담회비 - 2만원)',
+  회의비: 'Discussion (회의비 - 2만원)',
+  간담회비: 'Meeting (간담회비 - 5만원)',
   부서별그룹활동지원비: 'Group (그룹활동지원비 - 1만원)'
 };
 

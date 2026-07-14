@@ -92,8 +92,13 @@ export default function UserManagement() {
   });
 
   const submittedDepts = targetDepts.filter(dept => {
-    const status = submissionStatuses[getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType)];
-    return status && (status.submitted === true || status.status === 'SUBMITTED' || status.status === 'APPROVED');
+    try {
+      const key = getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType);
+      const status = submissionStatuses[key];
+      return status && (status.submitted === true || status.status === 'SUBMITTED' || status.status === 'APPROVED');
+    } catch (e) {
+      return false;
+    }
   });
 
   const submissionCount = submittedDepts.length;
@@ -151,11 +156,11 @@ export default function UserManagement() {
       depts.forEach(deptCode => {
         years.forEach(yr => {
           planTypes.forEach(pType => {
-            const key = getBudgetDataKey(deptCode, yr, pType);
-            const raw = localStorage.getItem(key);
-            if (!raw) return;
-
             try {
+              const key = getBudgetDataKey(deptCode, yr, pType);
+              const raw = localStorage.getItem(key);
+              if (!raw) return;
+
               const rows = JSON.parse(raw);
               if (!Array.isArray(rows)) return;
 
@@ -169,7 +174,7 @@ export default function UserManagement() {
                 migrationExecutedCount++;
               }
             } catch (err) {
-              console.error(`Failed to migrate key: ${key}`, err);
+              console.warn(`Failed to migrate key for planType ${pType}:`, err);
             }
           });
         });
@@ -227,27 +232,31 @@ export default function UserManagement() {
   };
 
   const handleToggleSubmission = (dept: any) => {
-    const key = getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType);
-    const currentStatus = submissionStatuses[key] || { status: 'DRAFT' };
-    const isCurrentlySubmitted = currentStatus.submitted === true || currentStatus.status === 'SUBMITTED' || currentStatus.status === 'APPROVED';
-    const newSubmitted = !isCurrentlySubmitted;
-    const now = new Date().toLocaleString();
+    try {
+      const key = getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType);
+      const currentStatus = submissionStatuses[key] || { status: 'DRAFT' };
+      const isCurrentlySubmitted = currentStatus.submitted === true || currentStatus.status === 'SUBMITTED' || currentStatus.status === 'APPROVED';
+      const newSubmitted = !isCurrentlySubmitted;
+      const now = new Date().toLocaleString();
 
-    const newStatuses = {
-      ...submissionStatuses,
-      [key]: {
-        status: newSubmitted ? 'SUBMITTED' : 'DRAFT',
-        time: newSubmitted ? now : currentStatus.time,
-        user: currentUser?.name || '관리자',
-        deptName: dept.name
-      }
-    };
+      const newStatuses = {
+        ...submissionStatuses,
+        [key]: {
+          status: newSubmitted ? 'SUBMITTED' : 'DRAFT',
+          time: newSubmitted ? now : currentStatus.time,
+          user: currentUser?.name || '관리자',
+          deptName: dept.name
+        }
+      };
 
-    setSubmissionStatuses(newStatuses);
-    localStorage.setItem(STORAGE_KEYS.SUBMISSION_STATUS, JSON.stringify(newStatuses));
+      setSubmissionStatuses(newStatuses);
+      localStorage.setItem(STORAGE_KEYS.SUBMISSION_STATUS, JSON.stringify(newStatuses));
 
-    const action = newSubmitted ? '제출' : '해제';
-    addNotification(dept.name, action, now);
+      const action = newSubmitted ? '제출' : '해제';
+      addNotification(dept.name, action, now);
+    } catch (e: any) {
+      alert(e.message || '지원하지 않는 계획유형입니다.');
+    }
   };
 
   const handleOpenProfile = () => {
@@ -1043,7 +1052,13 @@ export default function UserManagement() {
             <div className="p-6 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 gap-4">
                 {targetDepts.map(dept => {
-                  const status = submissionStatuses[getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType)];
+                  let status = null;
+                  try {
+                    const key = getSubmissionStatusMapKey(dept.code, submissionYear, submissionPlanType);
+                    status = submissionStatuses[key];
+                  } catch (e) {
+                    // ignore
+                  }
                   const isSubmitted = status && (status.submitted === true || status.status === 'SUBMITTED' || status.status === 'APPROVED');
                   
                   return (
