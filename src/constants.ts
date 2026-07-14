@@ -41,6 +41,8 @@ export const STORAGE_KEYS = {
   SUBMISSION_STATUS: 'cleanmetal_submission_status',
 };
 
+export const ERP_EXPORT_SENTINEL_AMOUNT = 1;
+
 export const SALARY_CATEGORIES = [
   '제조 - 직원급여',
   '제조 - 퇴직급여충당부채전입액',

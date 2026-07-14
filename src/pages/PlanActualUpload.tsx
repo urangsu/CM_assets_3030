@@ -733,7 +733,7 @@ export default function PlanActualUpload() {
           const ws = wb.Sheets[wsname];
           const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
           
-          processImportedData(jsonData);
+          processImportedData(jsonData, targetFile.name, wsname);
         } catch (localErr: any) {
           console.error("Local parsing error:", localErr);
           setAlertModal({ isOpen: true, message: `로컬 파일 파싱 중 오류가 발생했습니다: ${localErr.message || localErr}` });
@@ -764,7 +764,7 @@ export default function PlanActualUpload() {
           console.warn("[upload] Server returned error, falling back to local client-side parsing:", data.message || data.error);
           parseFileLocally(file);
         } else if (data.rows && data.rows.length > 0) {
-          processImportedData(data.rows);
+          processImportedData(data.rows, file.name, data.sheetName || 'Sheet1');
         } else {
           parseFileLocally(file);
         }
@@ -785,7 +785,7 @@ export default function PlanActualUpload() {
     if (!pasteText.trim()) return;
     
     const rows = parsePastedText(pasteText);
-    processImportedData(rows);
+    processImportedData(rows, 'clipboard', 'pasted');
     setPasteText(''); // Clear after processing
   };
 
@@ -797,10 +797,10 @@ export default function PlanActualUpload() {
     if (!pasteData) return;
     
     const rows = parsePastedText(pasteData);
-    processImportedData(rows);
+    processImportedData(rows, 'clipboard', 'pasted');
   };
 
-  const processImportedData = (rows: any[][]) => {
+  const processImportedData = (rows: any[][], fileName?: string, sheetName?: string) => {
     const compactRows = rows.filter(row => row.some(cell => String(cell ?? '').trim() !== ''));
 
     let finalHeaders: any[] = [];
@@ -855,6 +855,9 @@ export default function PlanActualUpload() {
         return record;
     });
 
+    const uploadBatchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const sourceSheetName = sheetName || 'Sheet1';
+
     const result = parseUploadRecords({
         headers: finalHeaders.map(String),
         records,
@@ -863,7 +866,9 @@ export default function PlanActualUpload() {
         currentUser,
         viewableDeptCodes,
         planType: uploadTarget,
-        uploadKind: uploadKind
+        uploadKind: uploadKind,
+        uploadBatchId,
+        sourceSheetName
     });
 
     // Check locks ONLY for affected departments

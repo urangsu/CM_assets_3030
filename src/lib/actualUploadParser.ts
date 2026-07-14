@@ -22,6 +22,11 @@ export interface ActualData {
   remarks: string;
   sourceRowId?: string;
   attributedDeptCode?: string;
+  uploadBatchId?: string;
+  sourceSheetName?: string;
+  sourceRowNumber?: number;
+  documentNo?: string;
+  documentLineNo?: string;
 }
 
 export interface ValidationIssue {
@@ -175,6 +180,8 @@ export function parseWideMonthlyRows(params: {
   existingCount: number;
   planType?: string;
   uploadKind?: string;
+  uploadBatchId?: string;
+  sourceSheetName?: string;
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
@@ -232,6 +239,9 @@ export function parseWideMonthlyRows(params: {
         
         if (numericVal !== 0) {
             const isActual = params.uploadKind === 'monthlyActual' || params.planType === '실적';
+            const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
+            const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
+
             actualRows.push({
                 id: params.existingCount + actualRows.length + 1,
                 sourceRowId: `src_wide_${rowNum}_${i}`,
@@ -250,7 +260,12 @@ export function parseWideMonthlyRows(params: {
                 planned: 0,
                 completed: isActual ? numericVal : 0,
                 balance: isActual ? -numericVal : numericVal,
-                remarks: isActual ? '실적DB wide upload' : '계획 upload'
+                remarks: isActual ? '실적DB wide upload' : '계획 upload',
+                uploadBatchId: params.uploadBatchId || 'batch_' + Date.now(),
+                sourceSheetName: params.sourceSheetName || 'Sheet1',
+                sourceRowNumber: rowNum,
+                documentNo,
+                documentLineNo
             });
         }
     }
@@ -290,6 +305,8 @@ export function parseFlatRows(params: {
   records: Record<string, unknown>[];
   year: string;
   existingCount: number;
+  uploadBatchId?: string;
+  sourceSheetName?: string;
 }): UploadParseResult {
     const actualRows: ActualData[] = [];
     const errorRows: ValidationIssue[] = [];
@@ -343,6 +360,8 @@ export function parseFlatRows(params: {
         }
 
         const monthIndexFromPeriod = parsePeriodMonth(period);
+        const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
+        const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
 
         actualRows.push({
             id: params.existingCount + actualRows.length + 1,
@@ -362,7 +381,12 @@ export function parseFlatRows(params: {
             planned: parseAmount(getRecordValue(record, HEADER_ALIASES.planned)),
             completed: parseAmount(completedVal),
             balance: parseAmount(getRecordValue(record, ['잔액'])),
-            remarks: String(getRecordValue(record, HEADER_ALIASES.remarks) || '')
+            remarks: String(getRecordValue(record, HEADER_ALIASES.remarks) || ''),
+            uploadBatchId: params.uploadBatchId || 'batch_' + Date.now(),
+            sourceSheetName: params.sourceSheetName || 'Sheet1',
+            sourceRowNumber: rowNum,
+            documentNo,
+            documentLineNo
         });
     });
     return { format: 'FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows, errorRows };
@@ -372,6 +396,8 @@ export function parseBudgetAdjustmentRows(params: {
   records: Record<string, unknown>[];
   year: string;
   existingCount: number;
+  uploadBatchId?: string;
+  sourceSheetName?: string;
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
@@ -406,6 +432,9 @@ export function parseBudgetAdjustmentRows(params: {
       year: rowYear,
     });
 
+    const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
+    const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
+
     actualRows.push({
       id: params.existingCount + actualRows.length + 1,
       sourceRowId: `src_adjustment_${rowNum}`,
@@ -425,6 +454,11 @@ export function parseBudgetAdjustmentRows(params: {
       completed: 0,
       balance: amount,
       remarks: '증액반영 업로드',
+      uploadBatchId: params.uploadBatchId || 'batch_' + Date.now(),
+      sourceSheetName: params.sourceSheetName || 'Sheet1',
+      sourceRowNumber: rowNum,
+      documentNo,
+      documentLineNo
     });
   });
 
@@ -448,6 +482,8 @@ export function parseUploadRecords(params: {
   viewableDeptCodes?: string[];
   planType: string;
   uploadKind?: string;
+  uploadBatchId?: string;
+  sourceSheetName?: string;
 }): UploadParseResult {
     // The format check is only for validation now.
     // However, detectUploadType is used here to see if it's wide or flat.

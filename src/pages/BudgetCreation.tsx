@@ -10,6 +10,7 @@ import { inferBudgetTypeByAccountCode, inferManagementCategoryByAccountCode } fr
 import { PLAN_TYPE_OPTIONS, BUDGET_PLAN_TYPE_OPTIONS, normalizePlanType } from '../lib/planTypes';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { BudgetRepository } from '../repositories/BudgetRepository';
+import { applyErpOneWonPolicy } from '../lib/erpOneWonPolicy';
 
 import { usePermission } from '../lib/permissions';
 
@@ -978,7 +979,7 @@ export default function BudgetCreation() {
                 id: `dummy_${dept.code}_${acc.code}`,
                 code: acc.code,
                 name: acc.name,
-                values: Array(12).fill(1),
+                values: Array(12).fill(0),
                 attributedDeptCode: dept.code,
                 sourceDeptCode: dept.code,
                 detail: '',
@@ -997,34 +998,40 @@ export default function BudgetCreation() {
         if (selectedDeptCode === 'all') {
           wsData = [
             ['연도', '계획구분', '예산유형', '관리구분', '작성부서', '귀속부서', '계정코드', '계정명', '연간금액', ...Array.from({length: 12}, (_, i) => `${i + 1}월`)],
-            ...rows.map(row => [
-              year,
-              planType,
-              (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
-              row.managementCategory || inferManagementCategoryByAccountCode(row.code),
-              allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
-              deptName,
-              row.code,
-              row.name,
-              row.values.reduce((a: number, b: number) => a + b, 0),
-              ...row.values
-            ])
+            ...rows.map(row => {
+              const erpValues = applyErpOneWonPolicy(row.values);
+              return [
+                year,
+                planType,
+                (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
+                row.managementCategory || inferManagementCategoryByAccountCode(row.code),
+                allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
+                deptName,
+                row.code,
+                row.name,
+                erpValues.reduce((a: number, b: number) => a + b, 0),
+                ...erpValues
+              ];
+            })
           ];
         } else {
           wsData = [
             ['연도', '계획구분', '예산유형', '관리구분', '작성부서', '귀속부서', '계정코드', '계정명', '연간금액', ...Array.from({length: 12}, (_, i) => `${i + 1}월`)],
-            ...rows.map(row => [
-              year,
-              planType,
-              (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
-              row.managementCategory || inferManagementCategoryByAccountCode(row.code),
-              allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
-              deptName,
-              row.code,
-              row.name,
-              row.values.reduce((a: number, b: number) => a + b, 0),
-              ...row.values
-            ])
+            ...rows.map(row => {
+              const erpValues = applyErpOneWonPolicy(row.values);
+              return [
+                year,
+                planType,
+                (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
+                row.managementCategory || inferManagementCategoryByAccountCode(row.code),
+                allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
+                deptName,
+                row.code,
+                row.name,
+                erpValues.reduce((a: number, b: number) => a + b, 0),
+                ...erpValues
+              ];
+            })
           ];
         }
         
@@ -1053,18 +1060,21 @@ export default function BudgetCreation() {
     } else {
       const wsData = [
         ['연도', '계획구분', '예산유형', '관리구분', '작성부서', '귀속부서', '계정코드', '계정명', '연간금액', ...Array.from({length: 12}, (_, i) => `${i + 1}월`)],
-        ...data.map(row => [
-          year,
-          planType,
-          (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
-          row.managementCategory || inferManagementCategoryByAccountCode(row.code),
-          allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
-          allDepts.find((d: any) => d.code === row.attributedDeptCode)?.name || '',
-          row.code,
-          row.name,
-          row.values.reduce((a: number, b: number) => a + b, 0),
-          ...row.values
-        ])
+        ...data.map(row => {
+          const erpValues = applyErpOneWonPolicy(row.values);
+          return [
+            year,
+            planType,
+            (row.budgetType || inferBudgetTypeByAccountCode(row.code)) === 'GENERAL' ? '일반' : '투자',
+            row.managementCategory || inferManagementCategoryByAccountCode(row.code),
+            allDepts.find((d: any) => d.code === (row.sourceDeptCode || row.attributedDeptCode))?.name || '',
+            allDepts.find((d: any) => d.code === row.attributedDeptCode)?.name || '',
+            row.code,
+            row.name,
+            erpValues.reduce((a: number, b: number) => a + b, 0),
+            ...erpValues
+          ];
+        })
       ];
       const ws = XLSX.utils.aoa_to_sheet(wsData);
       
@@ -1147,40 +1157,10 @@ export default function BudgetCreation() {
       };
       localStorage.setItem(notificationKey, JSON.stringify([newNotif, ...notifications]));
 
-      // Send email
-      let emailError: string | null = null;
-      try {
-        const emailResponse = await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: 'su@poscohycm.com',
-            subject: `[예산상신] ${currentDept.name} - ${year}년 ${planType}`,
-            text: `${currentDept.name} 부서에서 ${year}년 ${planType}을 상신하였습니다.\n상신 시간: ${now}`
-          })
-        });
-        if (!emailResponse.ok) {
-          const errData = await emailResponse.json().catch(() => ({}));
-          emailError = errData.message || `HTTP ${emailResponse.status}`;
-        } else {
-          const errData = await emailResponse.json().catch(() => ({}));
-          if (!errData.success) {
-            emailError = errData.message || 'SMTP 전송 실패';
-          }
-        }
-      } catch (e: any) {
-        console.error('Email send failed:', e);
-        emailError = e.message || '네트워크 오류';
-      }
-
       // Update data to be read-only
       setData(prev => prev.map(row => ({ ...row, isReadOnly: true })));
 
-      if (emailError) {
-        showAlert(`예산 상신은 성공하였으나, 알림 메일 발송에 실패했습니다.\n(사유: ${emailError})`);
-      } else {
-        showAlert('예산이 성공적으로 상신되었습니다.');
-      }
+      showAlert('예산이 성공적으로 상신되었습니다.');
     });
   };
 
@@ -1215,40 +1195,10 @@ export default function BudgetCreation() {
       };
       localStorage.setItem(notificationKey, JSON.stringify([newNotif, ...notifications]));
 
-      // Send email
-      let emailError: string | null = null;
-      try {
-        const emailResponse = await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: 'su@poscohycm.com',
-            subject: `[상신취소] ${currentDept.name} - ${year}년 ${planType}`,
-            text: `${currentDept.name} 부서에서 ${year}년 ${planType} 상신을 취소하였습니다.\n취소 시간: ${now}`
-          })
-        });
-        if (!emailResponse.ok) {
-          const errData = await emailResponse.json().catch(() => ({}));
-          emailError = errData.message || `HTTP ${emailResponse.status}`;
-        } else {
-          const errData = await emailResponse.json().catch(() => ({}));
-          if (!errData.success) {
-            emailError = errData.message || 'SMTP 전송 실패';
-          }
-        }
-      } catch (e: any) {
-        console.error('Email send failed:', e);
-        emailError = e.message || '네트워크 오류';
-      }
-
       // Update data to be editable (except those that were already read-only)
       setReloadTrigger(prev => prev + 1);
 
-      if (emailError) {
-        showAlert(`상신 취소는 완료되었으나, 알림 메일 발송에 실패했습니다.\n(사유: ${emailError})`);
-      } else {
-        showAlert('상신이 취소되었습니다. 이제 수정이 가능합니다.');
-      }
+      showAlert('상신이 취소되었습니다. 이제 수정이 가능합니다.');
     });
   };
 

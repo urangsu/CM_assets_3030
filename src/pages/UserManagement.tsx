@@ -138,32 +138,6 @@ export default function UserManagement() {
     localStorage.setItem('notifications', JSON.stringify(updatedNotifs));
   };
 
-  const sendEmailNotification = async (deptName: string, action: string, time: string): Promise<{ success: boolean; message?: string }> => {
-    try {
-      const response = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: 'su@poscohycm.com',
-          subject: `[예산 ${action} 알림] ${deptName}의 경영계획 ${action}이 완료되었습니다.`,
-          text: `부서: ${deptName}\n동작: ${action}\n시간: ${time}\n\n시스템에서 상세 내용을 확인하세요.`
-        })
-      });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        return { success: false, message: errData.message || `HTTP ${response.status}` };
-      }
-      const data = await response.json().catch(() => ({}));
-      if (!data.success) {
-        return { success: false, message: data.message || 'SMTP 전송 실패' };
-      }
-      return { success: true };
-    } catch (error: any) {
-      console.error('Email send failed:', error);
-      return { success: false, message: error.message || '네트워크 오류' };
-    }
-  };
-
   const handleMigrateDuplicates = () => {
     try {
       const depts = getAllDepartments().map(d => d.code);
@@ -274,14 +248,6 @@ export default function UserManagement() {
 
     const action = newSubmitted ? '제출' : '해제';
     addNotification(dept.name, action, now);
-    
-    if (newSubmitted) {
-      sendEmailNotification(dept.name, '제출', now).then((res) => {
-        if (!res.success) {
-          alert(`경영계획 제출 완료 처리는 성공하였으나, 알림 메일 발송에 실패했습니다.\n(사유: ${res.message})`);
-        }
-      });
-    }
   };
 
   const handleOpenProfile = () => {

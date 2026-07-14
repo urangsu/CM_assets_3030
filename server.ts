@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -671,58 +670,6 @@ async function startServer() {
         policy: "error",
         majorFailureReason: outerError.message ? safe_error_message(outerError.message, apiKey) : "서버 예외 오류",
         details: []
-      });
-    }
-  });
-
-  // API routes
-  app.post("/api/send-email", async (req, res) => {
-    const { to, subject, text } = req.body;
-
-    const emailUser = process.env.EMAIL_USER;
-    const emailPass = process.env.EMAIL_PASS;
-    const emailHost = process.env.EMAIL_HOST;
-    const emailPort = process.env.EMAIL_PORT;
-
-    if (!emailUser || !emailPass) {
-      console.warn("[Email API] SMTP transport is not configured (EMAIL_USER/EMAIL_PASS missing)");
-      return res.status(400).json({
-        success: false,
-        reason: "EMAIL_TRANSPORT_NOT_CONFIGURED",
-        message: "SMTP 메일 전송이 설정되지 않았습니다. 환경변수 EMAIL_USER, EMAIL_PASS를 점검해주세요."
-      });
-    }
-
-    try {
-      const transporter = nodemailer.createTransport({
-        host: emailHost || "smtp.gmail.com",
-        port: Number(emailPort || 587),
-        secure: Number(emailPort) === 465,
-        auth: {
-          user: emailUser,
-          pass: emailPass
-        }
-      });
-
-      const info = await transporter.sendMail({
-        from: emailUser,
-        to,
-        subject,
-        text
-      });
-
-      console.info(`[Email API] Email sent successfully. MessageId: ${info.messageId}`);
-      return res.json({ 
-        success: true, 
-        message: "Email sent successfully", 
-        messageId: info.messageId 
-      });
-    } catch (error: any) {
-      console.error("[Email API] Email send error:", error);
-      return res.status(500).json({ 
-        success: false, 
-        reason: "EMAIL_SEND_FAILED",
-        error: error.message || "Failed to send email" 
       });
     }
   });

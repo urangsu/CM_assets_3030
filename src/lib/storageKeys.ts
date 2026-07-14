@@ -34,7 +34,10 @@ export interface SubmissionStatus {
 }
 
 export function getSubmissionStatusMapKey(deptCode: string, year: string, planType: string) {
-  const safePlanType = normalizePlanType(planType) || '경영계획';
+  const safePlanType = normalizePlanType(planType);
+  if (!safePlanType) {
+    throw new Error(`알 수 없는 계획유형(원본값: ${planType})입니다.`);
+  }
   return `${deptCode}_${year}_${safePlanType}`;
 }
 

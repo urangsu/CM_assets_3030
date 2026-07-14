@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "lint:copy": "rg -n \"수행 상태|액션 상태|기본원본|기본 원본|집행상질|검증결재상질|관제|감사 데이터|감사 의견서|심사 의견|의견 개진|승인 가결|기각/반려|임시보류|통제 대상|정상 통제|초과 경보|Interactive Review Guard|Audit Board|Approval Portal|Review Guard|Logs\" src && exit 1 || exit 0"
+    "lint:copy": "rg -n \"수행 상태|액션 상태|기본원본|기본 원본|집행상질|검증결재상질|관제|감사 데이터|감사 의견서|심사 의견|의견 개진|승인 가결|기각/반려|임시보류|통제 대상|정상 통제|초과 경보|Interactive Review Guard|Audit Board|Approval Portal|Review Guard|Logs\" src && exit 1 || exit 0",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -26,7 +27,6 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.1.1",
-    "nodemailer": "^8.0.2",
     "pptxgenjs": "^4.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -47,7 +47,8 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "fetch-blob": "4.0.0"

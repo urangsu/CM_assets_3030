@@ -78,7 +78,11 @@ export function isValidPlanType(value: unknown): value is PlanType {
 }
 
 export function getPlanTypeAliases(planType: string): string[] {
-  const normalized = normalizePlanType(planType) || '경영계획';
+  const normalized = normalizePlanType(planType);
+
+  if (!normalized) {
+    return [];
+  }
 
   if (normalized === '수정경영계획') {
     return ['수정경영계획', '수정계획', '수수계획', '수주계획'];
@@ -93,7 +97,15 @@ export function getPlanTypeAliases(planType: string): string[] {
   }
 
   if (normalized === '증액반영') {
-    return ['증액반영', '예산증액반영', '증액계획', 'AdjustedPlan', 'budgetincrease'];
+    return [
+      '증액반영',
+      '예산증액반영',
+      '증액계획',
+      'AdjustedPlan',
+      'adjustedplan',
+      'budgetincrease',
+      'BudgetIncrease',
+    ];
   }
 
   return [normalized];

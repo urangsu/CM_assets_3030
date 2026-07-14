@@ -5,6 +5,14 @@ import { getPlanTypeAliases, normalizePlanType, isValidPlanType } from '../lib/p
 import { STORAGE_KEYS } from '../constants';
 import { safeJsonParse } from '../lib/safeStorage';
 
+function hasExplicitMonthlyValue(rawValues: unknown, index: number): boolean {
+  if (!Array.isArray(rawValues)) return false;
+  if (!(index in rawValues)) return false;
+
+  const value = rawValues[index];
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
 export function normalizeBudgetRows(rows: any[], deptCode: string): any[] {
   const map = new Map<string, any>();
 
@@ -16,7 +24,7 @@ export function normalizeBudgetRows(rows: any[], deptCode: string): any[] {
     const key = `${attributedDeptCode}|${code}`;
 
     const values = Array.from({ length: 12 }, (_, i) =>
-      Number(rawRow.values?.[i] || 0)
+      hasExplicitMonthlyValue(rawRow.values, i) ? (Number(rawRow.values[i]) || 0) : 0
     );
 
     const existing = map.get(key);
@@ -33,12 +41,12 @@ export function normalizeBudgetRows(rows: any[], deptCode: string): any[] {
 
     // 예산 계정은 부서+계정 기준 1행이어야 한다.
     // 중복 row가 있으면 월별 값은 "뒤 row 우선"으로 병합한다.
-    const mergedValues = Array.from({ length: 12 }, (_, i) => {
-      const nextVal = Number(values[i] || 0);
-      const prevVal = Number(existing.values?.[i] || 0);
+    const mergedValues = Array.from({ length: 12 }, (_, index) => {
+      if (hasExplicitMonthlyValue(rawRow.values, index)) {
+        return Number(rawRow.values[index]) || 0;
+      }
 
-      if (nextVal !== 0) return nextVal;
-      return prevVal;
+      return Number(existing.values?.[index]) || 0;
     });
 
     map.set(key, {
@@ -53,8 +61,33 @@ export function normalizeBudgetRows(rows: any[], deptCode: string): any[] {
   return Array.from(map.values());
 }
 
+export function getActualSourceIdentity(row: any): string | null {
+  if (!row) return null;
+  const sourceRowId = String(row.sourceRowId || '').trim();
+  if (sourceRowId) return `source:${sourceRowId}`;
+
+  const documentNo = String(row.documentNo || row.voucherNo || '').trim();
+  const documentLineNo = String(row.documentLineNo || row.lineNo || '').trim();
+  if (documentNo && documentLineNo) {
+    return `voucher:${documentNo}:${documentLineNo}`;
+  }
+
+  const uploadBatchId = String(row.uploadBatchId || '').trim();
+  const sourceSheetName = String(row.sourceSheetName || '').trim();
+  const sourceRowNumber = String(row.sourceRowNumber || '').trim();
+  if (uploadBatchId && sourceRowNumber) {
+    return `upload:${uploadBatchId}:${sourceSheetName}:${sourceRowNumber}`;
+  }
+
+  const id = String(row.id || '').trim();
+  if (id) return `id:${id}`;
+
+  return null;
+}
+
 export function normalizeActualRows(rows: any[]): any[] {
-  const map = new Map<string, any>();
+  const mapWithIdentity = new Map<string, any>();
+  const rowsWithoutIdentity: any[] = [];
 
   rows.forEach((rawRow) => {
     const year = String(rawRow.year || '').trim();
@@ -64,32 +97,29 @@ export function normalizeActualRows(rows: any[]): any[] {
 
     if (!usageCode || !accountCode || !period || !year) return;
 
-    const key = `${year}|${period}|${usageCode}|${accountCode}`;
-
-    const existing = map.get(key);
-    if (!existing) {
-      map.set(key, {
+    const identity = getActualSourceIdentity(rawRow);
+    if (identity) {
+      mapWithIdentity.set(identity, {
         ...rawRow,
         year,
         period,
         usageCode,
         accountCode,
       });
-      return;
+    } else {
+      rowsWithoutIdentity.push({
+        ...rawRow,
+        year,
+        period,
+        usageCode,
+        accountCode,
+        diagnostic: 'DUPLICATE_IDENTITY_MISSING',
+        diagnosticError: 'DUPLICATE_IDENTITY_MISSING',
+      });
     }
-
-    // 뒤 행 우선 덮어쓰기 방식으로 머지하여 중복 제거
-    map.set(key, {
-      ...existing,
-      ...rawRow,
-      year,
-      period,
-      usageCode,
-      accountCode,
-    });
   });
 
-  return Array.from(map.values());
+  return [...Array.from(mapWithIdentity.values()), ...rowsWithoutIdentity];
 }
 
 function removeLegacyBudgetKeysAfterNormalizedSave(deptCode: string, year: string, planType: string) {
@@ -107,13 +137,16 @@ function removeLegacyBudgetKeysAfterNormalizedSave(deptCode: string, year: strin
 
 export const BudgetRepository = {
   getRows: (deptCode: string, year: string, planType: string): any[] => {
+    if (getPlanTypeAliases(planType).length === 0) {
+      return [{ code: 'INVALID_PLAN_TYPE', isInvalidPlanType: true, originalPlanType: planType }];
+    }
     const raw = readBudgetData(deptCode, year, planType);
     const parsed = safeJsonParse<any[]>(raw, []);
     return Array.isArray(parsed) ? parsed : [];
   },
 
   saveRows: (deptCode: string, year: string, planType: string, rows: any[]): void => {
-    if (!isValidPlanType(planType)) {
+    if (getPlanTypeAliases(planType).length === 0) {
       throw new Error(`알 수 없는 계획유형(원본값: ${planType})입니다. 저장이 차단되었습니다.`);
     }
     const key = getBudgetDataKey(deptCode, year, planType);
@@ -124,6 +157,9 @@ export const BudgetRepository = {
   },
 
   deleteRows: (deptCode: string, year: string, planType: string): void => {
+    if (getPlanTypeAliases(planType).length === 0) {
+      throw new Error(`알 수 없는 계획유형(원본값: ${planType})입니다. 삭제가 차단되었습니다.`);
+    }
     const normalized = normalizePlanType(planType);
     if (!normalized) return;
 
