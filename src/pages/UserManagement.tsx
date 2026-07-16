@@ -3,6 +3,7 @@ import { Users, Upload, FileUp, Plus, MoreVertical, X, Calendar, FileText, Check
 import { DEPARTMENTS, STORAGE_KEYS, getAllDepartments, getViewableDepts } from '../constants';
 import { getSubmissionStatusMapKey, getBudgetDataKey, getActualDataKey } from '../lib/storageKeys';
 import { normalizeBudgetRows, normalizeActualRows } from '../repositories/BudgetRepository';
+import { getActualSourceIdentity } from '../lib/actualIdentity';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { hashPassword } from '../lib/auth';
 import { motion, AnimatePresence } from 'motion/react';
@@ -107,6 +108,22 @@ export default function UserManagement() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [duplicateActualModal, setDuplicateActualModal] = useState<{
+    isOpen: boolean;
+    yearsData: {
+      year: string;
+      beforeCount: number;
+      afterCount: number;
+      beforeSum: number;
+      afterSum: number;
+      rowsScheduledForDeletion: { identity: string; usageCode: string; accountCode: string; period: string; amount: number; completed: number }[];
+    }[];
+    totalBeforeCount: number;
+    totalAfterCount: number;
+    totalBeforeSum: number;
+    totalAfterSum: number;
+    canApply: boolean;
+  } | null>(null);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [userId, setUserId] = useState('');
   const [userPassword, setUserPassword] = useState('');
@@ -193,9 +210,101 @@ export default function UserManagement() {
   const handleMigrateActualDuplicates = () => {
     try {
       const years = ['2024', '2025', '2026', '2027', '2028'];
+      const yearsData: any[] = [];
 
-      let beforeRowsTotal = 0;
-      let afterRowsTotal = 0;
+      let totalBeforeCount = 0;
+      let totalAfterCount = 0;
+      let totalBeforeSum = 0;
+      let totalAfterSum = 0;
+
+      years.forEach(yr => {
+        const key = getActualDataKey(yr);
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+
+        try {
+          const rows = JSON.parse(raw);
+          if (!Array.isArray(rows)) return;
+
+          const beforeCount = rows.length;
+          const beforeSum = rows.reduce((sum, r) => sum + (Number(r.amount) || 0) + (Number(r.completed) || 0), 0);
+
+          const normalizedRows = normalizeActualRows(rows);
+          const afterCount = normalizedRows.length;
+          const afterSum = normalizedRows.reduce((sum, r) => sum + (Number(r.amount) || 0) + (Number(r.completed) || 0), 0);
+
+          // Discarded are rows that have a valid identity but are NOT the exact object kept in normalizedRows.
+          // For each identity, we kept only the last row. Any other row with that identity is discarded.
+          const identityLastIndex = new Map<string, number>();
+          rows.forEach((r, idx) => {
+            const identity = getActualSourceIdentity(r);
+            if (identity) {
+              identityLastIndex.set(identity, idx);
+            }
+          });
+
+          const rowsScheduledForDeletion: any[] = [];
+          rows.forEach((r, idx) => {
+            const identity = getActualSourceIdentity(r);
+            if (identity) {
+              const lastIdx = identityLastIndex.get(identity);
+              if (lastIdx !== undefined && lastIdx !== idx) {
+                rowsScheduledForDeletion.push({
+                  identity,
+                  usageCode: r.usageCode || r.attributedDeptCode || '',
+                  accountCode: r.accountCode || '',
+                  period: r.period || '',
+                  amount: Number(r.amount) || 0,
+                  completed: Number(r.completed) || 0,
+                });
+              }
+            }
+          });
+
+          yearsData.push({
+            year: yr,
+            beforeCount,
+            afterCount,
+            beforeSum,
+            afterSum,
+            rowsScheduledForDeletion,
+          });
+
+          totalBeforeCount += beforeCount;
+          totalAfterCount += afterCount;
+          totalBeforeSum += beforeSum;
+          totalAfterSum += afterSum;
+        } catch (err) {
+          console.error(`Failed to generate duplicate preview for key: ${key}`, err);
+        }
+      });
+
+      const diffSum = Math.abs(totalBeforeSum - totalAfterSum);
+      // Allow apply if we actually find duplicates and sum matches exactly
+      const canApply = diffSum < 0.01 && (totalBeforeCount > totalAfterCount);
+
+      setDuplicateActualModal({
+        isOpen: true,
+        yearsData,
+        totalBeforeCount,
+        totalAfterCount,
+        totalBeforeSum,
+        totalAfterSum,
+        canApply,
+      });
+
+    } catch (e) {
+      console.error(e);
+      alert('실적 중복 데이터 분석 중 오류가 발생했습니다.');
+    }
+  };
+
+  const applyActualDuplicatesCleanup = () => {
+    if (!duplicateActualModal || !duplicateActualModal.canApply) return;
+
+    try {
+      const timestamp = Date.now();
+      const years = ['2024', '2025', '2026', '2027', '2028'];
       let migrationExecutedCount = 0;
 
       years.forEach(yr => {
@@ -207,27 +316,26 @@ export default function UserManagement() {
           const rows = JSON.parse(raw);
           if (!Array.isArray(rows)) return;
 
-          beforeRowsTotal += rows.length;
+          // 1. 자동 백업 (Auto Backup)
+          const backupKey = `actual_data_${yr}_backup_${timestamp}`;
+          localStorage.setItem(backupKey, raw);
 
           const normalizedRows = normalizeActualRows(rows);
-          afterRowsTotal += normalizedRows.length;
-
           if (normalizedRows.length !== rows.length) {
             localStorage.setItem(key, JSON.stringify(normalizedRows));
             migrationExecutedCount++;
           }
         } catch (err) {
-          console.error(`Failed to migrate actual key: ${key}`, err);
+          console.error(`Failed to save backup/clean actual key: ${key}`, err);
         }
       });
 
       clearDataLoaderCache();
-
-      const diff = beforeRowsTotal - afterRowsTotal;
-      alert(`[실적 정리 결과]\n정리 전: ${beforeRowsTotal}행\n정리 후: ${afterRowsTotal}행\n중복 제거: ${diff}행\n실행 적용된 세트수: ${migrationExecutedCount}개`);
-    } catch (e) {
-      console.error(e);
-      alert('실적 중복 정리 중 오류가 발생했습니다.');
+      alert(`최종 확인이 완료되어 실적 정리가 성공적으로 수행되었습니다.\n이전 데이터는 자동 백업되었습니다.`);
+      setDuplicateActualModal(null);
+    } catch (err) {
+      console.error(err);
+      alert('정리 저장 중 오류가 발생했습니다.');
     }
   };
 
@@ -1224,6 +1332,140 @@ export default function UserManagement() {
               </button>
               <button onClick={handleSaveAllStatuses} className="px-4 py-2 bg-brand-500 text-white font-medium hover:bg-brand-600 rounded-xl transition-colors">
                 적용 및 저장하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Actual Cleanup Preview Modal */}
+      {duplicateActualModal && duplicateActualModal.isOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-[#e5e8eb] flex justify-between items-center bg-[#f9fafb]">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-orange-500" />
+                <h3 className="text-lg font-bold text-[#191f28]">실적 중복 row 정리 미리보기</h3>
+              </div>
+              <button 
+                onClick={() => setDuplicateActualModal(null)}
+                className="text-[#8b95a1] hover:text-[#191f28] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Summary Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-[#f9fafb] p-4 rounded-xl border border-[#e5e8eb] space-y-2">
+                  <h4 className="text-xs font-semibold text-[#8b95a1] uppercase tracking-wider">전체 행 수 비교</h4>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm text-[#4e5968]">정리 전 전체 행:</span>
+                    <span className="text-lg font-bold text-[#191f28]">{duplicateActualModal.totalBeforeCount} 행</span>
+                  </div>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm text-[#4e5968]">정리 후 전체 행:</span>
+                    <span className="text-lg font-bold text-brand-600">{duplicateActualModal.totalAfterCount} 행</span>
+                  </div>
+                  <div className="flex justify-between items-baseline pt-2 border-t border-dashed border-[#e5e8eb]">
+                    <span className="text-sm font-semibold text-[#4e5968]">삭제 예정 행 수:</span>
+                    <span className="text-lg font-bold text-red-500">-{duplicateActualModal.totalBeforeCount - duplicateActualModal.totalAfterCount} 행</span>
+                  </div>
+                </div>
+
+                <div className="bg-[#f9fafb] p-4 rounded-xl border border-[#e5e8eb] space-y-2">
+                  <h4 className="text-xs font-semibold text-[#8b95a1] uppercase tracking-wider">전체 금액 합계 비교</h4>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm text-[#4e5968]">정리 전 금액합계:</span>
+                    <span className="text-lg font-bold text-[#191f28]">{duplicateActualModal.totalBeforeSum.toLocaleString()} 원</span>
+                  </div>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm text-[#4e5968]">정리 후 금액합계:</span>
+                    <span className="text-lg font-bold text-brand-600">{duplicateActualModal.totalAfterSum.toLocaleString()} 원</span>
+                  </div>
+                  <div className="flex justify-between items-baseline pt-2 border-t border-dashed border-[#e5e8eb]">
+                    <span className="text-sm font-semibold text-[#4e5968]">합계 차이 (오차):</span>
+                    <span className={`text-lg font-bold ${Math.abs(duplicateActualModal.totalBeforeSum - duplicateActualModal.totalAfterSum) < 0.01 ? 'text-green-600' : 'text-red-500'}`}>
+                      {(duplicateActualModal.totalBeforeSum - duplicateActualModal.totalAfterSum).toLocaleString()} 원
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Alert and Backup Notice */}
+              <div className={`p-4 rounded-xl border flex items-start gap-3 ${
+                duplicateActualModal.canApply ? 'bg-green-50 border-green-200 text-green-800' : 'bg-amber-50 border-amber-200 text-amber-800'
+              }`}>
+                <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-bold">
+                    {duplicateActualModal.canApply 
+                      ? '검증 성공: 정리 시 원천 데이터가 훼손되지 않으며 합계가 일치합니다.' 
+                      : '정리 대상 중복 행이 존재하지 않거나 정리 전/후 합계 금액 차이가 존재하여 자동 저장할 수 없습니다.'}
+                  </p>
+                  <p className="text-xs mt-1 opacity-90">
+                    * 정리 실행 시, 만약을 대비해 기존 원본 데이터가 타임스탬프와 함께 로컬 스토리지(`actual_data_YYYY_backup_TIMESTAMP`)에 자동 백업됩니다.
+                  </p>
+                </div>
+              </div>
+
+              {/* Scheduled for Deletion List */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#191f28]">삭제 예정 상세 행 목록 (Identity 및 내용)</h4>
+                <div className="border border-[#e5e8eb] rounded-xl overflow-hidden max-h-[250px] overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-[#f2f4f6] text-[#4e5968] font-bold border-b border-[#e5e8eb]">
+                        <th className="p-3">연도/월</th>
+                        <th className="p-3">부서코드</th>
+                        <th className="p-3">계정코드</th>
+                        <th className="p-3">금액 (계획/실적)</th>
+                        <th className="p-3">중복 Identity</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#e5e8eb]">
+                      {duplicateActualModal.yearsData.flatMap(yd => 
+                        yd.rowsScheduledForDeletion.map((r, i) => (
+                          <tr key={`${yd.year}-${i}`} className="hover:bg-red-50 text-red-600 transition-colors">
+                            <td className="p-3">{yd.year} / {r.period}</td>
+                            <td className="p-3 font-mono">{r.usageCode}</td>
+                            <td className="p-3 font-mono">{r.accountCode}</td>
+                            <td className="p-3 font-bold">{(r.amount + r.completed).toLocaleString()}원</td>
+                            <td className="p-3 font-mono text-[10px] break-all">{r.identity}</td>
+                          </tr>
+                        ))
+                      )}
+                      {duplicateActualModal.yearsData.every(yd => yd.rowsScheduledForDeletion.length === 0) && (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-[#8b95a1] bg-white">
+                            삭제 및 정리할 중복 행이 없습니다.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-[#e5e8eb] bg-[#f9fafb] flex justify-end gap-3">
+              <button 
+                onClick={() => setDuplicateActualModal(null)}
+                className="px-5 py-2.5 bg-white border border-[#d1d6db] text-[#4e5968] font-medium hover:bg-[#f2f4f6] rounded-xl transition-colors"
+              >
+                닫기
+              </button>
+              <button 
+                onClick={applyActualDuplicatesCleanup}
+                disabled={!duplicateActualModal.canApply}
+                className={`px-5 py-2.5 text-white font-medium rounded-xl transition-colors ${
+                  duplicateActualModal.canApply 
+                    ? 'bg-orange-500 hover:bg-orange-600 shadow-sm' 
+                    : 'bg-gray-300 cursor-not-allowed'
+                }`}
+              >
+                최종 확인 및 적용
               </button>
             </div>
           </div>

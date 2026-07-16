@@ -4,6 +4,7 @@ import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { getPlanTypeAliases, normalizePlanType, isValidPlanType, normalizePlanTypeForWrite, inspectLegacyPlanType } from '../lib/planTypes';
 import { STORAGE_KEYS } from '../constants';
 import { safeJsonParse } from '../lib/safeStorage';
+import { getActualSourceIdentity } from '../lib/actualIdentity';
 
 function hasExplicitMonthlyValue(rawValues: unknown, index: number): boolean {
   if (!Array.isArray(rawValues)) return false;
@@ -59,30 +60,6 @@ export function normalizeBudgetRows(rows: any[], deptCode: string): any[] {
   });
 
   return Array.from(map.values());
-}
-
-export function getActualSourceIdentity(row: any): string | null {
-  if (!row) return null;
-  const sourceRowId = String(row.sourceRowId || '').trim();
-  if (sourceRowId) return `source:${sourceRowId}`;
-
-  const documentNo = String(row.documentNo || row.voucherNo || '').trim();
-  const documentLineNo = String(row.documentLineNo || row.lineNo || '').trim();
-  if (documentNo && documentLineNo) {
-    return `voucher:${documentNo}:${documentLineNo}`;
-  }
-
-  const uploadBatchId = String(row.uploadBatchId || '').trim();
-  const sourceSheetName = String(row.sourceSheetName || '').trim();
-  const sourceRowNumber = String(row.sourceRowNumber || '').trim();
-  if (uploadBatchId && sourceRowNumber) {
-    return `upload:${uploadBatchId}:${sourceSheetName}:${sourceRowNumber}`;
-  }
-
-  const id = String(row.id || '').trim();
-  if (id) return `id:${id}`;
-
-  return null;
 }
 
 export function normalizeActualRows(rows: any[]): any[] {

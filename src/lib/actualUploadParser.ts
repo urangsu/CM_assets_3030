@@ -21,6 +21,7 @@ export interface ActualData {
   balance: number;
   remarks: string;
   sourceRowId?: string;
+  sourceFileFingerprint?: string;
   attributedDeptCode?: string;
   uploadBatchId?: string;
   sourceSheetName?: string;
@@ -182,6 +183,7 @@ export function parseWideMonthlyRows(params: {
   uploadKind?: string;
   uploadBatchId?: string;
   sourceSheetName?: string;
+  sourceFileFingerprint?: string;
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
@@ -233,6 +235,11 @@ export function parseWideMonthlyRows(params: {
       });
     }
 
+    const sourceRowIdVal = (() => {
+      const rawId = getRecordValue(record, ['sourcerowid', 'rowid', 'uniqueid', '원천id', '원천ID', '행id', '행ID']);
+      return rawId !== undefined && rawId !== null && String(rawId).trim() !== '' ? String(rawId).trim() : undefined;
+    })();
+
     for (let i = 1; i <= 12; i++) {
         const val = getMonthValue(record, i);
         const numericVal = parseAmount(val);
@@ -244,7 +251,8 @@ export function parseWideMonthlyRows(params: {
 
             actualRows.push({
                 id: params.existingCount + actualRows.length + 1,
-                sourceRowId: `src_wide_${rowNum}_${i}`,
+                sourceRowId: sourceRowIdVal,
+                sourceFileFingerprint: params.sourceFileFingerprint,
                 year: params.year,
                 period: `${i}월`,
                 periodMonth: i,
@@ -307,6 +315,7 @@ export function parseFlatRows(params: {
   existingCount: number;
   uploadBatchId?: string;
   sourceSheetName?: string;
+  sourceFileFingerprint?: string;
 }): UploadParseResult {
     const actualRows: ActualData[] = [];
     const errorRows: ValidationIssue[] = [];
@@ -363,9 +372,15 @@ export function parseFlatRows(params: {
         const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
         const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
 
+        const sourceRowIdVal = (() => {
+          const rawId = getRecordValue(record, ['sourcerowid', 'rowid', 'uniqueid', '원천id', '원천ID', '행id', '행ID']);
+          return rawId !== undefined && rawId !== null && String(rawId).trim() !== '' ? String(rawId).trim() : undefined;
+        })();
+
         actualRows.push({
             id: params.existingCount + actualRows.length + 1,
-            sourceRowId: `src_flat_${rowNum}`,
+            sourceRowId: sourceRowIdVal,
+            sourceFileFingerprint: params.sourceFileFingerprint,
             year: String(getRecordValue(record, ['연도']) || params.year),
             period,
             periodMonth: monthIndexFromPeriod !== null ? monthIndexFromPeriod + 1 : undefined,
@@ -398,6 +413,7 @@ export function parseBudgetAdjustmentRows(params: {
   existingCount: number;
   uploadBatchId?: string;
   sourceSheetName?: string;
+  sourceFileFingerprint?: string;
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
@@ -435,9 +451,15 @@ export function parseBudgetAdjustmentRows(params: {
     const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
     const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
 
+    const sourceRowIdVal = (() => {
+      const rawId = getRecordValue(record, ['sourcerowid', 'rowid', 'uniqueid', '원천id', '원천ID', '행id', '행ID']);
+      return rawId !== undefined && rawId !== null && String(rawId).trim() !== '' ? String(rawId).trim() : undefined;
+    })();
+
     actualRows.push({
       id: params.existingCount + actualRows.length + 1,
-      sourceRowId: `src_adjustment_${rowNum}`,
+      sourceRowId: sourceRowIdVal,
+      sourceFileFingerprint: params.sourceFileFingerprint,
       year: rowYear,
       period: `${monthIndex + 1}월`,
       periodMonth: monthIndex + 1,
@@ -484,6 +506,7 @@ export function parseUploadRecords(params: {
   uploadKind?: string;
   uploadBatchId?: string;
   sourceSheetName?: string;
+  sourceFileFingerprint?: string;
 }): UploadParseResult {
     // The format check is only for validation now.
     // However, detectUploadType is used here to see if it's wide or flat.

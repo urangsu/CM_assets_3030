@@ -39,7 +39,7 @@ import { inferManagementCategoryByAccountCode } from '../lib/accountMaster';
 import { clearDataLoaderCache } from '../lib/varianceDataLoader';
 import { safeLocalStorageGet, safeJsonParse } from '../lib/safeStorage';
 import { normalizePlanType, getPlanTypeAliases, isValidPlanType } from '../lib/planTypes';
-import { getActualRowIdentity } from '../lib/actualIdentity';
+import { getActualRowIdentity, generateContentFingerprint } from '../lib/actualIdentity';
 
 // Sort logic
 type SortDirection = 'asc' | 'desc';
@@ -845,6 +845,7 @@ export default function PlanActualUpload() {
 
     const uploadBatchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const sourceSheetName = sheetName || 'Sheet1';
+    const fingerprint = generateContentFingerprint(finalBodyRows);
 
     const result = parseUploadRecords({
         headers: finalHeaders.map(String),
@@ -856,7 +857,8 @@ export default function PlanActualUpload() {
         planType: uploadTarget,
         uploadKind: uploadKind,
         uploadBatchId,
-        sourceSheetName
+        sourceSheetName,
+        sourceFileFingerprint: fingerprint
     });
 
     // Check locks ONLY for affected departments
