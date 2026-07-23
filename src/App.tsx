@@ -9,7 +9,7 @@ import BudgetCreation from './pages/BudgetCreation';
 import VarianceComparison from './pages/VarianceComparison';
 import BusinessActivityBudget from './pages/BusinessActivityBudget';
 import BudgetOverrunCheck from './pages/BudgetOverrunCheck';
-import PlanActualUpload from './pages/PlanActualUpload';
+import PlanActualUploadWorkspace from './pages/PlanActualUploadWorkspace';
 import BudgetLockManagement from './pages/BudgetLockManagement';
 
 // Newly added high-fidelity pages
@@ -77,7 +77,7 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <ErrorBoundary title="실적 업로드 및 관리">
-                <PlanActualUpload />
+                <PlanActualUploadWorkspace />
               </ErrorBoundary>
             </Layout>
           </ProtectedRoute>
