@@ -175,6 +175,14 @@ function resolveDepartmentName(deptCode: string, providedName?: string): { name:
   return { name: '', resolved: false };
 }
 
+export function normalizeSelectedActualMonths(months?: number[]): number[] {
+  if (!months) return Array.from({ length: 12 }, (_, i) => i + 1);
+  const valid = months
+    .filter(m => typeof m === 'number' && Number.isInteger(m) && m >= 1 && m <= 12)
+    .sort((a, b) => a - b);
+  return Array.from(new Set(valid));
+}
+
 export function parseWideMonthlyRows(params: {
   records: Record<string, unknown>[];
   year: string;
@@ -184,11 +192,17 @@ export function parseWideMonthlyRows(params: {
   uploadBatchId?: string;
   sourceSheetName?: string;
   sourceFileFingerprint?: string;
+  selectedActualMonths?: number[];
 }): UploadParseResult {
   const actualRows: ActualData[] = [];
   const errorRows: ValidationIssue[] = [];
   const warningRows: ValidationIssue[] = [];
-  
+
+  const isActual = params.uploadKind === 'monthlyActual' || params.planType === '실적';
+  const normSelectedMonths = isActual && params.selectedActualMonths !== undefined
+    ? normalizeSelectedActualMonths(params.selectedActualMonths)
+    : null;
+
   params.records.forEach((record, index) => {
     const rowNum = index + 2;
     const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '').trim();
@@ -241,41 +255,44 @@ export function parseWideMonthlyRows(params: {
     })();
 
     for (let i = 1; i <= 12; i++) {
-        const val = getMonthValue(record, i);
-        const numericVal = parseAmount(val);
-        
-        if (numericVal !== 0) {
-            const isActual = params.uploadKind === 'monthlyActual' || params.planType === '실적';
-            const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
-            const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
+      if (normSelectedMonths && !normSelectedMonths.includes(i)) {
+        continue;
+      }
 
-            actualRows.push({
-                id: params.existingCount + actualRows.length + 1,
-                sourceRowId: sourceRowIdVal,
-                sourceFileFingerprint: params.sourceFileFingerprint,
-                year: params.year,
-                period: `${i}월`,
-                periodMonth: i,
-                accountCode: resolvedAccount.code,
-                accountName: resolvedAccount.name,
-                controlType: 'D.부서',
-                usageCode,
-                usageDept: resolvedDept.name,
-                amount: isActual ? 0 : numericVal,
-                additional: 0,
-                transferred: 0,
-                carriedOver: 0,
-                planned: 0,
-                completed: isActual ? numericVal : 0,
-                balance: isActual ? -numericVal : numericVal,
-                remarks: isActual ? '실적DB wide upload' : '계획 upload',
-                uploadBatchId: params.uploadBatchId || 'batch_' + Date.now(),
-                sourceSheetName: params.sourceSheetName || 'Sheet1',
-                sourceRowNumber: rowNum,
-                documentNo,
-                documentLineNo
-            });
-        }
+      const val = getMonthValue(record, i);
+      const numericVal = parseAmount(val);
+
+      if (numericVal !== 0) {
+        const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
+        const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
+
+        actualRows.push({
+          id: params.existingCount + actualRows.length + 1,
+          sourceRowId: sourceRowIdVal,
+          sourceFileFingerprint: params.sourceFileFingerprint,
+          year: params.year,
+          period: `${i}월`,
+          periodMonth: i,
+          accountCode: resolvedAccount.code,
+          accountName: resolvedAccount.name,
+          controlType: 'D.부서',
+          usageCode,
+          usageDept: resolvedDept.name,
+          amount: isActual ? 0 : numericVal,
+          additional: 0,
+          transferred: 0,
+          carriedOver: 0,
+          planned: 0,
+          completed: isActual ? numericVal : 0,
+          balance: isActual ? -numericVal : numericVal,
+          remarks: isActual ? '실적DB wide upload' : '계획 upload',
+          uploadBatchId: params.uploadBatchId || 'batch_' + Date.now(),
+          sourceSheetName: params.sourceSheetName || 'Sheet1',
+          sourceRowNumber: rowNum,
+          documentNo,
+          documentLineNo
+        });
+      }
     }
   });
 
@@ -313,98 +330,124 @@ export function parseFlatRows(params: {
   records: Record<string, unknown>[];
   year: string;
   existingCount: number;
+  planType?: string;
+  uploadKind?: string;
   uploadBatchId?: string;
   sourceSheetName?: string;
   sourceFileFingerprint?: string;
+  selectedActualMonths?: number[];
 }): UploadParseResult {
-    const actualRows: ActualData[] = [];
-    const errorRows: ValidationIssue[] = [];
-    const warningRows: ValidationIssue[] = [];
-    params.records.forEach((record, index) => {
-        const rowNum = index + 2;
-        const period = String(getRecordValue(record, HEADER_ALIASES.period) || '').trim();
-        const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '').trim();
-        const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '').trim();
-        const providedUsageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '').trim();
-        const completedVal = getRecordValue(record, HEADER_ALIASES.completed);
+  const actualRows: ActualData[] = [];
+  const errorRows: ValidationIssue[] = [];
+  const warningRows: ValidationIssue[] = [];
 
-        if (!period || !accountCode || !usageCode ) {
-          errorRows.push({ rowNum, message: '필수 항목 누락', severity: 'error' });
-          return;
-        }
+  const isActual = params.uploadKind === 'monthlyActual' || params.planType === '실적';
+  const normSelectedMonths = isActual && params.selectedActualMonths !== undefined
+    ? normalizeSelectedActualMonths(params.selectedActualMonths)
+    : null;
 
-        const resolvedDept = resolveDepartmentName(usageCode, providedUsageDept);
-        if (!resolvedDept.resolved) {
-          warningRows.push({
-            rowNum,
-            field: 'usageDept',
-            message: `예산사용처코드 ${usageCode}에 해당하는 부서명을 찾지 못했습니다.`,
-            severity: 'warning'
-          });
-        }
+  params.records.forEach((record, index) => {
+    const rowNum = index + 2;
+    const period = String(getRecordValue(record, HEADER_ALIASES.period) || '').trim();
+    const accountCode = String(getRecordValue(record, HEADER_ALIASES.accountCode) || '').trim();
+    const usageCode = String(getRecordValue(record, HEADER_ALIASES.deptCode) || '').trim();
+    const providedUsageDept = String(getRecordValue(record, HEADER_ALIASES.usageDept) || '').trim();
+    const completedVal = getRecordValue(record, HEADER_ALIASES.completed);
 
-        const uploadedAccountName = String(getRecordValue(record, HEADER_ALIASES.accountName) || '').trim();
-        const resolvedAccount = resolveAccountByCode({
-          accountCode,
-          uploadedName: uploadedAccountName,
-          year: params.year
+    if (!period || !accountCode || !usageCode) {
+      errorRows.push({ rowNum, message: '필수 항목 누락', severity: 'error' });
+      return;
+    }
+
+    const monthIndexFromPeriod = parsePeriodMonth(period);
+    const rowMonth = monthIndexFromPeriod !== null ? monthIndexFromPeriod + 1 : null;
+
+    if (isActual && normSelectedMonths) {
+      if (rowMonth === null) {
+        warningRows.push({
+          rowNum,
+          field: 'period',
+          message: `${rowNum}행: 기간 값(${period})에서 월을 판별할 수 없어 가져오기에서 제외했습니다.`,
+          severity: 'warning'
         });
+        return;
+      }
+      if (!normSelectedMonths.includes(rowMonth)) {
+        return;
+      }
+    }
 
-        if (resolvedAccount.isRegistered && resolvedAccount.nameMismatch) {
-          warningRows.push({
-            rowNum,
-            field: 'accountName',
-            message: `업로드 계정명 "${resolvedAccount.uploadedName}"이 기준 계정명 "${resolvedAccount.name}"과 다릅니다. 계정코드 ${resolvedAccount.code} 기준으로 기준 계정명을 적용했습니다.`,
-            severity: 'warning'
-          });
-        }
+    const resolvedDept = resolveDepartmentName(usageCode, providedUsageDept);
+    if (!resolvedDept.resolved) {
+      warningRows.push({
+        rowNum,
+        field: 'usageDept',
+        message: `예산사용처코드 ${usageCode}에 해당하는 부서명을 찾지 못했습니다.`,
+        severity: 'warning'
+      });
+    }
 
-        if (!resolvedAccount.isRegistered) {
-          warningRows.push({
-            rowNum,
-            field: 'accountCode',
-            message: `계정코드 ${resolvedAccount.code}는 예산 계정 선택/계정마스터에 없습니다. 실적 행은 임시로 표시하지만, 계정 코드 관리에서 정식 등록이 필요합니다.`,
-            severity: 'warning'
-          });
-        }
-
-        const monthIndexFromPeriod = parsePeriodMonth(period);
-        const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
-        const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
-
-        const sourceRowIdVal = (() => {
-          const rawId = getRecordValue(record, ['sourcerowid', 'rowid', 'uniqueid', '원천id', '원천ID', '행id', '행ID']);
-          return rawId !== undefined && rawId !== null && String(rawId).trim() !== '' ? String(rawId).trim() : undefined;
-        })();
-
-        actualRows.push({
-            id: params.existingCount + actualRows.length + 1,
-            sourceRowId: sourceRowIdVal,
-            sourceFileFingerprint: params.sourceFileFingerprint,
-            year: String(getRecordValue(record, ['연도']) || params.year),
-            period,
-            periodMonth: monthIndexFromPeriod !== null ? monthIndexFromPeriod + 1 : undefined,
-            accountCode: resolvedAccount.code,
-            accountName: resolvedAccount.name,
-            controlType: String(getRecordValue(record, HEADER_ALIASES.controlType) || '').trim() || 'D.부서',
-            usageCode,
-            usageDept: resolvedDept.name,
-            amount: parseAmount(getRecordValue(record, HEADER_ALIASES.amount)),
-            additional: parseAmount(getRecordValue(record, HEADER_ALIASES.additional)),
-            transferred: parseAmount(getRecordValue(record, HEADER_ALIASES.transferred)),
-            carriedOver: parseAmount(getRecordValue(record, HEADER_ALIASES.carriedOver)),
-            planned: parseAmount(getRecordValue(record, HEADER_ALIASES.planned)),
-            completed: parseAmount(completedVal),
-            balance: parseAmount(getRecordValue(record, ['잔액'])),
-            remarks: String(getRecordValue(record, HEADER_ALIASES.remarks) || ''),
-            uploadBatchId: params.uploadBatchId || 'batch_' + Date.now(),
-            sourceSheetName: params.sourceSheetName || 'Sheet1',
-            sourceRowNumber: rowNum,
-            documentNo,
-            documentLineNo
-        });
+    const uploadedAccountName = String(getRecordValue(record, HEADER_ALIASES.accountName) || '').trim();
+    const resolvedAccount = resolveAccountByCode({
+      accountCode,
+      uploadedName: uploadedAccountName,
+      year: params.year
     });
-    return { format: 'FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows, errorRows };
+
+    if (resolvedAccount.isRegistered && resolvedAccount.nameMismatch) {
+      warningRows.push({
+        rowNum,
+        field: 'accountName',
+        message: `업로드 계정명 "${resolvedAccount.uploadedName}"이 기준 계정명 "${resolvedAccount.name}"과 다릅니다. 계정코드 ${resolvedAccount.code} 기준으로 기준 계정명을 적용했습니다.`,
+        severity: 'warning'
+      });
+    }
+
+    if (!resolvedAccount.isRegistered) {
+      warningRows.push({
+        rowNum,
+        field: 'accountCode',
+        message: `계정코드 ${resolvedAccount.code}는 예산 계정 선택/계정마스터에 없습니다. 실적 행은 임시로 표시하지만, 계정 코드 관리에서 정식 등록이 필요합니다.`,
+        severity: 'warning'
+      });
+    }
+
+    const documentNo = String(getRecordValue(record, ['전표번호', '전표', 'documentno', 'voucherno', 'documentNo', 'voucherNo']) || '').trim() || undefined;
+    const documentLineNo = String(getRecordValue(record, ['전표행번호', '행번호', 'documentlineno', 'lineno', 'documentLineNo', 'lineNo']) || '').trim() || undefined;
+
+    const sourceRowIdVal = (() => {
+      const rawId = getRecordValue(record, ['sourcerowid', 'rowid', 'uniqueid', '원천id', '원천ID', '행id', '행ID']);
+      return rawId !== undefined && rawId !== null && String(rawId).trim() !== '' ? String(rawId).trim() : undefined;
+    })();
+
+    actualRows.push({
+      id: params.existingCount + actualRows.length + 1,
+      sourceRowId: sourceRowIdVal,
+      sourceFileFingerprint: params.sourceFileFingerprint,
+      year: String(getRecordValue(record, ['연도']) || params.year),
+      period,
+      periodMonth: monthIndexFromPeriod !== null ? monthIndexFromPeriod + 1 : undefined,
+      accountCode: resolvedAccount.code,
+      accountName: resolvedAccount.name,
+      controlType: String(getRecordValue(record, HEADER_ALIASES.controlType) || '').trim() || 'D.부서',
+      usageCode,
+      usageDept: resolvedDept.name,
+      amount: parseAmount(getRecordValue(record, HEADER_ALIASES.amount)),
+      additional: parseAmount(getRecordValue(record, HEADER_ALIASES.additional)),
+      transferred: parseAmount(getRecordValue(record, HEADER_ALIASES.transferred)),
+      carriedOver: parseAmount(getRecordValue(record, HEADER_ALIASES.carriedOver)),
+      planned: parseAmount(getRecordValue(record, HEADER_ALIASES.planned)),
+      completed: parseAmount(completedVal),
+      balance: parseAmount(getRecordValue(record, ['잔액'])),
+      remarks: String(getRecordValue(record, HEADER_ALIASES.remarks) || ''),
+      uploadBatchId: params.uploadBatchId || 'batch_' + Date.now(),
+      sourceSheetName: params.sourceSheetName || 'Sheet1',
+      sourceRowNumber: rowNum,
+      documentNo,
+      documentLineNo
+    });
+  });
+  return { format: 'FLAT', sourceRowCount: params.records.length, generatedRowCount: actualRows.length, actualRows, budgetRows: [], warningRows, errorRows };
 }
 
 export function parseBudgetAdjustmentRows(params: {
@@ -507,25 +550,56 @@ export function parseUploadRecords(params: {
   uploadBatchId?: string;
   sourceSheetName?: string;
   sourceFileFingerprint?: string;
+  selectedActualMonths?: number[];
 }): UploadParseResult {
-    // The format check is only for validation now.
-    // However, detectUploadType is used here to see if it's wide or flat.
-    const format = detectUploadType(params.headers);
-    
-    if (params.planType === '증액반영') {
-      if (format === 'MONTHLY_WIDE') {
-        return parseWideMonthlyRows(params);
-      }
-      return parseBudgetAdjustmentRows(params);
-    }
+  const isActualUpload = params.planType === '실적' || params.uploadKind === 'monthlyActual';
 
-    // We shouldn't let detectUploadType override the uploadKind saving behavior.
-    // For wide format: it behaves according to uploadKind or planType properly.
-    if (format === 'MONTHLY_WIDE') return parseWideMonthlyRows(params);
-    if (format === 'FLAT') return parseFlatRows(params);
-    
-    // Fallback if not matching specifically
-    return { format: 'UNKNOWN', sourceRowCount: params.records.length, generatedRowCount: 0, actualRows: [], budgetRows: [], warningRows: [], errorRows: [] };
+  if (isActualUpload && params.selectedActualMonths !== undefined) {
+    const normMonths = normalizeSelectedActualMonths(params.selectedActualMonths);
+    if (normMonths.length === 0) {
+      return {
+        format: detectUploadType(params.headers),
+        sourceRowCount: params.records.length,
+        generatedRowCount: 0,
+        actualRows: [],
+        budgetRows: [],
+        warningRows: [],
+        errorRows: [{
+          rowNum: 0,
+          message: '가져올 실적 월을 한 개 이상 선택해주세요.',
+          severity: 'error'
+        }]
+      };
+    }
+  }
+
+  const format = detectUploadType(params.headers);
+
+  let result: UploadParseResult;
+
+  if (params.planType === '증액반영') {
+    if (format === 'MONTHLY_WIDE') {
+      result = parseWideMonthlyRows(params);
+    } else {
+      result = parseBudgetAdjustmentRows(params);
+    }
+  } else if (format === 'MONTHLY_WIDE') {
+    result = parseWideMonthlyRows(params);
+  } else if (format === 'FLAT') {
+    result = parseFlatRows(params);
+  } else {
+    result = { format: 'UNKNOWN', sourceRowCount: params.records.length, generatedRowCount: 0, actualRows: [], budgetRows: [], warningRows: [], errorRows: [] };
+  }
+
+  if (isActualUpload && params.records.length > 0 && result.actualRows.length === 0 && result.errorRows.length === 0) {
+    result.errorRows.push({
+      rowNum: 0,
+      message: '선택한 월에 해당하는 실적 데이터가 없습니다. 파일의 기간 형식과 선택 월을 확인해주세요.',
+      severity: 'error'
+    });
+  }
+
+  return result;
 }
 
 export function findHeaderRowIndex(rows: any[][]): number {

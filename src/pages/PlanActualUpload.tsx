@@ -468,6 +468,22 @@ export default function PlanActualUpload() {
   const [uploadKind, setUploadKind] = useState<UploadKind>("");
   const [uploadTarget, setUploadTarget] = useState<'' | '실적' | '경영계획' | '증액반영' | '수정경영계획' | '1차 RP' | '2차 RP'>('');
 
+  const [selectedImportMonths, setSelectedImportMonths] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+
+  const toggleImportMonth = (m: number) => {
+    setSelectedImportMonths(prev =>
+      prev.includes(m) ? prev.filter(item => item !== m) : [...prev, m].sort((a, b) => a - b)
+    );
+  };
+
+  const selectAllImportMonths = () => {
+    setSelectedImportMonths([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  };
+
+  const deselectAllImportMonths = () => {
+    setSelectedImportMonths([]);
+  };
+
   useEffect(() => {
     if (uploadTarget === '실적') {
       setUploadKind('monthlyActual');
@@ -703,6 +719,12 @@ export default function PlanActualUpload() {
       return;
     }
 
+    if (uploadTarget === '실적' && selectedImportMonths.length === 0) {
+      setAlertModal({ isOpen: true, message: '가져올 실적 월을 한 개 이상 선택해주세요.' });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -770,6 +792,10 @@ export default function PlanActualUpload() {
       setAlertModal({ isOpen: true, message: '업로드 대상을 먼저 선택해주세요. 실적인지 경영계획 등인지 선택해야 저장 위치가 결정됩니다.' });
       return;
     }
+    if (uploadTarget === '실적' && selectedImportMonths.length === 0) {
+      setAlertModal({ isOpen: true, message: '가져올 실적 월을 한 개 이상 선택해주세요.' });
+      return;
+    }
     if (!pasteText.trim()) return;
     
     const rows = parsePastedText(pasteText);
@@ -781,6 +807,11 @@ export default function PlanActualUpload() {
     if (!uploadTarget) return; // Silent ignore for global paste if no target
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     
+    if (uploadTarget === '실적' && selectedImportMonths.length === 0) {
+      setAlertModal({ isOpen: true, message: '가져올 실적 월을 한 개 이상 선택해주세요.' });
+      return;
+    }
+
     const pasteData = e.clipboardData.getData('text');
     if (!pasteData) return;
     
@@ -858,7 +889,8 @@ export default function PlanActualUpload() {
         uploadKind: uploadKind,
         uploadBatchId,
         sourceSheetName,
-        sourceFileFingerprint: fingerprint
+        sourceFileFingerprint: fingerprint,
+        selectedActualMonths: uploadTarget === '실적' ? selectedImportMonths : undefined
     });
 
     // Check locks ONLY for affected departments
@@ -2013,6 +2045,61 @@ export default function PlanActualUpload() {
                   ? '실적DB 저장은 예산 잠금 상태와 무관하게 저장됩니다.' 
                   : '제출/승인/잠금 상태의 부서는 덮어쓸 수 없습니다.'}
               </p>
+            </div>
+          )}
+          {uploadTarget === '실적' && (
+            <div className="w-full max-w-[320px] bg-slate-50 border border-slate-200 rounded-xl p-3 text-left space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <Calendar className="w-3.5 h-3.5 text-brand-500" />
+                  <span>업로드 실적 월 선택</span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    ({selectedImportMonths.length}개 선택)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={selectAllImportMonths}
+                    className="text-brand-600 font-semibold hover:underline cursor-pointer"
+                  >
+                    전체
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={deselectAllImportMonths}
+                    className="text-slate-500 font-medium hover:underline cursor-pointer"
+                  >
+                    해제
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-6 gap-1">
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                  const isSelected = selectedImportMonths.includes(m);
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => toggleImportMonth(m)}
+                      className={`py-1 rounded text-xs font-medium border transition-all cursor-pointer text-center ${
+                        isSelected
+                          ? 'bg-brand-500 text-white border-brand-500 font-bold'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {m}월
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedImportMonths.length === 0 && (
+                <p className="text-[11px] text-red-500 font-semibold flex items-center gap-1 pt-0.5">
+                  <AlertTriangle className="w-3 h-3 shrink-0" />
+                  가져올 실적 월을 1개 이상 선택해주세요.
+                </p>
+              )}
             </div>
           )}
           <div className="flex gap-2 mt-1">
