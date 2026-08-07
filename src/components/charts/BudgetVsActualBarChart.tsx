@@ -55,7 +55,7 @@ export function BudgetVsActualBarChart({
   return (
     <ChartCard title={title} description={description} className={className} isEmpty={data.length === 0}>
       <div className="relative w-full h-[260px] min-h-[260px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
           <BarChart
             data={data}
             margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
