@@ -12,6 +12,8 @@ import { AppCard } from '../components/ui/AppCard';
 import { AppButton } from '../components/ui/AppButton';
 import { OperationStorage, RawMaterialLedgerRecord } from '../lib/operation/operationStorage';
 import { ExchangeRateStorage, getSafeExchangeRate, formatExchangeRateLabel } from '../lib/operation/exchangeRateStorage';
+import { RawMaterialAssayEditor } from '../components/rawMaterial/RawMaterialAssayEditor';
+import { RawMaterialAssayStorage } from '../lib/operation/rawMaterialAssayStorage';
 
 function formatKRWMillion(valueKRW: number): string {
   if (!Number.isFinite(valueKRW) || valueKRW === 0) return '-';
@@ -209,7 +211,16 @@ export default function RawMaterialStatus() {
     return Object.values(aggregated);
   };
 
-  const SUMMARY_GROUPS = ['BP', 'BM', 'WET', 'LCO'];
+  const [expandedAssayItems, setExpandedAssayItems] = useState<Record<string, boolean>>({});
+
+  const toggleAssayItem = (code: string) => {
+    setExpandedAssayItems(prev => ({
+      ...prev,
+      [code]: !prev[code]
+    }));
+  };
+
+  const SUMMARY_GROUPS = ['BP', 'BM', 'LCO', 'WET', '기타'];
   const summaryRows = SUMMARY_GROUPS.map(g => groupSummaries[g]).filter(Boolean);
 
   return (
@@ -458,37 +469,77 @@ export default function RawMaterialStatus() {
                               const subIssueRate = subAvailQty > 0 ? (sub.issueQty / subAvailQty) * 100 : 0;
 
                               return (
-                                <tr key={`${row.group}_sub_${sub.rawItemCode}`} className="bg-zinc-50/50 hover:bg-zinc-100/80 divide-x divide-[#eef2ec] transition-colors">
-                                  {/* Sub-item Header */}
-                                  <td className="px-6 py-2.5 text-left font-sans text-[11px] text-zinc-650 max-w-[220px] truncate" title={`${sub.rawItemCode} - ${sub.rawItemName}`}>
-                                    <span className="text-zinc-400 mr-2 font-mono">└─</span>
-                                    <span className="font-bold text-zinc-900 font-mono">{sub.rawItemCode}</span>
-                                    <span className="block text-[10px] text-zinc-500 font-normal truncate pl-5 mt-0.5">{sub.rawItemName}</span>
-                                  </td>
+                                <React.Fragment key={`${row.group}_sub_${sub.rawItemCode}`}>
+                                  <tr 
+                                    onClick={() => toggleAssayItem(sub.rawItemCode)}
+                                    className="bg-zinc-50/50 hover:bg-zinc-100/80 divide-x divide-[#eef2ec] transition-colors cursor-pointer"
+                                  >
+                                    {/* Sub-item Header */}
+                                    <td className="px-6 py-2.5 text-left font-sans text-[11px] text-zinc-650 max-w-[220px] truncate" title={`${sub.rawItemCode} - ${sub.rawItemName}`}>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-zinc-400 font-mono">
+                                          {expandedAssayItems[sub.rawItemCode] ? '▼' : '▶'}
+                                        </span>
+                                        <span className="font-bold text-zinc-900 font-mono">{sub.rawItemCode}</span>
+                                        {(() => {
+                                          const monthNum = activeMonth === 'all' ? 5 : Number(activeMonth);
+                                          const assay = RawMaterialAssayStorage.getAssay(activeYear, monthNum, sub.rawItemCode);
+                                          const hasAssay = assay && (assay.majorMetals.niPct !== undefined || assay.majorMetals.coPct !== undefined);
+                                          return hasAssay ? (
+                                            <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.2 rounded font-bold">
+                                              성분입력 ✓
+                                            </span>
+                                          ) : (
+                                            <span className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.2 rounded font-bold">
+                                              성분미등록
+                                            </span>
+                                          );
+                                        })()}
+                                      </div>
+                                      <span className="block text-[10px] text-zinc-500 font-normal truncate pl-5 mt-0.5">{sub.rawItemName}</span>
+                                    </td>
 
-                                  {/* Beginning */}
-                                  <td className="px-3 py-2.5 text-right text-zinc-605 text-[11px]">{sub.beginningQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                                  <td className="px-3 py-2.5 text-right text-zinc-500 text-[11px]">{formatFinancialValue(sub.beginningAmount)}</td>
-                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px]">{formatUnitPrice(subBegPrice)}</td>
+                                    {/* Beginning */}
+                                    <td className="px-3 py-2.5 text-right text-zinc-605 text-[11px]">{sub.beginningQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-3 py-2.5 text-right text-zinc-500 text-[11px]">{formatFinancialValue(sub.beginningAmount)}</td>
+                                    <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px]">{formatUnitPrice(subBegPrice)}</td>
 
-                                  {/* Purchase / Receipts */}
-                                  <td className="px-3 py-2.5 text-right text-teal-800 font-medium text-[11px] bg-teal-5/10">{sub.purchaseQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                                  <td className="px-3 py-2.5 text-right text-teal-700 text-[11px] bg-teal-5/10">{formatFinancialValue(sub.purchaseAmount)}</td>
-                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-teal-5/10">{formatUnitPrice(subPurPrice)}</td>
+                                    {/* Purchase / Receipts */}
+                                    <td className="px-3 py-2.5 text-right text-teal-800 font-medium text-[11px] bg-teal-5/10">{sub.purchaseQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-3 py-2.5 text-right text-teal-700 text-[11px] bg-teal-5/10">{formatFinancialValue(sub.purchaseAmount)}</td>
+                                    <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-teal-5/10">{formatUnitPrice(subPurPrice)}</td>
 
-                                  {/* Issues */}
-                                  <td className="px-3 py-2.5 text-right text-amber-800 font-medium text-[11px] bg-amber-5/10">{sub.issueQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                                  <td className="px-3 py-2.5 text-right text-amber-700 text-[11px] bg-amber-5/10">{formatFinancialValue(sub.issueAmount)}</td>
-                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-amber-5/10">{formatUnitPrice(subIssPrice)}</td>
-                                  <td className="px-3 py-2.5 text-center text-zinc-450 text-[10px] bg-amber-5/10 font-sans">
-                                    {subAvailQty > 0 ? `${subIssueRate.toFixed(1)}%` : '-'}
-                                  </td>
+                                    {/* Issues */}
+                                    <td className="px-3 py-2.5 text-right text-amber-800 font-medium text-[11px] bg-amber-5/10">{sub.issueQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-3 py-2.5 text-right text-amber-700 text-[11px] bg-amber-5/10">{formatFinancialValue(sub.issueAmount)}</td>
+                                    <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-amber-5/10">{formatUnitPrice(subIssPrice)}</td>
+                                    <td className="px-3 py-2.5 text-center text-zinc-450 text-[10px] bg-amber-5/10 font-sans">
+                                      {subAvailQty > 0 ? `${subIssueRate.toFixed(1)}%` : '-'}
+                                    </td>
 
-                                  {/* Ending */}
-                                  <td className="px-3 py-2.5 text-right text-zinc-900 font-bold text-[11px] bg-indigo-5/10">{sub.endingQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                                  <td className="px-3 py-2.5 text-right text-indigo-850 text-[11px] bg-indigo-5/10">{formatFinancialValue(sub.endingAmount)}</td>
-                                  <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-indigo-5/10">{formatUnitPrice(subEndPrice)}</td>
-                                </tr>
+                                    {/* Ending */}
+                                    <td className="px-3 py-2.5 text-right text-zinc-900 font-bold text-[11px] bg-indigo-5/10">{sub.endingQty.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                    <td className="px-3 py-2.5 text-right text-indigo-850 text-[11px] bg-indigo-5/10">{formatFinancialValue(sub.endingAmount)}</td>
+                                    <td className="px-3 py-2.5 text-right text-zinc-400 text-[9.5px] bg-indigo-5/10">{formatUnitPrice(subEndPrice)}</td>
+                                  </tr>
+
+                                  {expandedAssayItems[sub.rawItemCode] && (
+                                    <tr>
+                                      <td colSpan={13} className="px-6 py-2 bg-slate-100/90 border-b border-slate-200">
+                                        <RawMaterialAssayEditor
+                                          year={activeYear}
+                                          month={activeMonth === 'all' ? 5 : Number(activeMonth)}
+                                          rawItemCode={sub.rawItemCode}
+                                          rawItemName={sub.rawItemName}
+                                          onSaved={() => {
+                                            // trigger re-render
+                                            setRealMaterials([...realMaterials]);
+                                          }}
+                                        />
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
                               );
                             })
                           ) : (

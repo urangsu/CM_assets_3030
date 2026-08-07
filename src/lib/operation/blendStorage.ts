@@ -1,3 +1,5 @@
+import { BOM_TEMPLATE_V1 } from './bomTemplate';
+
 export interface BlendMaterialLine {
   id: string;
   selected: boolean;
@@ -8,6 +10,11 @@ export interface BlendMaterialLine {
   // Ledger unit price reference (Million KRW / ton)
   ledgerUnitPrice: number;
   ledgerPriceMonth?: number;
+  ledgerPrices?: {
+    issue?: number;
+    ending?: number;
+    purchase?: number;
+  };
   priceType: 'ISSUE' | 'ENDING' | 'PURCHASE' | 'CUSTOM';
   customUnitPrice?: number; // Override unit price in million KRW / ton
   
@@ -31,6 +38,9 @@ export interface BlendMaterialLine {
   pbPct?: number;
   dcPct?: number;
   moisturePct?: number; // 수분 %
+
+  hasAssay?: boolean;
+  assayUpdatedAt?: string;
 }
 
 export interface MetalAssumption {
@@ -59,13 +69,15 @@ export interface BomItem {
   name: string;
   itemName?: string;
   coefficients?: {
-    NI?: number;
-    CO?: number;
-    LC?: number;
-    MN?: number;
-    CU?: number;
+    NI?: number | null;
+    CO?: number | null;
+    LC?: number | null;
+    MN?: number | null;
+    CU?: number | null;
   };
   unit: string; // kg, L, Nm3, kWh, t
+  usageMode?: 'AUTO' | 'MANUAL';
+  manualUsageQty?: number;
   usageQty?: number; // 사용량
   unitPrice: number; // 단가 (원)
   costAmount?: number; // 재료비 (원)
@@ -88,6 +100,12 @@ export interface BlendScenario {
   priceBasis: 'ISSUE' | 'ENDING' | 'PURCHASE'; // 공정불출단가 (default), 기말재고단가, 구매단가
   exchangeRate: number; // e.g. 1350 KRW/USD
   
+  ledgerSource?: {
+    year: string;
+    month: number;
+    loadedAt: string;
+  };
+
   rawMaterialLines: BlendMaterialLine[];
   metalAssumptions: MetalAssumption[];
   bomSnapshot: BomSnapshot;
@@ -111,7 +129,7 @@ export const DEFAULT_METAL_ASSUMPTIONS: MetalAssumption[] = [
     premiumMode: 'RATE',
     premiumRatePct: 0,
     premiumUnitAmount: 0,
-    recoveryRatePct: 98.5
+    recoveryRatePct: 98.0
   },
   {
     metal: 'CO',
@@ -122,7 +140,7 @@ export const DEFAULT_METAL_ASSUMPTIONS: MetalAssumption[] = [
     premiumMode: 'RATE',
     premiumRatePct: 0,
     premiumUnitAmount: 0,
-    recoveryRatePct: 97.5
+    recoveryRatePct: 97.0
   },
   {
     metal: 'LC',
@@ -133,7 +151,7 @@ export const DEFAULT_METAL_ASSUMPTIONS: MetalAssumption[] = [
     premiumMode: 'RATE',
     premiumRatePct: 0,
     premiumUnitAmount: 0,
-    recoveryRatePct: 95.0
+    recoveryRatePct: 92.0
   },
   {
     metal: 'MN',
@@ -144,7 +162,7 @@ export const DEFAULT_METAL_ASSUMPTIONS: MetalAssumption[] = [
     premiumMode: 'RATE',
     premiumRatePct: 0,
     premiumUnitAmount: 0,
-    recoveryRatePct: 96.0
+    recoveryRatePct: 69.0
   },
   {
     metal: 'CU',
@@ -155,11 +173,20 @@ export const DEFAULT_METAL_ASSUMPTIONS: MetalAssumption[] = [
     premiumMode: 'RATE',
     premiumRatePct: 0,
     premiumUnitAmount: 0,
-    recoveryRatePct: 95.0
+    recoveryRatePct: 89.0
   }
 ];
 
-export const DEFAULT_BOM_ITEMS: BomItem[] = [];
+export const DEFAULT_BOM_ITEMS: BomItem[] = BOM_TEMPLATE_V1.map((item, idx) => ({
+  id: `bom_item_${idx + 1}`,
+  category: item.category,
+  name: item.itemName,
+  itemName: item.itemName,
+  unit: item.unit,
+  coefficients: item.coefficients,
+  unitPrice: item.unitPrice,
+  usageMode: 'AUTO'
+}));
 
 export const DEFAULT_RAW_MATERIAL_LINES: BlendMaterialLine[] = [];
 

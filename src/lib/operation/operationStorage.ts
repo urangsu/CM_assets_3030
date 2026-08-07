@@ -76,6 +76,7 @@ export interface RawMaterialLedgerRecord {
   endingUnitPrice: number;
 
   uploadedAt: string;
+  uploadBatchId?: string;
 
   // Backward-compatibility attributes
   rawMaterialName?: string;
@@ -217,15 +218,17 @@ export const OperationStorage = {
     }
   },
 
-  addUploadHistory(history: Omit<OperationUploadHistory, 'id' | 'uploadedAt'>): void {
+  addUploadHistory(history: Omit<OperationUploadHistory, 'id' | 'uploadedAt'>): string {
     const list = this.getUploadHistory();
+    const batchId = 'batch_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
     const newItem: OperationUploadHistory = {
       ...history,
-      id: 'batch_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+      id: batchId,
       uploadedAt: new Date().toISOString()
     };
     // Keep all upload batches in history list (do not overwrite previous upload logs)
     localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify([newItem, ...list]));
+    return batchId;
   },
 
   deleteUploadHistoryOnly(id: string): void {
@@ -242,9 +245,27 @@ export const OperationStorage = {
     const itemToDelete = list.find(l => l.id === id);
     if (itemToDelete) {
       if (itemToDelete.type === 'product') {
-        this.deleteProductRecordsForMonth(itemToDelete.year, itemToDelete.month);
+        const records = this.getProductRecords(itemToDelete.year);
+        const filtered = records.filter(r => (r as any).uploadBatchId !== id);
+        // If no uploadBatchId on old records, fallback to month removal if batchId not present on any record
+        const hasBatchIdMatch = records.some(r => (r as any).uploadBatchId === id);
+        if (hasBatchIdMatch) {
+          localStorage.setItem(this.getProductLedgerKey(itemToDelete.year), JSON.stringify(filtered));
+        } else {
+          this.deleteProductRecordsForMonth(itemToDelete.year, itemToDelete.month);
+        }
       } else {
-        this.deleteRawMaterialRecordsForMonth(itemToDelete.year, itemToDelete.month);
+        const records = this.getRawMaterialRecords(itemToDelete.year);
+        const hasBatchIdMatch = records.some(r => r.uploadBatchId === id);
+        if (hasBatchIdMatch) {
+          const filtered = records.filter(r => r.uploadBatchId !== id);
+          localStorage.setItem(this.getRawMaterialLedgerKey(itemToDelete.year), JSON.stringify(filtered));
+        } else {
+          this.deleteRawMaterialRecordsForMonth(itemToDelete.year, itemToDelete.month);
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('operation-ledger-changed'));
       }
     }
     this.deleteUploadHistoryOnly(id);

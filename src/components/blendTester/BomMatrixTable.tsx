@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { BomItem } from '../../lib/operation/blendStorage';
+import { BomItem, DEFAULT_BOM_ITEMS } from '../../lib/operation/blendStorage';
 import { parseBomMatrixPasteText } from '../../lib/operation/bomMatrixParser';
 import { ComputedBomItemResult } from '../../lib/operation/blendEngine';
-import { Clipboard, Plus, Trash2 } from 'lucide-react';
+import { Clipboard, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface BomMatrixTableProps {
   items: BomItem[];
@@ -19,6 +19,7 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
 }) => {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [showMinorMetals, setShowMinorMetals] = useState(false); // Collapsible Mn/Cu
 
   const displayItems = computedItems || items.map(i => ({
     id: i.id,
@@ -33,6 +34,12 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
     variableCostPerTon: i.variableCostPerTon || 0
   }));
 
+  const handleResetToStandard = () => {
+    if (confirm('BOM 설정을 표준 템플릿으로 초기화하시겠습니까? (현재 변경사항은 초기화됩니다)')) {
+      onItemsChange(DEFAULT_BOM_ITEMS);
+    }
+  };
+
   const handlePasteSubmit = () => {
     if (!pasteText.trim()) return;
     const parsed = parseBomMatrixPasteText(pasteText);
@@ -44,7 +51,8 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
         itemName: m.itemName,
         unit: m.unit,
         coefficients: m.coefficients,
-        unitPrice: m.unitPrice
+        unitPrice: m.unitPrice,
+        usageMode: 'AUTO'
       }));
       onItemsChange(convertedItems);
     }
@@ -60,7 +68,8 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
       itemName: '새 BOM 품목',
       unit: 'kg',
       coefficients: {},
-      unitPrice: 0
+      unitPrice: 0,
+      usageMode: 'AUTO'
     };
     onItemsChange([...items, newItem]);
   };
@@ -90,11 +99,30 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
   return (
     <div className="space-y-4">
       {/* Header Actions */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-600">
-          제품별 BOM 원단위 Matrix ({items.length}개 항목)
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-slate-800">
+            제품별 BOM 원단위 Matrix ({items.length}개 항목)
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowMinorMetals(!showMinorMetals)}
+            className="text-xs px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-semibold flex items-center gap-1"
+          >
+            {showMinorMetals ? <ChevronLeft className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            <span>{showMinorMetals ? '마이너 금속 접기 (Mn, Cu)' : '마이너 금속 펼치기 (Mn, Cu)'}</span>
+          </button>
         </div>
+
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleResetToStandard}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 text-xs font-semibold rounded transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            표준 BOM 템플릿 복원
+          </button>
           <button
             type="button"
             onClick={() => setShowPasteModal(true)}
@@ -124,10 +152,11 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
               <th className="p-2 text-center w-14">니켈</th>
               <th className="p-2 text-center w-14">코발트</th>
               <th className="p-2 text-center w-14">탄산리튬</th>
-              <th className="p-2 text-center w-14">망간</th>
-              <th className="p-2 text-center w-14">구리</th>
+              {showMinorMetals && <th className="p-2 text-center w-14">망간</th>}
+              {showMinorMetals && <th className="p-2 text-center w-14">구리</th>}
               <th className="p-2 text-center w-12">단위</th>
-              <th className="p-2 text-right w-20">사용량</th>
+              <th className="p-2 text-center w-20">계산모드</th>
+              <th className="p-2 text-right w-24">사용량</th>
               <th className="p-2 text-right w-24">단가(원)</th>
               <th className="p-2 text-right w-28">재료비(원)</th>
               <th className="p-2 text-right w-20">원단위</th>
@@ -138,7 +167,7 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
           <tbody className="divide-y divide-slate-200">
             {displayItems.length === 0 ? (
               <tr>
-                <td colSpan={14} className="p-8 text-center text-slate-400">
+                <td colSpan={showMinorMetals ? 15 : 13} className="p-8 text-center text-slate-400">
                   BOM 데이터가 없습니다. 상단 'Excel Matrix 붙여넣기' 또는 '행 추가'를 이용하세요.
                 </td>
               </tr>
@@ -146,6 +175,7 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
               displayItems.map((item, idx) => {
                 const sourceItem = items.find(i => i.id === item.id) || (item as any);
                 const coeffs = sourceItem.coefficients || item.coefficients || {};
+                const isManual = sourceItem.usageMode === 'MANUAL';
 
                 return (
                   <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
@@ -202,26 +232,30 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
                         step="0.001"
                       />
                     </td>
-                    <td className="p-2 text-center">
-                      <input
-                        type="number"
-                        value={coeffs.MN ?? ''}
-                        placeholder="-"
-                        onChange={e => handleItemFieldChange(item.id, 'coeff.MN', e.target.value)}
-                        className="w-12 p-1 text-center border border-slate-200 rounded font-mono text-xs"
-                        step="0.001"
-                      />
-                    </td>
-                    <td className="p-2 text-center">
-                      <input
-                        type="number"
-                        value={coeffs.CU ?? ''}
-                        placeholder="-"
-                        onChange={e => handleItemFieldChange(item.id, 'coeff.CU', e.target.value)}
-                        className="w-12 p-1 text-center border border-slate-200 rounded font-mono text-xs"
-                        step="0.001"
-                      />
-                    </td>
+                    {showMinorMetals && (
+                      <td className="p-2 text-center">
+                        <input
+                          type="number"
+                          value={coeffs.MN ?? ''}
+                          placeholder="-"
+                          onChange={e => handleItemFieldChange(item.id, 'coeff.MN', e.target.value)}
+                          className="w-12 p-1 text-center border border-slate-200 rounded font-mono text-xs"
+                          step="0.001"
+                        />
+                      </td>
+                    )}
+                    {showMinorMetals && (
+                      <td className="p-2 text-center">
+                        <input
+                          type="number"
+                          value={coeffs.CU ?? ''}
+                          placeholder="-"
+                          onChange={e => handleItemFieldChange(item.id, 'coeff.CU', e.target.value)}
+                          className="w-12 p-1 text-center border border-slate-200 rounded font-mono text-xs"
+                          step="0.001"
+                        />
+                      </td>
+                    )}
                     <td className="p-2 text-center">
                       <input
                         type="text"
@@ -230,8 +264,29 @@ export const BomMatrixTable: React.FC<BomMatrixTableProps> = ({
                         className="w-12 p-1 text-center border border-slate-200 rounded text-xs font-mono"
                       />
                     </td>
-                    <td className="p-2 text-right font-mono text-slate-800">
-                      {Math.round(item.usageQty || 0).toLocaleString()}
+                    <td className="p-2 text-center">
+                      <select
+                        value={sourceItem.usageMode || 'AUTO'}
+                        onChange={e => handleItemFieldChange(item.id, 'usageMode', e.target.value)}
+                        className={`p-1 border rounded text-[11px] font-bold ${
+                          isManual ? 'bg-purple-50 text-purple-800 border-purple-300' : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <option value="AUTO">AUTO</option>
+                        <option value="MANUAL">수동</option>
+                      </select>
+                    </td>
+                    <td className="p-2 text-right font-mono">
+                      {isManual ? (
+                        <input
+                          type="number"
+                          value={sourceItem.manualUsageQty ?? 0}
+                          onChange={e => handleItemFieldChange(item.id, 'manualUsageQty', Number(e.target.value))}
+                          className="w-20 p-1 text-right border border-purple-300 bg-purple-50/50 rounded font-mono text-xs text-purple-900 font-bold"
+                        />
+                      ) : (
+                        <span className="text-slate-800 font-semibold">{Math.round(item.usageQty || 0).toLocaleString()}</span>
+                      )}
                     </td>
                     <td className="p-2 text-right font-mono">
                       <input

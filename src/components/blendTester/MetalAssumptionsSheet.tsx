@@ -1,7 +1,8 @@
 import React from 'react';
 import { BlendScenario, MetalAssumption } from '../../lib/operation/blendStorage';
 import { BlendCalculationResult } from '../../lib/operation/blendEngine';
-import { DollarSign, TrendingUp, Percent, ArrowUpDown } from 'lucide-react';
+import { MetalMarketPriceStorage } from '../../lib/operation/metalMarketPriceStorage';
+import { DollarSign, TrendingUp, Percent, ArrowUpDown, RefreshCw } from 'lucide-react';
 
 interface Props {
   scenario: BlendScenario;
@@ -10,6 +11,31 @@ interface Props {
 }
 
 export const MetalAssumptionsSheet: React.FC<Props> = ({ scenario, calculation, onChangeScenario }) => {
+  const handleLoadMarketPrices = () => {
+    const marketPrices = MetalMarketPriceStorage.getMarketPriceForMonth(scenario.year, scenario.month);
+    if (!marketPrices) {
+      alert(`${scenario.year}년 ${scenario.month}월 설정된 마스터 금속 시세가 없습니다. [운영 설정] 메뉴에서 먼저 시세를 설정하십시오.`);
+      return;
+    }
+
+    const updatedAssumptions = scenario.metalAssumptions.map(a => {
+      const price = marketPrices.values[a.metal] ?? a.marketPrice;
+      const recovery = marketPrices.recoveryRates?.[a.metal] ?? a.recoveryRatePct;
+      return {
+        ...a,
+        marketPrice: price,
+        recoveryRatePct: recovery
+      };
+    });
+
+    onChangeScenario({
+      ...scenario,
+      metalAssumptions: updatedAssumptions,
+      isDirty: true
+    });
+    alert(`[완료] ${scenario.year}년 ${scenario.month}월 마스터 금속 시세 및 회수율을 시나리오에 적용하였습니다.`);
+  };
+
   const handleUpdateAssumption = (metal: 'NI' | 'CO' | 'LC' | 'MN' | 'CU', updates: Partial<MetalAssumption>) => {
     const updatedAssumptions = scenario.metalAssumptions.map(a => {
       if (a.metal === metal) {
@@ -52,8 +78,18 @@ export const MetalAssumptionsSheet: React.FC<Props> = ({ scenario, calculation, 
           </div>
         </div>
 
-        <div className="text-zinc-600 text-[11px]">
-          ※ 시장가격(LME/Spot)에 프리미엄/디스카운트를 반영하여 최종 매각단가 및 예상 매출액을 산출합니다.
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleLoadMarketPrices}
+            className="flex items-center gap-1.5 px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded font-bold text-xs transition"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {scenario.month}월 마스터 시세 불러오기
+          </button>
+          <div className="text-zinc-600 text-[11px]">
+            ※ 시장가격(LME/Spot)에 프리미엄/디스카운트를 반영하여 최종 매각단가 및 예상 매출액을 산출합니다.
+          </div>
         </div>
       </div>
 

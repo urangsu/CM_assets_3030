@@ -476,15 +476,17 @@ export default function OperationUpload() {
 
     try {
       const recordsToSave = rawValidationResult.records;
-      OperationStorage.saveRawMaterialRecords(year, month, recordsToSave);
-      
-      OperationStorage.addUploadHistory({
+
+      const batchId = OperationStorage.addUploadHistory({
         year,
         month,
         type: 'raw_material',
         fileName: file ? file.name : `${year}년 ${month}월 원자재 복사입력`,
         rowLength: recordsToSave.length
       });
+
+      const recordsWithBatch = recordsToSave.map(r => ({ ...r, uploadBatchId: batchId }));
+      OperationStorage.saveRawMaterialRecords(year, month, recordsWithBatch);
 
       let alertMsg = `[완료] ${year}년 ${month}월 원자재 수불 데이터(${recordsToSave.length}품목)가 정상적으로 반영되었습니다.`;
       if (rawValidationResult.warningCount > 0) {

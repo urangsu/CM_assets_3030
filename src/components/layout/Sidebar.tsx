@@ -209,7 +209,8 @@ const NAV_GROUPS_DEF: NavGroup[] = [
       { id: 'product-status', label: '제품 수불 현황', icon: 'list', href: '/product-status' },
       { id: 'raw-material-status', label: '원자재 수불 현황', icon: 'cube', href: '/raw-material-status' },
       { id: 'blend-tester', label: '배합테스터', icon: 'cube', href: '/blend-tester', badge: '신규' },
-      { id: 'operation-upload', label: '운영 업로드', icon: 'upload', href: '/operation-upload' }
+      { id: 'operation-upload', label: '운영 업로드', icon: 'upload', href: '/operation-upload' },
+      { id: 'operation-settings', label: '운영 설정', icon: 'settings', href: '/operation-settings' }
     ]
   },
   {

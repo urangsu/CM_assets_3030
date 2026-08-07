@@ -199,7 +199,7 @@ export function calculateBlendResult(scenario: BlendScenario): BlendCalculationR
   metalAssumptions.forEach(ass => {
     const avgPct = metalMap[ass.metal] || 0;
     const inputMetalTon = totalInputTon * (avgPct / 100);
-    const recoveryRatePct = ass.recoveryRatePct || 95.0;
+    const recoveryRatePct = ass.recoveryRatePct ?? 95.0;
     const recoveredMetalTon = inputMetalTon * (recoveryRatePct / 100);
 
     // Finished product conversion (e.g. Li metal / 18.75% = Carbonate Lithium ton)
@@ -207,9 +207,9 @@ export function calculateBlendResult(scenario: BlendScenario): BlendCalculationR
     productionByMetal[ass.metal] = expectedProductTon;
     totalProductionTon += expectedProductTon;
 
-    const marketPriceUsd = ass.marketPrice || 0;
-    let premiumRatePct = ass.premiumRatePct || 0;
-    let premiumUnitAmountUsd = ass.premiumUnitAmount || 0;
+    const marketPriceUsd = ass.marketPrice ?? 0;
+    let premiumRatePct = ass.premiumRatePct ?? 0;
+    let premiumUnitAmountUsd = ass.premiumUnitAmount ?? 0;
 
     if (ass.premiumMode === 'RATE') {
       premiumUnitAmountUsd = marketPriceUsd * (premiumRatePct / 100);
@@ -219,10 +219,11 @@ export function calculateBlendResult(scenario: BlendScenario): BlendCalculationR
 
     const appliedPriceUsd = marketPriceUsd + premiumUnitAmountUsd;
     const totalPremiumEffectUsd = premiumUnitAmountUsd * expectedProductTon;
-    const appliedPriceKrw = appliedPriceUsd * (scenario.exchangeRate || 1350);
+    const exchangeRate = scenario.exchangeRate ?? 1350;
+    const appliedPriceKrw = appliedPriceUsd * exchangeRate;
 
     const revenueUsd = expectedProductTon * appliedPriceUsd;
-    const revenueKrw = revenueUsd * (scenario.exchangeRate || 1350);
+    const revenueKrw = revenueUsd * exchangeRate;
 
     metalResults.push({
       metal: ass.metal,
@@ -260,16 +261,19 @@ export function calculateBlendResult(scenario: BlendScenario): BlendCalculationR
     };
 
     let computedUsage = 0;
-
-    const hasMatrixCoeffs = coeffs.NI || coeffs.CO || coeffs.LC || coeffs.MN || coeffs.CU;
-    if (hasMatrixCoeffs) {
-      computedUsage += (productionByMetal.NI * (coeffs.NI || 0));
-      computedUsage += (productionByMetal.CO * (coeffs.CO || 0));
-      computedUsage += (productionByMetal.LC * (coeffs.LC || 0));
-      computedUsage += (productionByMetal.MN * (coeffs.MN || 0));
-      computedUsage += (productionByMetal.CU * (coeffs.CU || 0));
+    if (item.usageMode === 'MANUAL' && item.manualUsageQty !== undefined) {
+      computedUsage = item.manualUsageQty;
     } else {
-      computedUsage = item.usageQty || 0;
+      const hasMatrixCoeffs = coeffs.NI != null || coeffs.CO != null || coeffs.LC != null || coeffs.MN != null || coeffs.CU != null;
+      if (hasMatrixCoeffs) {
+        computedUsage += (productionByMetal.NI * (coeffs.NI ?? 0));
+        computedUsage += (productionByMetal.CO * (coeffs.CO ?? 0));
+        computedUsage += (productionByMetal.LC * (coeffs.LC ?? 0));
+        computedUsage += (productionByMetal.MN * (coeffs.MN ?? 0));
+        computedUsage += (productionByMetal.CU * (coeffs.CU ?? 0));
+      } else {
+        computedUsage = item.usageQty ?? 0;
+      }
     }
 
     const unitPrice = item.unitPrice || 0;
