@@ -130,14 +130,18 @@ export const OperationStorage = {
     localStorage.setItem(this.getProductLedgerKey(year), JSON.stringify(combined));
 
     // Dispatch change event
-    window.dispatchEvent(new Event('operation-ledger-changed'));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('operation-ledger-changed'));
+    }
   },
 
   deleteProductRecordsForMonth(year: string, month: number): void {
     const records = this.getProductRecords(year);
     const filtered = records.filter(r => !(Number(r.month) === Number(month)));
     localStorage.setItem(this.getProductLedgerKey(year), JSON.stringify(filtered));
-    window.dispatchEvent(new Event('operation-ledger-changed'));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('operation-ledger-changed'));
+    }
   },
 
   // --- Raw Material Ledger ---
@@ -156,20 +160,50 @@ export const OperationStorage = {
     }
   },
 
-  saveRawMaterialRecords(year: string, month: number, newRecords: RawMaterialLedgerRecord[]): void {
+  saveRawMaterialRecords(
+    year: string,
+    month: number,
+    newRecords: RawMaterialLedgerRecord[],
+    mode: 'upsert' | 'replace_month' = 'upsert'
+  ): void {
     const records = this.getRawMaterialRecords(year);
-    const filtered = records.filter(r => !(Number(r.month) === Number(month)));
-    const combined = [...filtered, ...newRecords];
-    localStorage.setItem(this.getRawMaterialLedgerKey(year), JSON.stringify(combined));
+    let updatedRecords: RawMaterialLedgerRecord[] = [];
 
-    window.dispatchEvent(new Event('operation-ledger-changed'));
+    if (mode === 'replace_month') {
+      const otherMonths = records.filter(r => !(Number(r.month) === Number(month)));
+      updatedRecords = [...otherMonths, ...newRecords];
+    } else {
+      // Upsert mode: match by rawItemCode or id
+      const otherMonths = records.filter(r => Number(r.month) !== Number(month));
+      const currentMonthRecords = records.filter(r => Number(r.month) === Number(month));
+
+      const updatedMonthRecords = [...currentMonthRecords];
+      for (const newRec of newRecords) {
+        const existingIdx = updatedMonthRecords.findIndex(
+          r => r.rawItemCode === newRec.rawItemCode || r.id === newRec.id
+        );
+        if (existingIdx >= 0) {
+          updatedMonthRecords[existingIdx] = newRec;
+        } else {
+          updatedMonthRecords.push(newRec);
+        }
+      }
+      updatedRecords = [...otherMonths, ...updatedMonthRecords];
+    }
+
+    localStorage.setItem(this.getRawMaterialLedgerKey(year), JSON.stringify(updatedRecords));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('operation-ledger-changed'));
+    }
   },
 
   deleteRawMaterialRecordsForMonth(year: string, month: number): void {
     const records = this.getRawMaterialRecords(year);
     const filtered = records.filter(r => !(Number(r.month) === Number(month)));
     localStorage.setItem(this.getRawMaterialLedgerKey(year), JSON.stringify(filtered));
-    window.dispatchEvent(new Event('operation-ledger-changed'));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('operation-ledger-changed'));
+    }
   },
 
   // --- Upload History ---
@@ -187,15 +221,23 @@ export const OperationStorage = {
     const list = this.getUploadHistory();
     const newItem: OperationUploadHistory = {
       ...history,
-      id: Math.random().toString(36).substring(2, 9),
+      id: 'batch_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
       uploadedAt: new Date().toISOString()
     };
-    // Keep it ordered by newest first, overwrite if identical year/month/type
-    const filtered = list.filter(item => !(item.year === history.year && Number(item.month) === Number(history.month) && item.type === history.type));
-    localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify([newItem, ...filtered]));
+    // Keep all upload batches in history list (do not overwrite previous upload logs)
+    localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify([newItem, ...list]));
   },
 
-  deleteUploadHistory(id: string): void {
+  deleteUploadHistoryOnly(id: string): void {
+    const list = this.getUploadHistory();
+    const filtered = list.filter(item => item.id !== id);
+    localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify(filtered));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('operation-ledger-changed'));
+    }
+  },
+
+  revertUploadBatch(id: string): void {
     const list = this.getUploadHistory();
     const itemToDelete = list.find(l => l.id === id);
     if (itemToDelete) {
@@ -205,7 +247,10 @@ export const OperationStorage = {
         this.deleteRawMaterialRecordsForMonth(itemToDelete.year, itemToDelete.month);
       }
     }
-    const filtered = list.filter(item => item.id !== id);
-    localStorage.setItem(UPLOAD_HISTORY_KEY, JSON.stringify(filtered));
+    this.deleteUploadHistoryOnly(id);
+  },
+
+  deleteUploadHistory(id: string): void {
+    this.revertUploadBatch(id);
   }
 };

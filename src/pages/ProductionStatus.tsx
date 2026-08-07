@@ -146,7 +146,7 @@ export default function ProductionStatus() {
 
   // Convert and Format Currency
   const getExchangeRate = (mNum?: number) => {
-    const month = mNum || (activeMonth === 'all' ? 5 : Number(activeMonth));
+    const month = mNum || (activeMonth === 'all' ? (new Date().getMonth() + 1) : Number(activeMonth));
     return getSafeExchangeRate(activeYear, month);
   };
 

@@ -64,7 +64,7 @@ export default function RawMaterialStatus() {
   };
 
   const currentExchangeRate = () => {
-    const m = activeMonth === 'all' ? 5 : Number(activeMonth);
+    const m = activeMonth === 'all' ? (new Date().getMonth() + 1) : Number(activeMonth);
     return getSafeExchangeRate(activeYear, m);
   };
 

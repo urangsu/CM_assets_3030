@@ -397,66 +397,79 @@ export default function OperationDashboard() {
 
   // Set initial rate input value
   useEffect(() => {
-    const mNum = activeMonth === 'all' ? 5 : Number(activeMonth);
+    const mNum = activeMonth === 'all' ? (new Date().getMonth() + 1) : Number(activeMonth);
     const currentRate = ExchangeRateStorage.getRate(activeYear, mNum);
     setCustomRateInput(currentRate !== null ? String(currentRate) : '');
   }, [activeYear, activeMonth]);
 
   // --- Currency Conversion Utility & Fallback Resolution ---
   const getAppliedExchangeRateAndSource = (): {
-    rate: number;
+    rate: number | null;
     isFallback: boolean;
     sourceText: string;
     successDays?: number;
     fetchedAt?: string;
   } => {
-    const checkMonth = activeMonth === 'all' ? 5 : Number(activeMonth);
-    const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkMonth);
-    
-    if (rateRec && rateRec.averageRate > 0) {
-      const srcText = rateRec.source === 'api' ? '한국수출입은행 월평균 환율' : '사용자 수동 입력 환율';
-      return { 
-        rate: rateRec.averageRate, 
-        isFallback: false, 
-        sourceText: srcText,
-        successDays: rateRec.success_days,
-        fetchedAt: rateRec.fetched_at || rateRec.updatedAt
-      };
-    }
-    
-    // Fallback: search for any saved rate in storage
-    const allRates = ExchangeRateStorage.getRates();
-    if (allRates.length > 0) {
-      const sorted = [...allRates].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      const latest = sorted[0];
+    if (activeMonth !== 'all') {
+      const checkMonth = Number(activeMonth);
+      const rateRec = ExchangeRateStorage.getRateRecord(activeYear, checkMonth);
+      if (rateRec && rateRec.averageRate > 0) {
+        const srcText = rateRec.source === 'api' ? '한국수출입은행 월평균 환율' : '사용자 수동 입력 환율';
+        return {
+          rate: rateRec.averageRate,
+          isFallback: false,
+          sourceText: srcText,
+          successDays: rateRec.success_days,
+          fetchedAt: rateRec.fetched_at || rateRec.updatedAt
+        };
+      }
       return {
-        rate: latest.averageRate,
-        isFallback: true,
-        sourceText: '마지막 저장 환율',
-        successDays: latest.success_days,
-        fetchedAt: latest.fetched_at || latest.updatedAt
+        rate: null,
+        isFallback: false,
+        sourceText: '환율 미등록'
       };
     }
-    
-    // Absolute fallback
+
+    // activeMonth === 'all': check all registered monthly rates for this year
+    const rates = ExchangeRateStorage.getRates().filter(r => r.year === activeYear);
+    if (rates.length === 0) {
+      return {
+        rate: null,
+        isFallback: false,
+        sourceText: '환율 미등록'
+      };
+    }
+
+    const avgRate = rates.reduce((sum, r) => sum + r.averageRate, 0) / rates.length;
     return {
-      rate: 1372,
-      isFallback: true,
-      sourceText: '마지막 저장 환율'
+      rate: Math.round(avgRate * 10) / 10,
+      isFallback: false,
+      sourceText: `전체월 월별 환율 적용 (${rates.length}개 월 등록됨)`
     };
   };
 
-  const getCurrentExchangeRate = (monthNumber?: number): number => {
-    const checkMonth = monthNumber || (activeMonth === 'all' ? 5 : Number(activeMonth));
-    const rate = ExchangeRateStorage.getRate(activeYear, checkMonth);
-    if (rate && rate > 0) return rate;
-    return getAppliedExchangeRateAndSource().rate;
+  const getCurrentExchangeRate = (monthNumber?: number): number | null => {
+    if (monthNumber && monthNumber >= 1 && monthNumber <= 12) {
+      const rate = ExchangeRateStorage.getRate(activeYear, monthNumber);
+      if (rate && rate > 0) return rate;
+      return null;
+    }
+
+    if (activeMonth !== 'all') {
+      const rate = ExchangeRateStorage.getRate(activeYear, Number(activeMonth));
+      if (rate && rate > 0) return rate;
+      return null;
+    }
+
+    // activeMonth === 'all'
+    const applied = getAppliedExchangeRateAndSource();
+    return applied.rate;
   };
 
   const convertVal = (krwVal: number, monthNumber?: number): number => {
     if (currencyMode === 'USD') {
       const rate = getCurrentExchangeRate(monthNumber);
-      return rate > 0 ? krwVal / rate : 0;
+      return rate && rate > 0 ? krwVal / rate : 0;
     }
     return krwVal;
   };
@@ -823,7 +836,7 @@ export default function OperationDashboard() {
               const checkM = activeMonth === 'all' ? '05' : String(activeMonth).padStart(2, '0');
               return (
                 <div className="relative flex items-center gap-1.5 px-3 py-1.5 bg-teal-50/85 border border-teal-150 rounded-xl text-xs text-teal-950 font-medium">
-                  <span>USD 환산 기준: <strong className="font-mono text-[#00786F]">{(appliedInfo.rate ?? 1372).toLocaleString()}원/USD</strong></span>
+                  <span>USD 환산 기준: <strong className="font-mono text-[#00786F]">{appliedInfo.rate ? `${appliedInfo.rate.toLocaleString()}원/USD` : '환율 미등록'}</strong></span>
                   <button
                     type="button"
                     onClick={() => setShowExchangeRateDetail(!showExchangeRateDetail)}
@@ -1053,7 +1066,7 @@ export default function OperationDashboard() {
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-zinc-900 flex items-center gap-1.5 font-sans">
                 <DollarSign className="w-4 h-4 text-zinc-500 animate-pulse" />
-                <span>{activeYear}년 {activeMonth === 'all' ? '5' : activeMonth}월 환율 설정</span>
+                <span>{activeYear}년 {activeMonth === 'all' ? '전체월' : `${activeMonth}월`} 환율 설정</span>
               </h3>
               
               {/* Rate Display or Editing element */}
@@ -1082,15 +1095,18 @@ export default function OperationDashboard() {
                 </div>
               ) : (
                 <div className="space-y-1 pt-1">
-                  {getCurrentExchangeRate() > 0 ? (
-                    <div className="text-2xl font-black text-[#00786F] tracking-tight font-sans">
-                      {getCurrentExchangeRate().toLocaleString()}원/USD
-                    </div>
-                  ) : (
-                    <div className="text-sm font-bold text-rose-600 animate-pulse">
-                      환율 정보 없음
-                    </div>
-                  )}
+                  {(() => {
+                    const curRate = getCurrentExchangeRate();
+                    return curRate && curRate > 0 ? (
+                      <div className="text-2xl font-black text-[#00786F] tracking-tight font-sans">
+                        {curRate.toLocaleString()}원/USD
+                      </div>
+                    ) : (
+                      <div className="text-sm font-bold text-rose-600 animate-pulse">
+                        환율 정보 없음
+                      </div>
+                    );
+                  })()}
                   
                   {/* Criteria Detail metadata */}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#647067] font-sans">

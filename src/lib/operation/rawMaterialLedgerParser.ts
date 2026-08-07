@@ -9,7 +9,7 @@ function parseNumber(val: any): number {
   return Number.isNaN(num) ? 0 : num;
 }
 
-export function isRawItemCode(text: string): boolean {
+export function isRawItemCode(text: string, rowCells?: any[]): boolean {
   if (!text) return false;
   const clean = text.trim();
   if (clean === '') return false;
@@ -26,20 +26,42 @@ export function isRawItemCode(text: string): boolean {
   const hasKorean = /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(clean);
   if (hasKorean) return false;
 
-  const hasLetter = /[A-Za-z]/.test(clean);
-  if (!hasLetter) return false;
-
   // Code is typically shorter than 30 chars and does not have spaces
   if (clean.length > 30) return false;
   if (clean.includes(' ')) return false;
 
-  return true;
+  const hasLetter = /[A-Za-z]/.test(clean);
+  if (hasLetter) return true;
+
+  // Pure numeric codes check (e.g. 811, 622, 523, 111)
+  const isPureNumeric = /^\d+$/.test(clean);
+  if (isPureNumeric) {
+    const knownRawCodes = ['811', '622', '523', '111', '8111', '6221', '5231', '1111'];
+    if (knownRawCodes.includes(clean)) return true;
+
+    // Exclude general years, months, days, small indices
+    const num = Number(clean);
+    if (num >= 2020 && num <= 2035) return false;
+    if (num >= 1 && num <= 31) return false;
+    if (clean === '100') return false;
+
+    if (rowCells && rowCells.length > 3) {
+      const hasNumbers = rowCells.slice(1, 6).some(cell => {
+        if (cell === undefined || cell === null || cell === '') return false;
+        const str = String(cell).replace(/,/g, '').trim();
+        return !isNaN(Number(str)) && Number(str) !== 0;
+      });
+      if (hasNumbers) return true;
+    }
+  }
+
+  return false;
 }
 
 export function resolveRawMaterialGroup(
   rawCode: string,
-  amountRowName: string,
-  priceRowName: string
+  amountRowName?: string,
+  priceRowName?: string
 ): 'BP' | 'BM' | 'WET' | 'LCO' | 'MN' | '기타' {
   const code = String(rawCode || '').trim().toUpperCase();
   const amount = String(amountRowName || '').trim().toUpperCase();
@@ -49,18 +71,24 @@ export function resolveRawMaterialGroup(
     .replace(/\s+/g, ' ')
     .trim();
 
-  // 1. LCO: 코드 또는 하위 라벨에 LCO가 있으면 LCO
+  // 1. LCO (최우선): 코드 또는 원료명에 LCO가 포함되면 최우선 LCO
+  // 예: LCO, LCO-USA, BLCO-USA, BLCOWE-USA-RWD, B811-LCO-WET, B622-LCO -> 모두 LCO
   if (
-    code.startsWith('BLCO') ||
-    /\bLCO\b/.test(context) ||
+    code.includes('LCO') ||
+    context.includes('LCO') ||
     context.includes('LITHIUM COBALT')
   ) {
     return 'LCO';
   }
 
-  // 2. WET: 반드시 BM보다 먼저 판단
-  // B622WE-USA-ABT, B622WT-..., B622WET-...,
-  // 622 Wet(ABTC), Wet BM 모두 WET
+  // 2. BP (2순위): LCO가 아니면서 코드에 811 포함. (WET 신호가 함께 있어도 811이면 BP)
+  // 예: 811, B811-USA, B811-WET, 811WE-ABC, B811WE -> 모두 BP
+  if (code.includes('811') || context.includes('811')) {
+    return 'BP';
+  }
+
+  // 3. WET (3순위): LCO 없음 AND 811 없음 AND WET/WE/WT 계열 신호 존재
+  // 예: B622WET-USA, B622WE-USA-ABT, B622WT-USA, WET-BM -> WET
   const wetSignals = [
     /^B\d*WE[A-Z0-9-]*/.test(code),
     /^B\d*WT[A-Z0-9-]*/.test(code),
@@ -68,22 +96,29 @@ export function resolveRawMaterialGroup(
     code.includes('-WE'),
     code.includes('-WT'),
     code.includes('-WET'),
+    code.includes('WET'),
     /\bWET\b/.test(context),
     context.includes('WET BM'),
     context.includes('WETBM'),
+    context.includes(' WET'),
+    context.includes(' WE'),
+    context.includes(' WT'),
   ];
 
   if (wetSignals.some(Boolean)) {
     return 'WET';
   }
 
-  // 3. BP: 811 계열만 BP
-  if (code.includes('811')) {
-    return 'BP';
-  }
-
-  // 4. BM: 622 계열 중 WET 제외, 그리고 111 및 523 계열도 BM에 분류
-  if (code.includes('622') || code.includes('111') || code.includes('523')) {
+  // 4. BM (4순위): LCO/BP/WET 제외, 622, 523, 111 포함
+  // 예: 622, B622-USA, 523, B523-ABC, 111, B111-ABC -> BM
+  if (
+    code.includes('622') ||
+    code.includes('523') ||
+    code.includes('111') ||
+    context.includes('622') ||
+    context.includes('523') ||
+    context.includes('111')
+  ) {
     return 'BM';
   }
 
@@ -96,7 +131,6 @@ export function resolveRawMaterialGroup(
     return 'MN';
   }
 
-  // 6. 111, 523 등은 BP로 넣지 않음
   return '기타';
 }
 
@@ -186,7 +220,7 @@ export function parseRawMaterialLedgerRows(
     const row = cleanRows[i];
     const firstCell = String(row[0] || '').trim();
 
-    if (isRawItemCode(firstCell)) {
+    if (isRawItemCode(firstCell, row)) {
       // We found a Quantity row!
       // The Amount row should be right next to it: i + 1
       // The Price row should be next: i + 2

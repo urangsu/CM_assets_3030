@@ -208,6 +208,7 @@ const NAV_GROUPS_DEF: NavGroup[] = [
       { id: 'production-status', label: '생산 현황', icon: 'trend', href: '/production-status' },
       { id: 'product-status', label: '제품 수불 현황', icon: 'list', href: '/product-status' },
       { id: 'raw-material-status', label: '원자재 수불 현황', icon: 'cube', href: '/raw-material-status' },
+      { id: 'blend-tester', label: '배합테스터', icon: 'cube', href: '/blend-tester', badge: '신규' },
       { id: 'operation-upload', label: '운영 업로드', icon: 'upload', href: '/operation-upload' }
     ]
   },
@@ -254,13 +255,12 @@ export default function Sidebar() {
     <div className="space-y-6 text-[#4e5968] text-sm leading-relaxed text-left">
       <section>
         <h4 className="font-bold text-[#191f28] mb-2">1. 수집하는 개인정보 항목</h4>
-        <p>• 필수항목: 사번(ID), 비밀번호(암호화 저장)</p>
-        <p>• 선택항목: 성명, 소속 부서, 회사 이메일, 연락처</p>
+        <p>• 필수항목: 사번(ID), 성명</p>
+        <p>• 선택항목: 소속 부서, 연락처</p>
       </section>
       <section>
         <h4 className="font-bold text-[#191f28] mb-2">2. 개인정보의 수집 및 이용 목적</h4>
-        <p>• 사내 예산 편성 및 관리 시스템 이용 권한 확인</p>
-        <p>• 예산 제출/반려 시 알림 메일 발송 및 담당자 확인</p>
+        <p>• 사내 예산 및 원자재/생산/배합 모듈 이용 권한 및 작성 담당자 확인</p>
       </section>
       <section>
         <h4 className="font-bold text-[#191f28] mb-2">3. 개인정보의 보유 및 이용 기간</h4>
@@ -272,9 +272,8 @@ export default function Sidebar() {
       </section>
       <section>
         <h4 className="font-bold text-[#191f28] mb-2">5. 보안 조치 사항</h4>
-        <p>• 모든 비밀번호는 암호화되어 저장됩니다.</p>
-        <p>• 사용자 관리 메뉴는 운영자 및 기획재무그룹 등 지정된 관리자만 이용가능합니다.</p>
-        <p className="text-red-500 font-bold mt-2">※ 당사의 지정 사용자외 사용을 엄금한다.</p>
+        <p>• 사용자 관리 메뉴는 지정된 관리자만 이용 가능합니다.</p>
+        <p className="text-red-500 font-bold mt-2">※ 당사의 지정 사용자외 사용을 엄금합니다.</p>
       </section>
     </div>
   );

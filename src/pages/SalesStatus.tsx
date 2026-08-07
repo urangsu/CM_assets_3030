@@ -131,7 +131,7 @@ export default function SalesStatus() {
 
   // Convert values with currency rates
   const getExchangeRate = (mNum?: number) => {
-    const month = mNum || (activeMonth === 'all' ? 5 : Number(activeMonth));
+    const month = mNum || (activeMonth === 'all' ? (new Date().getMonth() + 1) : Number(activeMonth));
     return getSafeExchangeRate(activeYear, month);
   };
 

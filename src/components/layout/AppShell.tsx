@@ -12,19 +12,24 @@ export default function AppShell({ children }: AppShellProps) {
   const [dataState, setDataState] = useState<'no-upload' | 'uploaded' | 'partial' | 'error'>('no-upload');
 
   const checkUploadStatus = () => {
-    const rawActuals = localStorage.getItem('cleanmetal_actual_data_2026');
-    if (rawActuals) {
-      try {
-        const rows = JSON.parse(rawActuals);
-        if (rows && rows.length > 0) {
-          setDataState('uploaded');
-          return;
+    try {
+      const keys = Object.keys(localStorage);
+      const hasAnyData = keys.some(key => {
+        if (
+          key.startsWith('cleanmetal_actual_data_') ||
+          key.startsWith('hycm_raw_material_ledger_') ||
+          key.startsWith('hycm_product_ledger_')
+        ) {
+          const val = localStorage.getItem(key);
+          const rows = val ? JSON.parse(val) : [];
+          return Array.isArray(rows) && rows.length > 0;
         }
-      } catch (e) {
-        setDataState('no-upload');
-      }
+        return false;
+      });
+      setDataState(hasAnyData ? 'uploaded' : 'no-upload');
+    } catch {
+      setDataState('no-upload');
     }
-    setDataState('no-upload');
   };
 
   useEffect(() => {

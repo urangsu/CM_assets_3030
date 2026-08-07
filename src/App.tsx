@@ -27,6 +27,7 @@ import DepartmentAssignment from './pages/DepartmentAssignment';
 import OperationUpload from './pages/OperationUpload';
 import OperationDashboard from './pages/OperationDashboard';
 import ProductStatus from './pages/ProductStatus';
+import { BlendTester } from './pages/BlendTester';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -144,6 +145,7 @@ export default function App() {
         <Route path="/product-status" element={<ProtectedRoute><Layout><ErrorBoundary title="제품 수불 현황"><ProductStatus /></ErrorBoundary></Layout></ProtectedRoute>} />
         <Route path="/production-status" element={<ProtectedRoute><Layout><ErrorBoundary title="생산 현황"><ProductionStatus /></ErrorBoundary></Layout></ProtectedRoute>} />
         <Route path="/raw-material-status" element={<ProtectedRoute><Layout><ErrorBoundary title="원자재 수불 현황"><RawMaterialStatus /></ErrorBoundary></Layout></ProtectedRoute>} />
+        <Route path="/blend-tester" element={<ProtectedRoute><Layout><ErrorBoundary title="배합테스터"><BlendTester /></ErrorBoundary></Layout></ProtectedRoute>} />
 
         {/* --- Route Alias Redirects (라우트 안정화) --- */}
         <Route path="/plan-actual" element={<Navigate to="/plan-actual-upload" replace />} />
